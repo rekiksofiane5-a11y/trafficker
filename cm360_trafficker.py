@@ -131,6 +131,13 @@ def load_rows_from_path(path: str, campaign_name: str = "",
     grids = plan_agent.read_grids(path)
     if not any(any(any(c for c in r) for r in g) for _, g in grids):
         sys.exit("Le fichier est vide.")
+    # Cases surlignées en jaune : l'agent ne lit que celles-ci
+    highlights = plan_agent.read_highlights(path)
+    if highlights:
+        out, report = plan_agent.extract(grids, campaign_name, advertiser_name, highlights)
+        res = ingest.IngestedRows(out)
+        res.ingest_report = report
+        return res
     first = grids[0][1]
     header = [normalize_header(h) for h in (first[0] if first else [])]
     rows = [dict(zip(header, r + [""] * (len(header) - len(r))))

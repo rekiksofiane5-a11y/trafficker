@@ -126,3 +126,20 @@ def test_creative_files_checked_against_cm360_specs(page, tmp_path):
     assert "HTML5 display" in text
     assert page.is_disabled("#dl-cm360")              # créative hors specs : export bloqué
     page.set_input_files("#creas", [])
+
+
+def test_yellow_cells_mode_in_browser(page, tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    from openpyxl.styles import PatternFill
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    for r in [["Campagne", "Emplacement", "Format", "Début", "Fin", "URL"],
+              ["Hiver", "Home", "300x250", "2026-11-02", "2026-12-15", "https://x.fr"],
+              ["Hiver", "Article", "728x90", "2026-11-02", "2026-12-15", "https://x.fr"]]:
+        ws.append(r)
+    for c in range(1, 7):
+        ws.cell(row=3, column=c).fill = PatternFill("solid", fgColor="FFFF00")
+    wb.save(tmp_path / "jaune.xlsx")
+    _analyze(page, str(tmp_path / "jaune.xlsx"))
+    text = page.inner_text("#summary")
+    assert "Mode cases jaunes" in text and "Article" in text and "Home" not in text

@@ -72,6 +72,7 @@ Pacing = livré / (objectif × fraction du vol écoulée) : OK entre 80 % et 120
 
 Le plan est lu « tel qu'il arrive » ; l'agent retrouve chaque information même hors de sa colonne :
 
+- **Cases surlignées en jaune** : si le classeur (XLSX/XLS) contient des cases jaunes (jaune vif, jaune clair, or — couleurs directes ou de thème), l'agent ne lit **que** ces cases ; seuls les libellés (ligne d'en-tête du tableau, étiquettes « Annonceur », « Période »… à côté d'une case jaune) sont gardés pour comprendre les colonnes. Une case fusionnée jaune couvre toute sa plage. Sans case jaune, tout le fichier est lu. Un CSV n'a pas de couleurs : lecture complète.
 - **Fichier** : CSV (`;` `,` tabulation `|`, UTF-8 ou Windows-1252), XLSX, XLS, toutes les feuilles ; la feuille et la ligne d'en-tête sont repérées automatiquement (titres, logos, lignes vides au-dessus).
 - **Bloc d'informations** au-dessus du tableau : « Annonceur : X », « Campagne », « Période : du … au … », budget, URL → valeurs de campagne.
 - **Colonnes** : par l'en-tête (synonymes FR/EN, rapprochement approché), puis **par le contenu** quand l'en-tête ne dit rien : URL → destination, `300x250` → format, deux colonnes de dates → début/fin, `12 500 €` → budget, `<script>` → tag, `.mp4`/`.png` → créatives, `CPM` → mode d'achat, colonne de libellés la plus variée → emplacement.

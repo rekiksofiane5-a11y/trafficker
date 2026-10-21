@@ -93,6 +93,134 @@ def read_grids(path: str) -> List[Tuple[str, Grid]]:
         return [("CSV", _csv_grid(_decode(f.read())))]
 
 
+# --- 1bis. Cases surlignées en jaune ---------------------------------------------------
+# Si le classeur contient des cases jaunes, l'agent ne lit QUE ces cases (plus les
+# libellés : ligne d'en-tête du tableau et étiquettes du bloc d'informations).
+
+Highlights = Dict[str, set]
+
+
+def is_yellow(rgb: str) -> bool:
+    """Couleur « jaune » au sens large : jaune vif, jaune clair, or (teinte 40-70°)."""
+    import colorsys
+    try:
+        r, g, b = (int(rgb[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    except (ValueError, TypeError):
+        return False
+    h, s, v = colorsys.rgb_to_hsv(r, g, b)
+    return 40 / 360 <= h <= 70 / 360 and s >= 0.15 and v >= 0.75
+
+
+def _apply_tint(rgb: str, tint: float) -> str:
+    out = []
+    for i in (0, 2, 4):
+        c = int(rgb[i:i + 2], 16)
+        c = c + (255 - c) * tint if tint > 0 else c * (1 + tint)
+        out.append(f"{max(0, min(255, round(c))):02X}")
+    return "".join(out)
+
+
+def _theme_colors(wb) -> List[str]:
+    """Couleurs du thème Excel, dans l'ordre des index de cellule (lt1, dk1, lt2, dk2, accents)."""
+    xml = getattr(wb, "loaded_theme", None)
+    if not xml:
+        return []
+    if isinstance(xml, bytes):
+        xml = xml.decode("utf-8", errors="replace")
+    names = ["dk1", "lt1", "dk2", "lt2", "accent1", "accent2", "accent3", "accent4",
+             "accent5", "accent6", "hlink", "folHlink"]
+    found = {}
+    for n in names:
+        m = re.search(rf"<a:{n}>.*?(?:srgbClr val=\"([0-9A-Fa-f]{{6}})\"|lastClr=\"([0-9A-Fa-f]{{6}})\")", xml, re.S)
+        if m:
+            found[n] = (m.group(1) or m.group(2)).upper()
+    order = ["lt1", "dk1", "lt2", "dk2", "accent1", "accent2", "accent3", "accent4",
+             "accent5", "accent6", "hlink", "folHlink"]
+    return [found.get(n, "") for n in order]
+
+
+def _fill_rgb(cell, theme: List[str]) -> str:
+    fill = getattr(cell, "fill", None)
+    if not fill or not getattr(fill, "fill_type", None) or fill.fill_type == "none":
+        return ""
+    col = fill.fgColor if fill.fill_type == "solid" else (fill.fgColor or fill.bgColor)
+    if col is None:
+        return ""
+    try:
+        if col.type == "rgb" and isinstance(col.rgb, str):
+            return col.rgb[-6:].upper()
+        if col.type == "indexed":
+            from openpyxl.styles.colors import COLOR_INDEX
+            return COLOR_INDEX[col.indexed][-6:].upper() if col.indexed < len(COLOR_INDEX) else ""
+        if col.type == "theme" and col.theme < len(theme) and theme[col.theme]:
+            return _apply_tint(theme[col.theme], col.tint or 0)
+    except (AttributeError, TypeError, IndexError):
+        return ""
+    return ""
+
+
+def read_highlights(path: str) -> Highlights:
+    """{feuille: {(ligne, colonne)}} des cases surlignées en jaune (index à partir de 0).
+    CSV : pas de couleurs, toujours vide."""
+    ext = os.path.splitext(path)[1].lower()
+    out: Highlights = {}
+    if ext in (".xlsx", ".xlsm"):
+        from openpyxl import load_workbook
+        wb = load_workbook(path, data_only=True)        # styles : mode complet
+        theme = _theme_colors(wb)
+        for ws in wb.worksheets:
+            cells = set()
+            for row in ws.iter_rows():
+                for c in row:
+                    if is_yellow(_fill_rgb(c, theme)):
+                        cells.add((c.row - 1, c.column - 1))
+            for rng in ws.merged_cells.ranges:          # case fusionnée jaune -> toute la plage
+                if (rng.min_row - 1, rng.min_col - 1) in cells:
+                    for r in range(rng.min_row - 1, rng.max_row):
+                        for cc in range(rng.min_col - 1, rng.max_col):
+                            cells.add((r, cc))
+            if cells:
+                out[ws.title] = cells
+    elif ext == ".xls":
+        import xlrd
+        try:
+            book = xlrd.open_workbook(path, formatting_info=True)
+        except (NotImplementedError, xlrd.XLRDError):
+            return out
+        for sh in book.sheets():
+            cells = set()
+            for r in range(sh.nrows):
+                for c in range(sh.ncols):
+                    xf = book.xf_list[sh.cell_xf_index(r, c)]
+                    bg = xf.background
+                    rgb = book.colour_map.get(bg.pattern_colour_index) if bg.fill_pattern else None
+                    if rgb and is_yellow("".join(f"{x:02X}" for x in rgb)):
+                        cells.add((r, c))
+            for r0, r1, c0, c1 in sh.merged_cells:
+                if (r0, c0) in cells:
+                    cells.update((r, c) for r in range(r0, r1) for c in range(c0, c1))
+            if cells:
+                out[sh.name] = cells
+    return out
+
+
+def _mask(grid: Grid, header_row: int, yellow: set) -> Grid:
+    """Ne garde que les cases jaunes, la ligne d'en-tête et, au-dessus du tableau,
+    les étiquettes (« Annonceur », « Période »...) suivies d'une case jaune."""
+    out = []
+    for r, row in enumerate(grid):
+        if r == header_row:
+            out.append(list(row))
+            continue
+        new = [v if (r, c) in yellow else "" for c, v in enumerate(row)]
+        if r < header_row:
+            for c, v in enumerate(row):
+                if v and not new[c] and _context_key(v) and any((r, x) in yellow for x in range(c + 1, len(row))):
+                    new[c] = v
+        out.append(new)
+    return out
+
+
 # --- Reconnaissance des valeurs ----------------------------------------------------
 
 RE_URL = re.compile(r"(https?://[^\s\"'<>]+|www\.[^\s\"'<>]+\.[a-z]{2,}[^\s\"'<>]*)", re.I)
@@ -392,24 +520,38 @@ def _is_total(row: List[str]) -> bool:
 
 
 def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
-            advertiser_name: str = "") -> Tuple[List[Dict[str, str]], List[str]]:
-    """Lignes canoniques + rapport de provenance."""
-    sheet, grid, h = find_table(grids)
+            advertiser_name: str = "", highlights: Optional[Highlights] = None
+            ) -> Tuple[List[Dict[str, str]], List[str]]:
+    """Lignes canoniques + rapport de provenance. Avec `highlights` (cases jaunes),
+    seules les cases surlignées sont lues."""
+    yellow_mode = bool(highlights and any(highlights.values()))
+    if yellow_mode:
+        sheet, grid, h = find_table([(n, g) for n, g in grids if highlights.get(n)])
+    else:
+        sheet, grid, h = find_table(grids)
     width = max((len(r) for r in grid), default=0)
     grid = [r + [""] * (width - len(r)) for r in grid]
+    if yellow_mode:
+        grid = _mask(grid, h, highlights[sheet])
     headers = grid[h] if h < len(grid) else []
     context = read_context(grid[:h])
-    # Données : jusqu'à 3 lignes vides consécutives
+    # Données : jusqu'à 3 lignes vides consécutives (en mode jaune : tout le tableau,
+    # les lignes non surlignées étant simplement vides)
     data, blanks = [], 0
     for row in grid[h + 1:]:
         if not any(row):
             blanks += 1
-            if blanks >= 3 and data:
+            if blanks >= 3 and data and not yellow_mode:
                 break
             continue
         blanks = 0
         data.append(row)
-    report = [f"Feuille « {sheet} », en-tête ligne {h + 1}, {len(data)} ligne(s) de données."]
+    report = []
+    if yellow_mode:
+        n = sum(len(v) for v in highlights.values())
+        report.append(f"Mode cases jaunes : seules les {n} case(s) surlignée(s) en jaune sont lues "
+                      "(plus les libellés d'en-tête), le reste du fichier est ignoré.")
+    report.append(f"Feuille « {sheet} », en-tête ligne {h + 1}, {len(data)} ligne(s) de données.")
     cols, prov, ignored = map_columns(headers, data)
     report += prov
     for k, (v, where) in context.items():
