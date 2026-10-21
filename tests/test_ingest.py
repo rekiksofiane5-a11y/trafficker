@@ -33,7 +33,7 @@ def test_free_form_plan_is_ingested(libre):
     types = {c.name: c.ctype for ad in camp.ads.values() for c in ad["creatives"]}
     assert types == {"Crea_A": "IMAGE", "Crea_V": "VIDEO", "Crea_T": "TRACKING"}
     report = "\n".join(rows.ingest_report)
-    assert "« campagne » → campaign_name" in report and "commentaire_interne" in report
+    assert "campaign_name ← colonne « Campagne »" in report and "Commentaire interne" in report
 
 
 def test_canonical_plan_is_untouched():

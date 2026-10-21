@@ -68,9 +68,15 @@ Pacing = livré / (objectif × fraction du vol écoulée) : OK entre 80 % et 120
 - Listes de valeurs Adform (types de campagne, modes de saisie…) : lues dans les listes déroulantes du classeur fourni.
 - Le classeur ne peut pas être importé comme plan (il ne décrit ni placements ni créatives).
 
-## Ingestion d'un plan quelconque
+## Agent de lecture des plans médias (`plan_agent.py`)
 
-Un plan dont les colonnes ne sont pas canoniques (« Campagne », « Support », « Format (px) », « Début », « Budget HT », « URL de destination »…) est converti automatiquement : synonymes FR/EN puis rapprochement approché, normalisation des valeurs (dates JJ/MM/AAAA, `300 x 250 px`, `4 000,50 €`, « Coût pour mille » → CPM). Le rapport (colonnes reconnues, ignorées, champs obligatoires manquants) s'affiche en CLI, dans l'UI et dans le MCP. `--campaign-name` / `--advertiser-name` comblent une colonne absente.
+Le plan est lu « tel qu'il arrive » ; l'agent retrouve chaque information même hors de sa colonne :
+
+- **Fichier** : CSV (`;` `,` tabulation `|`, UTF-8 ou Windows-1252), XLSX, XLS, toutes les feuilles ; la feuille et la ligne d'en-tête sont repérées automatiquement (titres, logos, lignes vides au-dessus).
+- **Bloc d'informations** au-dessus du tableau : « Annonceur : X », « Campagne », « Période : du … au … », budget, URL → valeurs de campagne.
+- **Colonnes** : par l'en-tête (synonymes FR/EN, rapprochement approché), puis **par le contenu** quand l'en-tête ne dit rien : URL → destination, `300x250` → format, deux colonnes de dates → début/fin, `12 500 €` → budget, `<script>` → tag, `.mp4`/`.png` → créatives, `CPM` → mode d'achat, colonne de libellés la plus variée → emplacement.
+- **Lignes** : cellules fusionnées complétées, lignes de total/titre ignorées, période « 02/11 – 15/12/2026 » découpée, plusieurs formats dans une cellule → une ligne par format, format/URL/mode d'achat retrouvés dans le nom ou une autre cellule, noms d'annonce/créative générés, dates propres à chaque ligne → la campagne couvre toute la période, budgets et volumes additionnés par campagne.
+- **Rapport de provenance** (CLI, UI, MCP, version navigateur) : d'où vient chaque champ, ce qui a été déduit, ignoré ou reste introuvable. Rien n'est inventé : une campagne introuvable bloque l'envoi.
 
 **Option IA** (désactivée par défaut) : `TRAFFICKER_LLM=1`, `TRAFFICKER_LLM_MODEL=<modèle Claude>`, `ANTHROPIC_API_KEY`, `pip install anthropic`. Seules les colonnes encore inconnues et 3 valeurs d'exemple sont envoyées ; la réponse est filtrée (noms canoniques uniquement, pas de doublon).
 

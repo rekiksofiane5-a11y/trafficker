@@ -1,0 +1,134 @@
+"""L'agent lit des plans médias réels « tels qu'ils arrivent » : en-tête décalé, bloc
+d'infos, cellules fusionnées, totaux, colonnes mal nommées ou absentes, infos rangées
+ailleurs, CSV à point-virgule en Windows-1252, plusieurs feuilles."""
+import pytest
+
+openpyxl = pytest.importorskip("openpyxl")
+from cm360_trafficker import load_rows_from_path, plan_from_rows
+import plan_agent
+
+
+def _xlsx(path, sheets):
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for name, rows in sheets:
+        ws = wb.create_sheet(name)
+        for r in rows:
+            ws.append(r)
+    wb.save(path)
+    return str(path)
+
+
+def _plan(path, **kw):
+    rows = load_rows_from_path(path, **kw)
+    plan, errors = plan_from_rows(rows)
+    return rows, plan, errors, "\n".join(getattr(rows, "ingest_report", []))
+
+
+def test_agency_plan_with_title_block_merged_cells_and_totals(tmp_path):
+    p = _xlsx(tmp_path / "agence.xlsx", [
+        ("Synthèse", [["Récapitulatif"], ["Budget global", "25 000 €"]]),
+        ("Plan", [
+            ["PLAN MÉDIA DIGITAL"],
+            ["Annonceur : Client Démo"],
+            ["Campagne", "Hiver 2026"],
+            ["Période : du 02/11/2026 au 15/12/2026"],
+            [],
+            ["Support", "Emplacement", "Format", "Achat", "Volume (imp.)", "Budget net", "URL"],
+            ["Le Monde", "Home", "300x250", "CPM", "500 000", "4 000 €", "https://client.fr/hiver"],
+            [None, "Article", "728x90", "CPM", "250 000", "2 000 €", "https://client.fr/hiver"],
+            ["L'Équipe", "Preroll", "640x360", "CPM", "100 000", "3 500 €", "https://client.fr/hiver"],
+            ["TOTAL", None, None, None, "850 000", "9 500 €", None],
+        ]),
+    ])
+    rows, plan, errors, report = _plan(p)
+    assert errors == []
+    camp = next(iter(plan.values()))
+    assert (camp.name, camp.advertiser_name) == ("Hiver 2026", "Client Démo")
+    assert (camp.start, camp.end) == ("2026-11-02", "2026-12-15")
+    assert camp.budget_eur == 9500                       # somme des lignes, total ignoré
+    assert len(rows) == 3
+    assert rows[1]["site_name"] == "Le Monde"            # cellule fusionnée complétée
+    assert "Feuille « Plan », en-tête ligne 6" in report
+    assert "bloc d'en-tête" in report and "ignorée" in report
+
+
+def test_semicolon_cp1252_english_headers_and_period_column(tmp_path):
+    p = tmp_path / "plan.csv"
+    p.write_bytes(("Line item;Creative size;Flight;Click URL;Cost model\n"
+                   "Habillage été;970x250;02/11 - 15/12/2026;https://x.fr;CPM\n"
+                   "Pavé;300x250;02/11 - 15/12/2026;https://x.fr;CPC\n").encode("cp1252"))
+    rows, plan, errors, report = _plan(str(p), campaign_name="Été", advertiser_name="Démo")
+    assert errors == []
+    camp = next(iter(plan.values()))
+    assert (camp.start, camp.end) == ("2026-11-02", "2026-12-15")
+    assert "Habillage été" in camp.placements
+    assert "période découpée" in report
+
+
+def test_columns_found_by_content_when_headers_mean_nothing(tmp_path):
+    p = _xlsx(tmp_path / "anonyme.xlsx", [("Feuil1", [
+        ["Col A", "Col B", "Col C", "Col D", "Col E"],
+        ["Bannière home", "300x250", "2026-11-02", "2026-12-15", "https://x.fr/a"],
+        ["Bannière article", "728x90", "2026-11-02", "2026-12-15", "https://x.fr/b"],
+        ["Pavé mobile", "320x50", "2026-11-03", "2026-12-14", "https://x.fr/c"],
+    ])])
+    rows, plan, errors, report = _plan(p, campaign_name="Test")
+    assert errors == []
+    camp = next(iter(plan.values()))
+    assert set(camp.placements) == {"Bannière home", "Bannière article", "Pavé mobile"}
+    assert camp.start == "2026-11-02" and camp.end == "2026-12-15"
+    assert "contenu de la colonne « Col E »" in report        # URL reconnue au contenu
+    assert "couvre du 2026-11-02 au 2026-12-15" in report     # dates propres à chaque ligne
+
+
+def test_information_in_the_wrong_place(tmp_path):
+    p = _xlsx(tmp_path / "desordre.xlsx", [("Plan", [
+        ["Campagne", "Emplacement", "Début", "Fin", "Commentaire"],
+        ["Noël", "Home_728x90 CPM", "01/12/2026", "24/12/2026", "lien : https://x.fr/noel"],
+        ["Noël", "Pavé 300 x 250", "01/12/2026", "24/12/2026", "voir https://x.fr/noel"],
+    ])])
+    rows, plan, errors, report = _plan(p)
+    assert errors == []
+    assert [r["size"] for r in rows] == ["728x90", "300x250"]
+    assert rows[0]["landing_page_url"] == "https://x.fr/noel"
+    assert rows[0]["pricing_type"] == "CPM"
+    assert "retrouvé dans le nom" in report and "autre cellule" in report
+    assert "Noms générés" in report                          # annonce et créative absentes
+
+
+def test_several_sizes_in_one_cell(tmp_path):
+    p = _xlsx(tmp_path / "multi.xlsx", [("Plan", [
+        ["Campagne", "Site", "Formats", "Date début", "Date fin", "URL"],
+        ["Printemps", "Ouest-France", "300x250 / 728x90 / 160x600", "2027-03-01", "2027-03-31", "https://x.fr"],
+    ])])
+    rows, plan, errors, report = _plan(p)
+    assert errors == []
+    assert sorted(r["size"] for r in rows) == ["160x600", "300x250", "728x90"]
+    assert len({r["placement_name"] for r in rows}) == 3
+
+
+def test_missing_campaign_is_reported_not_invented(tmp_path):
+    p = _xlsx(tmp_path / "sans_campagne.xlsx", [("Plan", [
+        ["Emplacement", "Format", "Début", "Fin", "URL"],
+        ["Home", "300x250", "2026-11-02", "2026-12-15", "https://x.fr"],
+    ])])
+    rows, plan, errors, report = _plan(p)
+    assert "Introuvables dans le plan : campaign_name" in report
+    assert errors                                             # la validation bloque l'envoi
+
+
+@pytest.mark.parametrize("raw,out", [
+    ("du 02/11/2026 au 15/12/2026", ("2026-11-02", "2026-12-15")),
+    ("02/11 - 15/12/2026", ("2026-11-02", "2026-12-15")),
+    ("15/12 au 10/01/2027", ("2026-12-15", "2027-01-10")),
+    ("2026-11-02 → 2026-12-15", ("2026-11-02", "2026-12-15")),
+])
+def test_parse_period(raw, out):
+    assert plan_agent.parse_period(raw) == out
+
+
+@pytest.mark.parametrize("raw,out", [("02/11/26", "2026-11-02"), ("46328", "2026-11-02"),
+                                     ("2026-11-02 00:00:00", "2026-11-02"), ("pas une date", "")])
+def test_parse_date(raw, out):
+    assert plan_agent.parse_date(raw) == out

@@ -123,14 +123,25 @@ def load_rows_from_path(path: str, campaign_name: str = "",
     """Charge un CSV, XLSX ou XLS et renvoie une liste de dicts {colonne: valeur}.
     Un export « Campaign spreadsheet » CM360 est reconnu à ses en-têtes et converti
     en plan (campaign_name / advertiser_name : voir cm360_bulk.bulk_to_plan_rows)."""
-    rows = _read_rows(path)
-    if rows:
-        import cm360_bulk
-        if cm360_bulk.is_bulk_header(rows[0].keys()):
-            return cm360_bulk.bulk_to_plan_rows(rows, campaign_name, advertiser_name)
-        import ingest
+    import cm360_bulk
+    import ingest
+    import plan_agent
+    grids = plan_agent.read_grids(path)
+    if not any(any(any(c for c in r) for r in g) for _, g in grids):
+        sys.exit("Le fichier est vide.")
+    first = grids[0][1]
+    header = [normalize_header(h) for h in (first[0] if first else [])]
+    rows = [dict(zip(header, r + [""] * (len(header) - len(r))))
+            for r in first[1:] if any(c for c in r)]
+    if cm360_bulk.is_bulk_header(header):
+        return cm360_bulk.bulk_to_plan_rows(rows, campaign_name, advertiser_name)
+    if plan_agent.is_canonical(grids):
         return ingest.ingest_rows(rows, campaign_name, advertiser_name)
-    return rows
+    # Plan « tel qu'il arrive » : l'agent retrouve chaque information
+    out, report = plan_agent.extract(grids, campaign_name, advertiser_name)
+    res = ingest.IngestedRows(out)
+    res.ingest_report = report
+    return res
 
 
 def _read_rows(path: str) -> List[Dict[str, str]]:

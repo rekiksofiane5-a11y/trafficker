@@ -94,7 +94,7 @@ def test_free_form_plan_and_errors(page, tmp_path):
                  "C1,P1,300 x 250,02/11/2026,01/11/2026,A1,K1,https://x.fr\n", encoding="utf-8")
     _analyze(page, str(p))
     text = page.inner_text("#summary")
-    assert "Colonnes reconnues" in text
+    assert "campaign_name ← colonne « Campagne »" in text
     assert "avant campaign_start" in text                     # fin avant début détectée
     assert page.is_disabled("#dl-cm360")                       # pas d'export d'un plan invalide
 
