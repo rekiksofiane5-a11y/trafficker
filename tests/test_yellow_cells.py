@@ -117,3 +117,20 @@ def test_theme_colors_resolved(tmp_path):
     assert len(theme) == 12 and theme[0] == "FFFFFF"
     assert plan_agent._fill_rgb(wb2.active["A1"], theme) == plan_agent._apply_tint(theme[7], 0.8)
     assert plan_agent._apply_tint("FFC000", 0.8) == "FFF2CC"      # thème Office 2013+ : jaune clair
+
+
+def test_header_block_values_below_labels_in_yellow(tmp_path):
+    rows = [["Client", "Nom de campagne", "Date de début", "Date de fin", "Objectif général"],
+            ["Démo SA", "Hiver 2026", "2026-11-02", "2026-12-15", "Notoriété"],
+            [],
+            ["Support", "Emplacement", "Format", "URL"],
+            ["Le Monde", "Home", "Pavé", "https://x.fr"],
+            ["Le Monde", "Article", "Pavé", "https://x.fr"]]
+    fills = {(2, c): YELLOW for c in range(1, 6)}
+    fills.update({(5, c): YELLOW for c in range(1, 5)})
+    rows_ = load_rows_from_path(_book(tmp_path, rows, fills))
+    plan, errors = plan_from_rows(rows_)
+    assert errors == []
+    camp = next(iter(plan.values()))
+    assert (camp.advertiser_name, camp.name, camp.start) == ("Démo SA", "Hiver 2026", "2026-11-02")
+    assert list(camp.placements) == ["Home"] and rows_[0]["objective"] == "Notoriété"

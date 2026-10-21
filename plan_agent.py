@@ -215,7 +215,8 @@ def _mask(grid: Grid, header_row: int, yellow: set) -> Grid:
         new = [v if (r, c) in yellow else "" for c, v in enumerate(row)]
         if r < header_row:
             for c, v in enumerate(row):
-                if v and not new[c] and _context_key(v) and any((r, x) in yellow for x in range(c + 1, len(row))):
+                if v and not new[c] and _context_key(v.rstrip(" :")) and (
+                        any((r, x) in yellow for x in range(c + 1, len(row))) or (r + 1, c) in yellow):
                     new[c] = v
         out.append(new)
     return out
@@ -342,7 +343,17 @@ def _header_score(row: List[str]) -> int:
     if len(norm) < 2:
         return 0
     mapping, _ = ingest.map_headers(norm)
-    return len(set(mapping.values()))
+    fields = set(mapping.values())
+    # Un en-tête de tableau décrit des LIGNES (emplacement, format, URL...). Un bandeau
+    # « Client | Campagne | Date de début | Objectif » décrit la campagne : ce n'est pas
+    # l'en-tête du tableau, c'est le bloc d'informations.
+    line = len(fields & LINE_FIELDS)
+    return 0 if line == 0 else 2 * line + len(fields - LINE_FIELDS)
+
+
+LINE_FIELDS = {"placement_name", "size", "ad_name", "creative_name", "creative_path", "snippet",
+               "site_name", "site_id", "landing_page_url", "format_label", "pricing_type", "message",
+               "creative_type", "creative_category", "placement_category"}
 
 
 def find_table(grids: List[Tuple[str, Grid]]) -> Tuple[str, Grid, int]:
@@ -368,26 +379,51 @@ def find_table(grids: List[Tuple[str, Grid]]) -> Tuple[str, Grid, int]:
 # --- 3. Bloc d'informations au-dessus du tableau ---------------------------------------
 
 CONTEXT_KEYS = {
-    "advertiser_name": ["annonceur", "client", "advertiser", "marque", "brand"],
-    "campaign_name": ["campagne", "campaign", "operation", "nom_de_la_campagne", "projet"],
-    "period": ["periode", "dates", "date", "flight", "vague", "periode_de_diffusion"],
-    "campaign_start": ["debut", "date_de_debut", "start", "start_date"],
-    "campaign_end": ["fin", "date_de_fin", "end", "end_date"],
-    "budget_eur": ["budget", "budget_total", "budget_net", "budget_ht", "montant"],
+    "advertiser_name": ["annonceur", "client", "nom_client", "nom_du_client", "advertiser", "marque",
+                        "brand", "compte"],
+    "campaign_name": ["campagne", "nom_de_campagne", "nom_campagne", "nom_de_la_campagne", "campaign",
+                      "campaign_name", "libelle_campagne", "intitule", "operation", "projet"],
+    "period": ["periode", "dates", "date", "flight", "vague", "periode_de_diffusion", "duree"],
+    "campaign_start": ["debut", "date_de_debut", "date_debut", "debut_de_campagne", "start",
+                       "start_date", "date_de_lancement", "lancement", "du"],
+    "campaign_end": ["fin", "date_de_fin", "date_fin", "fin_de_campagne", "end", "end_date", "au"],
+    "objective": ["objectif", "objectif_general", "objectif_global", "objectif_de_campagne",
+                  "objectif_campagne", "objectif_media", "objective", "goal"],
+    "audience": ["cible", "cible_principale", "coeur_de_cible", "audience", "target"],
+    "targeting": ["ciblage", "ciblage_general", "targeting"],
+    "budget_eur": ["budget", "budget_total", "budget_net", "budget_ht", "budget_global", "montant"],
     "landing_page_url": ["url", "url_de_destination", "landing", "lp", "site_annonceur"],
 }
+_CONTEXT_EXACT = {s: k for k, syns in CONTEXT_KEYS.items() for s in syns}
+_QUALIFIERS = {"general", "generale", "global", "globale", "principal", "principale", "total",
+               "totale", "prevu", "prevue", "previsionnel", "de", "la", "du", "campagne", "client"}
 
 
 def _context_key(label: str) -> Optional[str]:
+    """« Date de début » -> campaign_start (et non « période ») ; « Objectif général »
+    -> objective. Libellé exact, éventuellement suivi de qualificatifs (« général »,
+    « total »…). Une valeur comme « Client Démo » n'est pas prise pour un libellé."""
     n = ingest._norm(label)
-    for key, syns in CONTEXT_KEYS.items():
-        if n in syns or any(n.startswith(s + "_") for s in syns):
-            return key
+    if not n or len(n) > 40:
+        return None
+    if n in _CONTEXT_EXACT:
+        return _CONTEXT_EXACT[n]
+    words = n.split("_")
+    while len(words) > 1 and words[-1] in _QUALIFIERS:
+        words.pop()
+        if "_".join(words) in _CONTEXT_EXACT:
+            return _CONTEXT_EXACT["_".join(words)]
     return None
 
 
+def _is_label(v: str) -> bool:
+    return bool(_context_key(v.rstrip(" :")))
+
+
 def read_context(cells: List[List[str]]) -> Dict[str, Tuple[str, str]]:
-    """{champ: (valeur, cellule)} trouvés dans les lignes au-dessus du tableau."""
+    """{champ: (valeur, cellule)} trouvés au-dessus du tableau. Dispositions reconnues :
+    « Client : X » dans une cellule ; libellé puis valeur à droite ; libellé puis valeur
+    juste en dessous (bandeau de libellés sur une ligne, valeurs sur la suivante)."""
     found: Dict[str, Tuple[str, str]] = {}
     for r, row in enumerate(cells):
         for c, v in enumerate(row):
@@ -396,11 +432,16 @@ def read_context(cells: List[List[str]]) -> Dict[str, Tuple[str, str]]:
             where = f"ligne {r + 1}, colonne {c + 1}"
             label, value = None, None
             m = re.match(r"^\s*([^:]{2,40}?)\s*:\s*(.+)$", v)
-            if m and not v.lower().startswith("http"):
+            if m and not v.lower().startswith("http") and _context_key(m.group(1)):
                 label, value = m.group(1), m.group(2)
-            elif _context_key(v):
-                nxt = next((x for x in row[c + 1:] if x), "")
-                label, value = v, nxt
+            elif _is_label(v):
+                label = v.rstrip(" :")
+                right = next((x for x in row[c + 1:c + 4] if x), "")
+                below = cells[r + 1][c] if r + 1 < len(cells) and c < len(cells[r + 1]) else ""
+                if right and not _is_label(right):
+                    value = right
+                elif below and not _is_label(below):
+                    value, where = below, f"ligne {r + 2}, colonne {c + 1}"
             if label and value:
                 key = _context_key(label)
                 if key and key not in found:
@@ -419,6 +460,9 @@ def read_context(cells: List[List[str]]) -> Dict[str, Tuple[str, str]]:
                 found[k] = (d, found[k][1])
             else:
                 del found[k]
+    # « Objectif : 2 000 000 » = volume, pas un objectif média
+    if "objective" in found and _kind(found["objective"][0]) in ("int", "money"):
+        found["objective_impressions"] = found.pop("objective")
     return found
 
 
@@ -644,7 +688,8 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
                     derived.add("snippet ← balise trouvée dans une autre cellule")
                     break
         # Valeurs de campagne : bloc d'en-tête puis paramètres
-        for f in ("advertiser_name", "campaign_name", "campaign_start", "campaign_end", "landing_page_url"):
+        for f in ("advertiser_name", "campaign_name", "campaign_start", "campaign_end",
+                  "landing_page_url", "objective", "audience", "targeting"):
             if not r.get(f) and f in context:
                 r[f] = context[f][0]
         if not r.get("campaign_name") and campaign_name:

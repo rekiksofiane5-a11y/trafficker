@@ -211,3 +211,59 @@ def test_repeated_errors_are_grouped():
     _, errors = plan_from_rows(rows)
     assert len(errors) == 1
     assert errors[0].startswith("Lignes 2 à 6 : campaign_name manquant") and "Campagne" in errors[0]
+
+
+def _ctx(tmp_path, top, name="bloc.xlsx"):
+    table = [["Emplacement", "Format", "URL"], ["Home", "Pavé", "https://x.fr"]]
+    return _plan(_xlsx(tmp_path / name, [("Plan", top + [[]] + table)]))
+
+
+def test_header_block_labels_on_the_left(tmp_path):
+    rows, plan, errors, report = _ctx(tmp_path, [
+        ["Client", "Ministère Démo"],
+        ["Nom de campagne", "Hiver 2026"],
+        ["Date de début", "02/11/2026"],
+        ["Date de fin", "15/12/2026"],
+        ["Objectif général", "Notoriété"],
+    ])
+    assert errors == []
+    camp = next(iter(plan.values()))
+    assert (camp.advertiser_name, camp.name, camp.start, camp.end) == \
+        ("Ministère Démo", "Hiver 2026", "2026-11-02", "2026-12-15")
+    assert rows[0]["objective"] == "Notoriété"                  # sert à la nomenclature
+
+
+def test_header_block_labels_above_values(tmp_path):
+    rows, plan, errors, report = _ctx(tmp_path, [
+        ["Client", "Campaign name", "Date de début", "Date de fin", "Objectif général"],
+        ["Démo SA", "Printemps 2027", "2027-03-01", "2027-03-31", "Trafic"],
+    ])
+    assert errors == []
+    camp = next(iter(plan.values()))
+    assert (camp.advertiser_name, camp.name, camp.start, camp.end) == \
+        ("Démo SA", "Printemps 2027", "2027-03-01", "2027-03-31")
+    assert rows[0]["objective"] == "Trafic"
+
+
+def test_header_block_with_colons_and_nomenclature(tmp_path):
+    from cm360_trafficker import apply_nomenclature, naming_or_base
+    rows, plan, errors, report = _ctx(tmp_path, [
+        ["Client :", "Démo"], ["Campagne :", "Été"], ["Début :", "01/06/2027"],
+        ["Fin :", "30/06/2027"], ["Objectif général :", "Conversion"],
+    ])
+    assert errors == []
+    plan, _ = apply_nomenclature(plan, naming_or_base({}), log=None)
+    assert list(next(iter(plan.values())).placements) == ["CONVERSION-PAVE"]
+
+
+def test_numeric_objective_in_header_block_is_a_volume(tmp_path):
+    rows, plan, errors, report = _ctx(tmp_path, [
+        ["Campagne", "X"], ["Début", "2027-01-01"], ["Fin", "2027-01-31"], ["Objectif", "2 000 000"]])
+    assert not rows[0].get("objective")
+
+
+def test_client_value_is_not_mistaken_for_a_label(tmp_path):
+    rows, plan, errors, report = _ctx(tmp_path, [
+        ["Annonceur", "Client Démo"], ["Campagne", "Hiver"], ["Début", "2026-11-02"], ["Fin", "2026-12-15"]])
+    camp = next(iter(plan.values()))
+    assert (camp.advertiser_name, camp.name) == ("Client Démo", "Hiver")
