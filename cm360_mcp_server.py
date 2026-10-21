@@ -68,12 +68,13 @@ from cm360_reporting import (
 mcp = FastMCP("cm360-trafficker")
 
 
-def _load_plan(source: str, nomenclature_path: str = ""):
+def _load_plan(source: str, nomenclature_path: str = "",
+               campaign_name: str = "", advertiser_name: str = ""):
     """Charge + valide le plan (+ nomenclatures). Renvoie (plan, rows,
     renames, errors) et purge le fichier temporaire éventuel."""
     src = resolve_plan_source(source or "")
     try:
-        rows = load_rows_from_path(src)
+        rows = load_rows_from_path(src, campaign_name, advertiser_name)
     finally:
         # RGPD : purge immédiate du fichier temporaire (export Google Sheet)
         if src != source:
@@ -113,18 +114,46 @@ def _plan_summary(plan, rows, renames, errors) -> str:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-def analyze_plan(source: str, nomenclature_path: str = "") -> str:
+def analyze_plan(source: str, nomenclature_path: str = "",
+                 campaign_name: str = "", advertiser_name: str = "") -> str:
     """Analyse un plan média (chemin de fichier .csv/.xlsx ou URL d'un Google
     Sheet partagé en lecture) : validation ligne à ligne, campagnes détectées,
     et application des nomenclatures de nommage de l'annonceur (fichier JSON
-    optionnel). Renvoie l'aperçu complet. Aucun envoi vers un ad server."""
+    optionnel). Accepte aussi un export « Campaign spreadsheet » CM360 (.xls/.xlsx),
+    qui ne contient ni campagne ni annonceur : fournir campaign_name et
+    advertiser_name. Renvoie l'aperçu complet. Aucun envoi vers un ad server."""
     try:
-        plan, rows, renames, errors = _load_plan(source, nomenclature_path)
+        plan, rows, renames, errors = _load_plan(source, nomenclature_path,
+                                                 campaign_name, advertiser_name)
     except SystemExit as e:
         return f"ERREUR : {e}"
     except Exception as e:
         return f"ERREUR : {e}"
     return _plan_summary(plan, rows, renames, errors)
+
+
+@mcp.tool()
+def export_campaign_spreadsheet(source: str, output_path: str,
+                                nomenclature_path: str = "",
+                                campaign_name: str = "",
+                                advertiser_name: str = "") -> str:
+    """Exporte un plan média validé au format « Campaign spreadsheet » de CM360
+    (fichier .xlsx à importer dans le Bulk Editor de CM360, sans clé API).
+    Le plan doit être valide ; les nomenclatures optionnelles sont appliquées."""
+    if not output_path.lower().endswith(".xlsx"):
+        return "ERREUR : output_path doit se terminer par .xlsx"
+    try:
+        plan, rows, renames, errors = _load_plan(source, nomenclature_path,
+                                                 campaign_name, advertiser_name)
+        if errors:
+            return "Plan invalide, export annulé :\n" + "\n".join(errors)
+        from cm360_bulk import write_bulk_xlsx
+        n = write_bulk_xlsx(plan, output_path)
+    except SystemExit as e:
+        return f"ERREUR : {e}"
+    except Exception as e:
+        return f"ERREUR : {e}"
+    return f"Campaign spreadsheet CM360 écrit : {output_path} ({n} ligne(s))."
 
 
 @mcp.tool()

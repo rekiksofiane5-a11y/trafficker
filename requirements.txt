@@ -6,3 +6,4 @@ google-auth
 flask
 # Serveur MCP (l'API a changé en 2.x : le serveur utilise mcp.server.fastmcp)
 mcp[cli]<2
+xlrd   # lecture des .xls (export Campaign spreadsheet CM360)

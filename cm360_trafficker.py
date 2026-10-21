@@ -118,9 +118,45 @@ def normalize_header(h: object) -> str:
     return s
 
 
-def load_rows_from_path(path: str) -> List[Dict[str, str]]:
-    """Charge un CSV ou XLSX et renvoie une liste de dicts {colonne: valeur}."""
+def load_rows_from_path(path: str, campaign_name: str = "",
+                        advertiser_name: str = "") -> List[Dict[str, str]]:
+    """Charge un CSV, XLSX ou XLS et renvoie une liste de dicts {colonne: valeur}.
+    Un export « Campaign spreadsheet » CM360 est reconnu à ses en-têtes et converti
+    en plan (campaign_name / advertiser_name : voir cm360_bulk.bulk_to_plan_rows)."""
+    rows = _read_rows(path)
+    if rows:
+        import cm360_bulk
+        if cm360_bulk.is_bulk_header(rows[0].keys()):
+            return cm360_bulk.bulk_to_plan_rows(rows, campaign_name, advertiser_name)
+    return rows
+
+
+def _read_rows(path: str) -> List[Dict[str, str]]:
     ext = os.path.splitext(path)[1].lower()
+    if ext == ".xls":
+        try:
+            import xlrd
+        except ImportError:
+            sys.exit("Lecture XLS impossible : installez xlrd (pip install xlrd)")
+        sh = xlrd.open_workbook(path).sheet_by_index(0)
+        if sh.nrows == 0:
+            sys.exit("Le fichier XLS est vide.")
+        header = [normalize_header(sh.cell_value(0, c)) for c in range(sh.ncols)]
+        out = []
+        for r in range(1, sh.nrows):
+            vals = []
+            for c in range(sh.ncols):
+                cell = sh.cell(r, c)
+                if cell.ctype == xlrd.XL_CELL_DATE:
+                    v = xlrd.xldate_as_datetime(cell.value, sh.book.datemode).date().isoformat()
+                elif cell.ctype == xlrd.XL_CELL_NUMBER and float(cell.value).is_integer():
+                    v = str(int(cell.value))
+                else:
+                    v = str(cell.value).strip()
+                vals.append(v)
+            if any(vals):
+                out.append(dict(zip(header, vals)))
+        return out
     if ext in (".xlsx", ".xlsm"):
         try:
             from openpyxl import load_workbook
@@ -193,10 +229,11 @@ def resolve_plan_source(source: str) -> str:
     return tmp
 
 
-def load_rows_from_source(source: str) -> List[Dict[str, str]]:
-    """Charge les lignes du plan depuis un fichier local CSV/XLSX,
+def load_rows_from_source(source: str, campaign_name: str = "",
+                          advertiser_name: str = "") -> List[Dict[str, str]]:
+    """Charge les lignes du plan depuis un fichier local CSV/XLSX/XLS,
     une URL Google Sheets ou un ID de sheet."""
-    return load_rows_from_path(resolve_plan_source(source))
+    return load_rows_from_path(resolve_plan_source(source), campaign_name, advertiser_name)
 
 
 def resolve_creative_path(path: str, creatives_dir: str = "") -> str:
@@ -1286,6 +1323,14 @@ def main():
                     help="Valide et affiche le plan sans appeler l'API")
     ap.add_argument("--check", action="store_true",
                     help="Diagnostic de l'accès à la plateforme (aucune écriture)")
+    ap.add_argument("--campaign-name", default="",
+                    help="Nom de campagne (import d'un Campaign spreadsheet CM360, "
+                         "qui ne le contient pas)")
+    ap.add_argument("--advertiser-name", default="",
+                    help="Nom d'annonceur (import d'un Campaign spreadsheet CM360)")
+    ap.add_argument("--export-bulk", default="", metavar="FICHIER.xlsx",
+                    help="Exporte le plan validé au format Campaign spreadsheet CM360 "
+                         "(Bulk Editor), sans appel API")
     ap.add_argument("--report", default="",
                     help="Fichier JSON où écrire le rapport d'IDs créés")
     args = ap.parse_args()
@@ -1309,7 +1354,7 @@ def main():
 
     src = resolve_plan_source(args.plan)
     try:
-        rows = load_rows_from_path(src)
+        rows = load_rows_from_path(src, args.campaign_name, args.advertiser_name)
     finally:
         # RGPD : purge immédiate du fichier temporaire (export Google Sheet)
         if src != args.plan:
@@ -1331,6 +1376,13 @@ def main():
 
     if errors:
         sys.exit("\nCorrigez les erreurs ci-dessus avant de lancer le trafficking.")
+
+    if args.export_bulk:
+        from cm360_bulk import write_bulk_xlsx
+        n = write_bulk_xlsx(plan, args.export_bulk)
+        print(f"\nCampaign spreadsheet CM360 écrit : {args.export_bulk} ({n} ligne(s)). "
+              "Aucun appel API effectué.")
+        return
 
     if args.dry_run:
         print(f"\n[dry-run] Aucun appel API effectué. Plan valide "

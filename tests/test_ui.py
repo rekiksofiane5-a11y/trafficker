@@ -81,3 +81,12 @@ def test_login_rate_limit(monkeypatch):
              for _ in range(7)]
     assert codes[:5] == [401] * 5 and codes[5:] == [429, 429]
     ui.LOGIN_ATTEMPTS.clear()
+
+
+def test_bulk_download_from_analysis():
+    pytest.importorskip("openpyxl")
+    c = ui.app.test_client()
+    j = _post(c, "/analyze").get_json()
+    r = c.get(f"/bulk/{j['token']}")
+    assert r.status_code == 200 and r.data[:2] == b"PK"      # xlsx = zip
+    assert c.get("/bulk/inconnu").status_code == 404

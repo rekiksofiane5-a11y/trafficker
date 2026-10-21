@@ -244,6 +244,9 @@ textarea { width:100%; border:0; resize:none; font:inherit; outline:none; max-he
         <input id="adform_client_id" autocomplete="off">
         <label>Adform — Client secret OAuth</label>
         <input type="password" id="adform_client_secret" autocomplete="off">
+        <label>Campagne / annonceur (import d'un Campaign spreadsheet CM360)</label>
+        <input id="campaign_name" placeholder="Nom de campagne">
+        <input id="advertiser_name" placeholder="Nom d'annonceur">
       </div>
       <div class="box">
         <div class="chips" id="chips"></div>
@@ -341,6 +344,8 @@ async function send(){
   fd.append('profile_id', document.getElementById('profile_id').value);
   fd.append('adform_client_id', document.getElementById('adform_client_id').value);
   fd.append('adform_client_secret', document.getElementById('adform_client_secret').value);
+  fd.append('campaign_name', document.getElementById('campaign_name').value);
+  fd.append('advertiser_name', document.getElementById('advertiser_name').value);
   fd.append('demo', document.getElementById('demo').checked ? 'on' : '');
   input.value = ''; input.style.height = 'auto';
   files = {plan: null, nomen: null, zip: null}; renderChips();
@@ -489,7 +494,8 @@ def _preview_html(rows, plan, errors, renames, token):
                      "".join(f"<li>{e}</li>" for e in errors) + "</ul></div>")
     if token:
         parts.append(f"<p><button class='btn' onclick=\"launch(this, '{token}')\">"
-                     "🚀 Lancer le trafficking</button></p>")
+                     "🚀 Lancer le trafficking</button> "
+                     f"<a class='btn' href='/bulk/{token}'>⬇ Campaign spreadsheet CM360</a></p>")
     return "".join(parts)
 
 
@@ -497,6 +503,8 @@ def _preview_html(rows, plan, errors, renames, token):
 def analyze():
     f = request.files.get("plan")
     sheet_url = (request.form.get("sheet_url") or "").strip()
+    camp_name = (request.form.get("campaign_name") or "").strip()
+    adv_name = (request.form.get("advertiser_name") or "").strip()
     if not ((f and f.filename) or sheet_url):
         return jsonify({"error": "Joignez un plan média (.csv/.xlsx) ou collez "
                                  "l'URL d'un Google Sheet partagé en lecture."})
@@ -526,11 +534,11 @@ def analyze():
                                "plan_" + uuid.uuid4().hex + suffix)
             f.save(tmp)
             try:
-                rows = load_rows_from_source(tmp)
+                rows = load_rows_from_source(tmp, camp_name, adv_name)
             finally:
                 os.remove(tmp)
         else:
-            rows = load_rows_from_source(sheet_url)
+            rows = load_rows_from_source(sheet_url, camp_name, adv_name)
         plan, errors = plan_from_rows(rows)
 
         # Couche de modification avant envoi : nomenclatures de l'annonceur
@@ -637,6 +645,27 @@ def status(job_id):
     state = (JOBS.get(job_id) or store.load_job(job_id)
              or {"log": [], "done": True, "error": "job inconnu"})
     return jsonify({"log": state["log"], "done": state["done"], "error": state["error"]})
+
+
+@app.route("/bulk/<token>")
+def bulk(token):
+    """Télécharge le plan analysé au format Campaign spreadsheet CM360 (Bulk Editor)."""
+    job = PLANS.get(token)
+    if not job:
+        return "<p>Plan expiré (plus d'une heure) — renvoyez-le à l'analyse.</p>", 404
+    import tempfile
+    from cm360_bulk import write_bulk_xlsx
+    fd, tmp = tempfile.mkstemp(suffix=".xlsx")
+    os.close(fd)
+    try:
+        write_bulk_xlsx(job["plan"], tmp)
+        with open(tmp, "rb") as f:
+            data = f.read()
+    finally:
+        os.remove(tmp)   # RGPD : pas de fichier résiduel
+    return app.response_class(
+        data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=campaign_spreadsheet.xlsx"})
 
 
 @app.route("/delivery/<job_id>", methods=["POST"])
