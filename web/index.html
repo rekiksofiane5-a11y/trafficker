@@ -135,11 +135,10 @@ a { color: var(--accent); }
   </footer>
 </main>
 
-<script src="pyodide/pyodide.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-let py = null, api = null, planFile = null;
+let planFile = null;
 
 function el(tag, attrs = {}, ...children) {
   const n = document.createElement(tag);
@@ -162,28 +161,39 @@ function busy(btn, on, label) {
   else if (btn.dataset.label) btn.textContent = btn.dataset.label;
 }
 
+// Le moteur (Pyodide) tourne dans un Web Worker : la page ne fige jamais.
+const engine = new Worker("engine.js");
+let nextId = 1, engineReady = false;
+const pending = new Map();
+engine.onmessage = (e) => {
+  const {id, ok, result, error} = e.data;
+  if (id === 0) { setStatus("Le moteur n'a pas pu se charger : " + error, true); return; }
+  const p = pending.get(id);
+  if (!p) return;
+  pending.delete(id);
+  ok ? p.resolve(result) : p.reject(new Error(error));
+};
+engine.onerror = (e) => setStatus("Le moteur s'est arrêté : " + (e.message || "erreur inconnue"), true);
+function call(cmd, args = {}, transfer = []) {
+  return new Promise((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, {resolve, reject});
+    engine.postMessage({id, cmd, args}, transfer);
+  });
+}
+// Indique la durée pendant les traitements longs (gros classeurs)
+function ticking(btn, label) {
+  const t0 = Date.now();
+  busy(btn, true, label);
+  const h = setInterval(() => { btn.textContent = `${label} ${Math.round((Date.now() - t0) / 1000)} s`; }, 1000);
+  return () => { clearInterval(h); busy(btn, false); };
+}
+
 async function boot() {
   try {
-    py = await loadPyodide({indexURL: new URL("pyodide/", location.href).href});
-    const manifest = await (await fetch("py/manifest.json", {cache: "no-store"})).json();
-    const v = "?v=" + manifest.version;
-    for (const w of manifest.wheels) {
-      const buf = await (await fetch("wheels/" + w)).arrayBuffer();
-      py.unpackArchive(buf, "wheel");
-    }
-    const app = "/home/pyodide/app";
-    py.FS.mkdirTree(app + "/templates");
-    py.FS.mkdirTree(app + "/specs");
-    for (const s of manifest.specs)
-      py.FS.writeFile(app + "/specs/" + s, new Uint8Array(await (await fetch("py/specs/" + s + v)).arrayBuffer()));
-    for (const m of manifest.modules)
-      py.FS.writeFile(app + "/" + m, new Uint8Array(await (await fetch("py/" + m + v)).arrayBuffer()));
-    for (const t of manifest.templates)
-      py.FS.writeFile(app + "/templates/" + t,
-        new Uint8Array(await (await fetch("py/templates/" + t + v)).arrayBuffer()));
-    py.runPython(`import sys; sys.path.insert(0, "${app}")`);
-    api = py.pyimport("web_api");
-    setStatus("Moteur prêt (version " + manifest.version + ").");
+    const version = await call("version");
+    engineReady = true;
+    setStatus("Moteur prêt (version " + version + ").");
     $("analyze").disabled = !planFile;
   } catch (e) {
     setStatus("Le moteur n'a pas pu se charger : " + e.message, true);
@@ -193,7 +203,7 @@ async function boot() {
 function pickFile(f) {
   planFile = f || null;
   $("file-name").textContent = f ? "Fichier : " + f.name : "";
-  $("analyze").disabled = !(planFile && api);
+  $("analyze").disabled = !(planFile && engineReady);
 }
 $("drop").addEventListener("click", () => $("file").click());
 $("drop").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
@@ -259,22 +269,19 @@ function renderSummary(d) {
 }
 
 $("analyze").addEventListener("click", async () => {
-  const btn = $("analyze"); busy(btn, true, "Analyse…");
+  const btn = $("analyze"); const done = ticking(btn, "Analyse…");
   try {
     const ext = planFile.name.toLowerCase().match(/\.(csv|xlsx|xlsm|xls)$/);
     if (!ext) throw new Error("Format non pris en charge (CSV, XLSX ou XLS).");
-    // Nom d'origine conservé : il peut servir de nom de campagne (à vérifier)
-    const dir = "/tmp/up_" + Date.now();
-    py.FS.mkdirTree(dir);
-    const path = dir + "/" + planFile.name.replace(/[\/\\]/g, "_");
-    py.FS.writeFile(path, new Uint8Array(await planFile.arrayBuffer()));
     const nomenFile = $("nomen").files[0];
     const nomen = nomenFile ? await nomenFile.text() : "";
-    const creasDir = "/tmp/creas_" + Date.now();
-    py.FS.mkdirTree(creasDir);
-    for (const f of $("creas").files)
-      py.FS.writeFile(creasDir + "/" + f.name, new Uint8Array(await f.arrayBuffer()));
-    const d = JSON.parse(api.analyze(path, $("camp").value.trim(), $("adv").value.trim(), nomen, creasDir));
+    const creas = [];
+    for (const f of $("creas").files) creas.push({name: f.name, bytes: await f.arrayBuffer()});
+    const bytes = await planFile.arrayBuffer();
+    // Nom d'origine conservé : il peut servir de nom de campagne (à vérifier)
+    const d = JSON.parse(await call("analyze", {
+      name: planFile.name, bytes, camp: $("camp").value.trim(), adv: $("adv").value.trim(), nomen, creas,
+    }, [bytes, ...creas.map((c) => c.bytes)]));
     $("result").classList.remove("hidden");
     const ok = renderSummary(d);
     for (const id of ["demo", "delivery", "dl-cm360", "dl-adform"]) $(id).disabled = !ok;
@@ -283,21 +290,21 @@ $("analyze").addEventListener("click", async () => {
   } catch (e) {
     $("result").classList.remove("hidden");
     $("summary").replaceChildren(el("p", {class: "err"}, "Erreur : " + e.message));
-  } finally { busy(btn, false); }
+  } finally { done(); }
 });
 
-$("demo").addEventListener("click", () => {
+$("demo").addEventListener("click", async () => {
   let d;
-  try { d = JSON.parse(api.run_demo()); }
+  try { d = JSON.parse(await call("run_demo")); }
   catch (e) { showOutput(el("p", {class: "err"}, "Simulation impossible : " + e.message)); return; }
   showOutput(
     el("p", {}, `Trafficking simulé : ${d.created} objet(s) créé(s), ${d.errors.length} erreur(s). Aucune écriture réelle.`),
     el("pre", {class: "log"}, ["[MODE DÉMO] Plateforme simulée.", ...d.logs].join("\n")));
 });
 
-$("delivery").addEventListener("click", () => {
+$("delivery").addEventListener("click", async () => {
   let d;
-  try { d = JSON.parse(api.delivery_demo()); }
+  try { d = JSON.parse(await call("delivery_demo")); }
   catch (e) { showOutput(el("p", {class: "err"}, "Rapport impossible : " + e.message)); return; }
   const nodes = [el("p", {}, "Rapport de diffusion simulé (données fictives) :"),
                  ...d.reconciliation.map((l) => el("div", {class: "info"}, l))];
@@ -314,18 +321,17 @@ $("delivery").addEventListener("click", () => {
   showOutput(...nodes);
 });
 
-function download(bytesProxy, name) {
-  const bytes = bytesProxy.toJs(); bytesProxy.destroy();
+function download(bytes, name) {
   const url = URL.createObjectURL(new Blob([bytes], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
   const a = el("a", {href: url, download: name}); document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
-$("dl-cm360").addEventListener("click", () => {
-  try { download(api.export_cm360(), "campaign_spreadsheet_cm360.xlsx"); }
+$("dl-cm360").addEventListener("click", async () => {
+  try { download(await call("export_cm360"), "campaign_spreadsheet_cm360.xlsx"); }
   catch (e) { showOutput(el("p", {class: "err"}, "Export CM360 impossible : " + e.message)); }
 });
-$("dl-adform").addEventListener("click", () => {
-  try { download(api.export_adform($("adform-type").value), "adform_bulk.xlsx"); }
+$("dl-adform").addEventListener("click", async () => {
+  try { download(await call("export_adform", {type: $("adform-type").value}), "adform_bulk.xlsx"); }
   catch (e) { showOutput(el("p", {class: "err"}, "Export Adform impossible : " + e.message)); }
 });
 

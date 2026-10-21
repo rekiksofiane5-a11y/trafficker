@@ -31,6 +31,7 @@ def main() -> None:
         os.makedirs(os.path.join(DIST, d), exist_ok=True)
     shutil.copy(os.path.join(WEB, "index.html"), DIST)
     shutil.copy(os.path.join(WEB, "_headers"), DIST)
+    shutil.copy(os.path.join(WEB, "engine.js"), DIST)
     for m in PY_MODULES:
         shutil.copy(os.path.join(ROOT, m), os.path.join(DIST, "py"))
     shutil.copy(os.path.join(ROOT, "templates", "adform_bulk_template.xlsx"),

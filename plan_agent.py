@@ -64,6 +64,78 @@ def _csv_grid(text: str) -> Grid:
     return [[c.strip() for c in row] for row in csv.reader(io.StringIO(text), delimiter=delim)]
 
 
+MAX_EMPTY_RUN = 300        # lignes vides consécutives au-delà desquelles une feuille s'arrête
+MAX_ROWS = 20000           # garde-fou : lignes lues par feuille
+_XLSX_CACHE: Dict[tuple, tuple] = {}
+
+
+def _trim(grid: Grid) -> Grid:
+    """Retire lignes et colonnes vides de fin (mises en forme mais sans contenu)."""
+    while grid and not any(grid[-1]):
+        grid.pop()
+    width = max((max((i + 1 for i, v in enumerate(r) if v), default=0) for r in grid), default=0)
+    return [r[:width] for r in grid]
+
+
+def _read_xlsx(path: str):
+    """Une seule passe rapide (lecture seule) : valeurs ET cases jaunes de toutes les
+    feuilles. Les zones vides mises en forme (milliers de lignes) sont sautées."""
+    key = (os.path.abspath(path), os.path.getmtime(path), os.path.getsize(path))
+    if key in _XLSX_CACHE:
+        return _XLSX_CACHE[key]
+    from openpyxl import load_workbook
+    wb = load_workbook(path, read_only=True, data_only=True)
+    theme = _theme_colors(wb)
+    grids, highlights = [], {}
+    for ws in wb.worksheets:
+        grid, yellow, empty = [], set(), 0
+        for r, row in enumerate(ws.iter_rows()):
+            if r >= MAX_ROWS:
+                break
+            vals, has_yellow = [], False
+            for c, cell in enumerate(row):
+                v = getattr(cell, "value", None)
+                vals.append(_cell(v))
+                if is_yellow(_fill_rgb(cell, theme)):
+                    yellow.add((r, c))
+                    has_yellow = True
+            if any(vals) or has_yellow:
+                empty = 0
+            else:
+                empty += 1
+                if empty > MAX_EMPTY_RUN:
+                    break
+            grid.append(vals)
+        for r0, c0, r1, c1 in _merged_ranges(wb, ws):   # case fusionnée jaune -> toute la plage
+            if (r0, c0) in yellow:
+                yellow.update((r, c) for r in range(r0, r1 + 1) for c in range(c0, c1 + 1))
+        grids.append((ws.title, _trim(grid)))
+        if yellow:
+            highlights[ws.title] = yellow
+    wb.close()
+    _XLSX_CACHE.clear()
+    _XLSX_CACHE[key] = (grids, highlights)
+    return grids, highlights
+
+
+def _merged_ranges(wb, ws) -> List[Tuple[int, int, int, int]]:
+    """Plages fusionnées (index 0) lues dans le XML de la feuille (non exposées en lecture seule)."""
+    from openpyxl.utils.cell import range_boundaries
+    path = getattr(ws, "_worksheet_path", None)
+    archive = getattr(wb, "_archive", None)
+    if not path or archive is None:
+        return []
+    try:
+        xml = archive.read(path)
+    except KeyError:
+        return []
+    out = []
+    for ref in re.findall(rb'<mergeCell ref="([A-Z]+[0-9]+:[A-Z]+[0-9]+)"', xml):
+        c0, r0, c1, r1 = range_boundaries(ref.decode())
+        out.append((r0 - 1, c0 - 1, r1 - 1, c1 - 1))
+    return out
+
+
 def read_grids(path: str) -> List[Tuple[str, Grid]]:
     """Toutes les feuilles du fichier, en grilles de chaînes."""
     ext = os.path.splitext(path)[1].lower()
@@ -85,10 +157,7 @@ def read_grids(path: str) -> List[Tuple[str, Grid]]:
             out.append((sh.name, grid))
         return out
     if ext in (".xlsx", ".xlsm"):
-        from openpyxl import load_workbook
-        wb = load_workbook(path, read_only=True, data_only=True)
-        return [(ws.title, [[_cell(v) for v in r] for r in ws.iter_rows(values_only=True)])
-                for ws in wb.worksheets]
+        return _read_xlsx(path)[0]
     with open(path, "rb") as f:
         return [("CSV", _csv_grid(_decode(f.read())))]
 
@@ -165,22 +234,7 @@ def read_highlights(path: str) -> Highlights:
     ext = os.path.splitext(path)[1].lower()
     out: Highlights = {}
     if ext in (".xlsx", ".xlsm"):
-        from openpyxl import load_workbook
-        wb = load_workbook(path, data_only=True)        # styles : mode complet
-        theme = _theme_colors(wb)
-        for ws in wb.worksheets:
-            cells = set()
-            for row in ws.iter_rows():
-                for c in row:
-                    if is_yellow(_fill_rgb(c, theme)):
-                        cells.add((c.row - 1, c.column - 1))
-            for rng in ws.merged_cells.ranges:          # case fusionnée jaune -> toute la plage
-                if (rng.min_row - 1, rng.min_col - 1) in cells:
-                    for r in range(rng.min_row - 1, rng.max_row):
-                        for cc in range(rng.min_col - 1, rng.max_col):
-                            cells.add((r, cc))
-            if cells:
-                out[ws.title] = cells
+        return _read_xlsx(path)[1]
     elif ext == ".xls":
         import xlrd
         try:

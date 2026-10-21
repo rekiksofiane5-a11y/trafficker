@@ -143,3 +143,27 @@ def test_yellow_cells_mode_in_browser(page, tmp_path):
     _analyze(page, str(tmp_path / "jaune.xlsx"))
     text = page.inner_text("#summary")
     assert "Mode cases jaunes" in text and "Article" in text and "Home" not in text
+
+
+def test_page_stays_responsive_on_a_heavy_workbook(page, tmp_path):
+    """Gros classeur (feuilles annexes, milliers de lignes) : l'analyse tourne dans le
+    Web Worker, la page répond pendant ce temps."""
+    import time
+    openpyxl = pytest.importorskip("openpyxl")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Plan"
+    ws.append(["Campagne", "Emplacement", "Format", "Début", "Fin", "URL"])
+    for i in range(3000):
+        ws.append(["Hiver", f"Emplacement {i}", "300x250", "2026-11-02", "2026-12-15", "https://x.fr"])
+    annexe = wb.create_sheet("Référentiel")
+    for i in range(8000):
+        annexe.append([f"code {i}", i, "valeur"])
+    wb.save(tmp_path / "lourd.xlsx")
+    page.set_input_files("#file", str(tmp_path / "lourd.xlsx"))
+    page.click("#analyze")
+    t0 = time.time()
+    assert page.evaluate("1 + 1") == 2                       # le fil principal répond
+    assert time.time() - t0 < 2
+    page.wait_for_function("!document.getElementById('analyze').disabled", timeout=120000)
+    assert "3000 ligne(s)" in page.inner_text("#summary")
