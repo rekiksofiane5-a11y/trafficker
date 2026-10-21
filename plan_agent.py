@@ -405,7 +405,7 @@ def _header_score(row: List[str]) -> int:
     return 0 if line == 0 else 2 * line + len(fields - LINE_FIELDS)
 
 
-LINE_FIELDS = {"placement_name", "size", "ad_name", "creative_name", "creative_path", "snippet",
+LINE_FIELDS = {"package", "placement_name", "size", "ad_name", "creative_name", "creative_path", "snippet",
                "site_name", "site_id", "landing_page_url", "format_label", "pricing_type", "message",
                "creative_type", "creative_category", "placement_category"}
 

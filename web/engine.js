@@ -41,6 +41,7 @@ const COMMANDS = {
     for (const f of creas) py.FS.writeFile(cdir + "/" + f.name.replace(/[\/\\]/g, "_"), new Uint8Array(f.bytes));
     return api.analyze(path, camp, adv, nomen, cdir);
   },
+  rebuild: async ({table}) => api.rebuild(JSON.stringify(table)),
   run_demo: async () => api.run_demo(),
   delivery_demo: async () => api.delivery_demo(),
   export_cm360: async () => bytesOf(api.export_cm360()),

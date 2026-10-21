@@ -33,21 +33,121 @@ def _summary(plan) -> list:
     return out
 
 
-def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
-            nomenclature_json: str = "", creatives_dir: str = "") -> str:
-    """Lit le plan déposé (CSV, XLSX, XLS, export CM360), le valide et applique
-    les nomenclatures éventuelles. Le fichier est supprimé après lecture."""
-    try:
-        rows = load_rows_from_path(path, campaign_name, advertiser_name)
-    except SystemExit as e:
-        return json.dumps({"fatal": str(e)}, ensure_ascii=False)
-    except Exception as e:
-        return json.dumps({"fatal": f"Lecture impossible : {e}"}, ensure_ascii=False)
-    finally:
-        try:
-            os.remove(path)
-        except OSError:
-            pass
+def _fr(d: str, time: str = "") -> str:
+    """AAAA-MM-JJ -> JJ/MM/AAAA (affichage CM360) ; vide si absente."""
+    if not d:
+        return ""
+    y, m, j = d.split("-")
+    return f"{j}/{m}/{y}" + (f" {time}" if time else "")
+
+
+CREATIVE_TYPE = {"TRACKING": "Tracking", "IMAGE": "Image", "HTML5": "HTML5",
+                 "VIDEO": "In-stream video", "AUDIO": "In-stream audio", "REDIRECT": "Display redirect"}
+ASSET_TYPE = {"IMAGE": "Image", "HTML5": "HTML5", "VIDEO": "Video", "AUDIO": "Audio"}
+COMPAT = {"display": "Display", "video": "In-stream video", "audio": "In-stream audio",
+          "tracking": "Display"}
+
+
+def preview(plan) -> list:
+    """Arborescence telle qu'elle apparaîtra dans CM360 : Site > Package > Emplacement >
+    Annonce > Créative, avec les colonnes de la plateforme. ID vide = objet à créer."""
+    rows = []
+    for camp in plan.values():
+        rows.append({"level": 0, "kind": "campaign", "name": camp.name, "start": _fr(camp.start),
+                     "end": _fr(camp.end), "type": "Campagne"})
+        ads_by_pl: dict = {}
+        for an, ad in camp.ads.items():
+            for pn in ad["placements"]:
+                ads_by_pl.setdefault(pn, []).append((an, ad))
+        sites: dict = {}
+        for p in camp.placements.values():
+            site = p.site_name or (str(p.site_id) if p.site_id else "")
+            sites.setdefault(site, {}).setdefault(p.package, []).append(p)
+        for site, packages in sites.items():
+            rows.append({"level": 1, "kind": "site", "name": site or "Site à compléter",
+                         "id": "", "type": "Site", "missing": not site})
+            for package, pls in packages.items():
+                base = 2
+                if package:
+                    rows.append({"level": 2, "kind": "package", "name": package,
+                                 "start": _fr(camp.start), "end": _fr(camp.end), "type": "Package"})
+                    base = 3
+                for p in pls:
+                    rows.append({"level": base, "kind": "placement", "name": p.name,
+                                 "start": _fr(camp.start), "end": _fr(camp.end), "type": "Placement",
+                                 "compatibility": COMPAT.get(p.category, "Display"),
+                                 "dimensions": f"{p.width} × {p.height}"})
+                    for an, ad in ads_by_pl.get(p.name, []):
+                        tracking = all(c.ctype == "TRACKING" for c in ad["creatives"])
+                        rows.append({"level": base + 1, "kind": "ad", "name": an,
+                                     "start": _fr(camp.start, "00:00"), "end": _fr(camp.end, "23:59"),
+                                     "type": "Tracking" if tracking else "Standard",
+                                     "url": ad.get("landing_page_url", "")})
+                        for c in ad["creatives"]:
+                            rows.append({"level": base + 2, "kind": "creative", "name": c.name,
+                                         "start": _fr(camp.start, "00:00"), "end": _fr(camp.end, "23:59"),
+                                         "type": CREATIVE_TYPE.get(c.ctype, c.ctype),
+                                         "asset_type": ASSET_TYPE.get(c.ctype, ""),
+                                         "dimensions": "" if c.ctype in ("TRACKING", "VIDEO", "AUDIO")
+                                         else f"{p.width} × {p.height}"})
+    return rows
+
+
+# Colonnes du tableau modifiable (ordre, libellé) ; « toujours » = affichées même vides
+TABLE_COLUMNS = [
+    ("campaign_name", "Campagne"), ("advertiser_name", "Annonceur"), ("campaign_start", "Début"),
+    ("campaign_end", "Fin"), ("site_name", "Régie / site"), ("package", "Package"),
+    ("objective", "Objectif"), ("audience", "Audience"), ("targeting", "Ciblage"),
+    ("placement_name", "Emplacement"), ("format_label", "Format"), ("size", "Dimensions"),
+    ("placement_category", "Catégorie"), ("pricing_type", "Achat"), ("ad_name", "Annonce"),
+    ("creative_name", "Créative"), ("message", "Message"), ("creative_path", "Fichier créatif"),
+    ("snippet", "Tag"), ("landing_page_url", "URL de destination"), ("budget_eur", "Budget €"),
+    ("objective_impressions", "Volume"),
+]
+ALWAYS = {"campaign_name", "campaign_start", "campaign_end", "site_name", "objective", "audience",
+          "targeting", "placement_name", "format_label", "size", "creative_name", "landing_page_url"}
+
+
+def _normalize(rows: list) -> list:
+    """Valeurs saisies dans le tableau -> format du plan (dates JJ/MM/AAAA, formats
+    « Pavé », budgets « 4 000 € »)."""
+    import ingest
+    import plan_agent
+    out = []
+    for r in rows:
+        r = {k: ("" if v is None else str(v).strip()) for k, v in r.items()}
+        for f in ("campaign_start", "campaign_end"):
+            if r.get(f):
+                r[f] = plan_agent.parse_date(r[f]) or r[f]
+        if not plan_agent.RE_SIZE.search(r.get("size", "")) and r.get("size", "") != "1x1":
+            label = r.get("format_label") or r.get("size", "")
+            r["size"] = plan_agent.size_from_name(label) or (r.get("size") or "")
+            if label and not r["size"]:
+                r["size"] = plan_agent.TRACKING_SIZE
+        elif plan_agent.RE_SIZE.search(r.get("size", "")):
+            m = plan_agent.RE_SIZE.search(r["size"])
+            r["size"] = f"{m.group(1)}x{m.group(2)}"
+        for f, fn in ingest.NORMALIZERS.items():
+            if r.get(f) and f not in ("campaign_start", "campaign_end"):
+                r[f] = fn(r[f])
+        out.append(r)
+    # Ligne ajoutée à la main : annonce et créative nommées comme le fait l'agent
+    seen = {(r.get("ad_name"), r.get("creative_name")) for r in out}
+    for r in out:
+        if r.get("placement_name") and not r.get("ad_name"):
+            r["ad_name"] = r["placement_name"]
+        if r.get("ad_name") and not r.get("creative_name"):
+            base = f"{r['ad_name']}_{r['message']}" if r.get("message") else f"{r['ad_name']}_crea"
+            name, n = base, 2
+            while (r["ad_name"], name) in seen:
+                name, n = f"{base}_{n}", n + 1
+            r["creative_name"] = name
+            seen.add((r["ad_name"], name))
+    return out
+
+
+def _build(rows: list, nomenclature_json: str, creatives_dir: str, report: list) -> str:
+    """Plan -> nomenclature -> contrôles -> aperçu. Partagé par l'analyse et l'édition."""
     plan, errors = plan_from_rows(rows, allow_incomplete=True)
     renames = []
     if not errors:
@@ -66,16 +166,43 @@ def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
     specs = check_plan(plan, creatives_dir) if not errors else []
     ctypes = sorted({c.ctype for camp in plan.values() for ad in camp.ads.values()
                      for c in ad["creatives"]})
-    _STATE.clear()
-    _STATE.update(plan=plan, rows=rows)
+    _STATE.update(plan=plan, rows=rows, nomen=nomenclature_json, creatives_dir=creatives_dir)
+    present = {k for r in rows for k, v in r.items() if v}
+    columns = [{"key": k, "label": lbl} for k, lbl in TABLE_COLUMNS if k in ALWAYS or k in present]
     return json.dumps({
-        "rows": len(rows), "errors": errors, "renames": renames,
-        "ingest": list(getattr(rows, "ingest_report", [])),
-        "campaigns": _summary(plan),
-        "specs": specs,
-        "to_complete": plan_gaps(plan),
+        "rows": len(rows), "errors": errors, "renames": renames, "ingest": report,
+        "campaigns": _summary(plan), "specs": specs, "to_complete": plan_gaps(plan),
+        "preview": preview(plan), "table": [dict(r) for r in rows], "columns": columns,
         "spec_refs": [s for s in (spec_summary(t) for t in ctypes) if s],
     }, ensure_ascii=False, default=str)
+
+
+def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
+            nomenclature_json: str = "", creatives_dir: str = "") -> str:
+    """Lit le plan déposé (CSV, XLSX, XLS, export CM360), le classe, le valide et
+    applique les nomenclatures. Le fichier est supprimé après lecture."""
+    try:
+        rows = load_rows_from_path(path, campaign_name, advertiser_name)
+    except SystemExit as e:
+        return json.dumps({"fatal": str(e)}, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"fatal": f"Lecture impossible : {e}"}, ensure_ascii=False)
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    _STATE.clear()
+    report = list(getattr(rows, "ingest_report", []))
+    _STATE["report"] = report
+    return _build([dict(r) for r in rows], nomenclature_json, creatives_dir, report)
+
+
+def rebuild(table_json: str) -> str:
+    """Tableau modifié dans la page -> plan, nomenclature, contrôles et aperçu recalculés."""
+    rows = _normalize(json.loads(table_json))
+    return _build(rows, _STATE.get("nomen", ""), _STATE.get("creatives_dir", ""),
+                  _STATE.get("report", []))
 
 
 def _plan():

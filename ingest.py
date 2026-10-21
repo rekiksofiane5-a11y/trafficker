@@ -21,7 +21,7 @@ CANONICAL = [
     "advertiser_name", "campaign_name", "campaign_start", "campaign_end",
     "placement_name", "site_id", "site_name", "size", "pricing_type", "ad_name",
     "creative_name", "creative_type", "creative_category", "placement_category",
-    "objective", "audience", "targeting", "format_label", "message", "snippet", "creative_path",
+    "objective", "audience", "targeting", "format_label", "message", "package", "snippet", "creative_path",
     "landing_page_url", "active", "objective_impressions", "budget_eur",
 ]
 REQUIRED = ["campaign_name", "campaign_start", "campaign_end", "placement_name",
@@ -41,6 +41,8 @@ SYNONYMS: Dict[str, List[str]] = {
     "creative_name": ["creative", "creatif", "creative_name", "nom_creative", "nom_de_la_creative", "nom_creatif", "visuel_nom"],
     "creative_type": ["type_creative", "type_de_creative", "creative_type"],
     "creative_category": ["categorie", "categorie_creative", "creative_category", "type_media"],
+    "package": ["package", "pack", "packages", "placement_group", "groupe_d_emplacements",
+                "groupe_emplacements", "nom_du_package", "package_name"],
     "placement_category": ["categorie_emplacement", "type_emplacement", "compatibilite", "compatibility", "placement_category"],
     "snippet": ["tag", "tags", "tag_tiers", "script", "snippet", "code", "adtag"],
     "creative_path": ["fichier", "fichier_creatif", "asset", "visuel", "creative_path", "chemin", "nom_du_fichier", "file", "filename"],

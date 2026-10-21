@@ -19,6 +19,23 @@
 body { margin: 0; background: var(--bg); color: var(--text);
        font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 main { max-width: 64rem; margin: 0 auto; padding: 20px 16px 60px; }
+main.wide { max-width: 120rem; }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 14px; }
+@media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); } }
+.pane { border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-width: 0; }
+.pane h3 { margin: 0 0 6px; font-size: 1rem; }
+.pane .table-wrap { max-height: 70vh; overflow: auto; }
+table.ed { font-size: .8rem; }
+table.ed th { position: sticky; top: 0; background: var(--card); z-index: 1; white-space: nowrap; }
+table.ed td { padding: 2px; }
+table.ed input { width: 100%; min-width: 7rem; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px;
+                 background: transparent; color: var(--text); font: inherit; }
+table.ed input:hover { border-color: var(--border); }
+table.ed input:focus { border-color: var(--accent); outline: none; background: var(--card); }
+table.ed td.cell-missing input { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+table.ed td.cell-missing input::placeholder { color: var(--warn); font-style: italic; }
+table.ed .rm { background: none; color: var(--muted); padding: 2px 6px; font-weight: 400; }
+.sync { font-size: .8rem; color: var(--muted); margin-left: 8px; }
 header h1 { margin: 0; font-size: 1.6rem; }
 header p { margin: 4px 0 0; color: var(--muted); }
 .badge { display: inline-block; margin-top: 10px; padding: 3px 10px; border-radius: 999px;
@@ -57,6 +74,16 @@ pre.log { background: var(--code); border-radius: 8px; padding: 10px; max-height
           font-size: .82rem; white-space: pre-wrap; }
 .camp h3 { margin: 14px 0 4px; font-size: 1rem; }
 .meta { color: var(--muted); font-size: .88rem; }
+table.pv { font-size: .82rem; }
+table.pv td { white-space: nowrap; padding: 6px 8px; }
+table.pv tr[data-level] { cursor: default; }
+table.pv tr.pv-site, table.pv tr.pv-package, table.pv tr.pv-placement, table.pv tr.pv-ad, table.pv tr.pv-campaign { cursor: pointer; }
+.pv-name { max-width: 34rem; overflow: hidden; text-overflow: ellipsis; }
+.pv-link { color: var(--accent); }
+.pv-campaign .pv-link { color: var(--text); font-weight: 700; }
+.pv-toggle { color: var(--muted); font-family: monospace; }
+.pv-id { color: var(--muted); font-style: italic; }
+.pv-missing { color: var(--warn); font-style: italic; }
 footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
 a { color: var(--accent); }
 .hidden { display: none; }
@@ -110,6 +137,15 @@ a { color: var(--accent); }
   <section id="result" class="card hidden" aria-labelledby="t-res" aria-live="polite">
     <h2 id="t-res">2. Vérification avant envoi</h2>
     <div id="summary"></div>
+    <div class="split" id="workspace">
+      <div class="pane" aria-labelledby="t-pm">
+        <h3 id="t-pm">Plan média classé par l'agent <span class="hint">— modifiable</span><span id="sync" class="sync" role="status"></span></h3>
+        <p class="hint">Chaque modification met à jour l'aperçu. Cases orange : à compléter.</p>
+        <div class="table-wrap" id="editor"></div>
+        <div class="actions"><button id="add-row" class="secondary">+ Ajouter une ligne</button></div>
+      </div>
+      <div class="pane" id="preview-pane"></div>
+    </div>
     <div class="actions" id="actions">
       <button id="demo" class="secondary">▶ Simuler le trafficking (démo)</button>
       <button id="delivery" class="secondary">📊 Rapport de diffusion (démo)</button>
@@ -247,31 +283,124 @@ function renderSummary(d) {
     box.append(det);
   }
   for (const c of d.campaigns) {
-    const wrap = el("div", {class: "camp"});
-    wrap.append(el("h3", {}, c.name));
     const budget = c.budget_eur ? ` · budget ${Number(c.budget_eur).toLocaleString("fr-FR")} €` : "";
-    wrap.append(el("div", {class: "meta"},
-      `${c.start} → ${c.end} · annonceur : ${c.advertiser || "—"} · ${c.placements.length} emplacement(s)${budget}`));
-    const CAT = {display: "Display", video: "Vidéo in-stream", tracking: "Tracking"};
-    wrap.append(el("div", {class: "table-wrap"}, el("table", {},
-      el("thead", {}, el("tr", {}, el("th", {}, "Emplacement"), el("th", {}, "Format"),
-        el("th", {}, "Catégorie"), el("th", {}, "Site"))),
-      el("tbody", {}, ...c.placements.map((p) => el("tr", {},
-        el("td", {}, p.name), el("td", {}, p.size),
-        el("td", {}, el("span", {class: "chip " + (p.category === "video" ? "VIDEO" : p.category === "tracking" ? "TRACKING" : "")},
-          CAT[p.category] || p.category)),
-        el("td", {}, p.site || "—")))))));
-    const rows = c.ads.map((a) => el("tr", {},
-      el("td", {}, a.name), el("td", {}, a.placements.join(", ")),
-      el("td", {}, ...a.creatives.map((cr) => el("span", {class: "chip " + cr.type.split(" ")[0]}, `${cr.name} · ${cr.type}`))),
-      el("td", {}, a.landing_page_url)));
-    wrap.append(el("div", {class: "table-wrap"}, el("table", {},
-      el("thead", {}, el("tr", {}, el("th", {}, "Annonce"), el("th", {}, "Emplacements"),
-        el("th", {}, "Créatives"), el("th", {}, "Destination"))),
-      el("tbody", {}, ...rows))));
-    box.append(wrap);
+    box.append(el("div", {class: "meta"},
+      `Annonceur : ${c.advertiser || "à compléter"} · ${c.placements.length} emplacement(s) · `
+      + `${c.ads.length} annonce(s)${budget}`));
   }
+  $("preview-pane").replaceChildren(d.preview && d.preview.length ? renderPreview(d.preview)
+    : el("p", {class: "hint"}, "Aucun objet à créer pour l'instant."));
   return d.errors.length === 0 && !(d.specs || []).some((s) => s.level === "erreur");
+}
+
+// Aperçu « comme dans CM360 » : Campagne > Site > Package > Emplacement > Annonce > Créative
+const ICON = {campaign: "📣", site: "🌐", package: "📦", placement: "▭", ad: "🎞️", creative: "🖼️"};
+function renderPreview(rows) {
+  const head = ["Name", "ID", "Start date", "End date", "Type", "Asset type", "Compatibility", "Dimensions"];
+  const trs = rows.map((r, i) => {
+    const hasKids = i + 1 < rows.length && rows[i + 1].level > r.level;
+    const name = el("td", {class: "pv-name", style: `padding-left:${8 + r.level * 18}px`},
+      el("span", {class: "pv-toggle"}, hasKids ? "▾ " : "  "),
+      el("span", {class: "pv-icon", "aria-hidden": "true"}, ICON[r.kind] || ""), " ",
+      el("span", {class: r.missing ? "pv-missing" : "pv-link", title: r.url || ""}, r.name));
+    const date = (v) => v ? el("td", {}, v) : el("td", {class: "pv-missing"}, r.kind === "site" ? "" : "à compléter");
+    const tr = el("tr", {class: "pv-" + r.kind, "data-level": String(r.level)},
+      name, el("td", {class: "pv-id"}, r.kind === "campaign" ? "" : "nouveau"),
+      date(r.start), date(r.end), el("td", {}, r.type || ""), el("td", {}, r.asset_type || ""),
+      el("td", {}, r.compatibility || ""), el("td", {}, r.dimensions || ""));
+    if (r.kind === "ad" && !r.url) tr.title = "URL de destination à compléter";
+    if (hasKids) tr.addEventListener("click", () => {
+      const open = tr.dataset.closed !== "1";
+      tr.dataset.closed = open ? "1" : "0";
+      tr.querySelector(".pv-toggle").textContent = open ? "▸ " : "▾ ";
+      for (let n = tr.nextElementSibling; n && Number(n.dataset.level) > r.level; n = n.nextElementSibling) {
+        n.hidden = open;
+        if (!open && n.dataset.closed === "1") {           // garder fermé ce qui l'était
+          const lvl = Number(n.dataset.level);
+          n.hidden = false;
+          for (n = n.nextElementSibling; n && Number(n.dataset.level) > lvl; n = n.nextElementSibling) n.hidden = true;
+          if (!n) break;
+          n = n.previousElementSibling;
+        }
+      }
+    });
+    return tr;
+  });
+  return el("div", {class: "preview"},
+    el("h3", {}, "Aperçu dans CM360 (avant envoi)"),
+    el("p", {class: "hint"}, "Ce qui sera créé dans la plateforme. « nouveau » : objet créé à l'envoi (l'ID sera attribué par CM360). Cliquez sur une ligne pour replier."),
+    el("div", {class: "table-wrap"}, el("table", {class: "pv"},
+      el("thead", {}, el("tr", {}, ...head.map((h) => el("th", {}, h)))), el("tbody", {}, ...trs))));
+}
+
+// --- Volet gauche : plan média modifiable -------------------------------------------------
+let table = [], columns = [], rebuildTimer = null, rebuildSeq = 0;
+const REQUIRED_CELLS = new Set(["campaign_name", "campaign_start", "campaign_end", "placement_name", "landing_page_url"]);
+const isoToFr = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v.split("-").reverse().join("/") : (v || "");
+
+function applyResult(d) {
+  const ok = renderSummary(d);
+  for (const id of ["demo", "delivery", "dl-cm360", "dl-adform"]) $(id).disabled = !ok;
+  return ok;
+}
+
+function renderEditor(d) {
+  table = d.table.map((r) => ({...r}));
+  columns = d.columns;
+  const head = el("tr", {}, ...columns.map((c) => el("th", {scope: "col"}, c.label)), el("th", {}, ""));
+  const body = el("tbody", {});
+  table.forEach((row, i) => body.append(editorRow(row, i)));
+  $("editor").replaceChildren(el("table", {class: "ed"}, el("thead", {}, head), body));
+}
+
+function editorRow(row, i) {
+  const tr = el("tr", {"data-row": String(i)});
+  for (const c of columns) {
+    const isDate = c.key === "campaign_start" || c.key === "campaign_end";
+    const input = el("input", {"aria-label": `${c.label}, ligne ${i + 1}`, "data-key": c.key,
+                               value: isDate ? isoToFr(row[c.key]) : (row[c.key] || "")});
+    if (REQUIRED_CELLS.has(c.key)) input.placeholder = "à compléter";
+    if (isDate) input.placeholder = "JJ/MM/AAAA";
+    const td = el("td", {}, input);
+    const mark = () => td.classList.toggle("cell-missing", REQUIRED_CELLS.has(c.key) && !input.value.trim());
+    mark();
+    input.addEventListener("input", () => { table[i][c.key] = input.value; mark(); scheduleRebuild(); });
+    tr.append(td);
+  }
+  const rm = el("button", {class: "rm", title: "Supprimer la ligne", "aria-label": `Supprimer la ligne ${i + 1}`}, "✕");
+  rm.addEventListener("click", () => { table.splice(i, 1); renderEditor({table, columns}); scheduleRebuild(0); });
+  tr.append(el("td", {}, rm));
+  return tr;
+}
+
+$("add-row").addEventListener("click", () => {
+  const last = table[table.length - 1] || {};
+  const keep = ["campaign_name", "advertiser_name", "campaign_start", "campaign_end", "site_name",
+                "package", "objective", "audience", "targeting", "landing_page_url"];
+  const row = {};
+  for (const k of keep) if (last[k]) row[k] = last[k];
+  table.push(row);
+  renderEditor({table, columns});
+  const inputs = $("editor").querySelectorAll(`tr[data-row="${table.length - 1}"] input`);
+  const target = [...inputs].find((x) => !x.value) || inputs[0];
+  if (target) target.focus();
+  scheduleRebuild(0);
+});
+
+function scheduleRebuild(delay = 400) {
+  clearTimeout(rebuildTimer);
+  $("sync").textContent = " · mise à jour…";
+  rebuildTimer = setTimeout(async () => {
+    const seq = ++rebuildSeq;
+    try {
+      const d = JSON.parse(await call("rebuild", {table}));
+      if (seq !== rebuildSeq) return;              // une saisie plus récente arrive
+      applyResult(d);
+      $("sync").textContent = " · aperçu à jour";
+    } catch (e) {
+      $("sync").textContent = " · erreur : " + e.message;
+    }
+  }, delay);
 }
 
 $("analyze").addEventListener("click", async () => {
@@ -289,8 +418,9 @@ $("analyze").addEventListener("click", async () => {
       name: planFile.name, bytes, camp: $("camp").value.trim(), adv: $("adv").value.trim(), nomen, creas,
     }, [bytes, ...creas.map((c) => c.bytes)]));
     $("result").classList.remove("hidden");
-    const ok = renderSummary(d);
-    for (const id of ["demo", "delivery", "dl-cm360", "dl-adform"]) $(id).disabled = !ok;
+    document.querySelector("main").classList.add("wide");
+    applyResult(d);
+    if (!d.fatal) renderEditor(d);
     $("output").classList.add("hidden");
     $("result").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (e) {

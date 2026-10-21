@@ -301,6 +301,7 @@ class PlacementSpec:
     audience: str = ""       # audience / cible — nomenclature
     targeting: str = ""      # ciblage — nomenclature
     format_label: str = ""   # format tel qu'écrit dans le plan (« Pavé »...), sinon la taille
+    package: str = ""        # package CM360 (groupe d'emplacements), colonne optionnelle
 
 @dataclass
 class CampaignSpec:
@@ -531,6 +532,7 @@ def plan_from_rows(rows: List[Dict[str, str]], allow_incomplete: bool = False
                 if get("placement_category").lower() in PLACEMENT_CATEGORIES else "",
                 objective=get("objective"), audience=get("audience"),
                 targeting=get("targeting"), format_label=get("format_label"),
+                package=get("package"),
             )
 
         # Créative

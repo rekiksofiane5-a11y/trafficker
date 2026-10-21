@@ -63,10 +63,11 @@ def _analyze(page, path):
 
 def test_template_plan_end_to_end(page):
     _analyze(page, os.path.join(ROOT, "plan_media_template.csv"))
-    text = page.inner_text("#summary")
+    text = page.inner_text("#result")
     assert "0 erreur(s)" in text and "Printemps_2026_FR" in text
-    assert "TRACKING auto" in text and "VIDEO in-stream" in text
-    assert "Display" in text and "Vidéo in-stream" in text           # catégories d'emplacement
+    assert "Aperçu dans CM360" in text
+    assert "Tracking" in text and "In-stream video" in text and "Display" in text
+    assert "Placement" in text and "nouveau" in text
     page.click("#demo")
     page.wait_for_selector("text=Trafficking simulé")
     assert "0 erreur(s)" in page.inner_text("#out")
@@ -94,7 +95,7 @@ def test_free_form_plan_and_errors(page, tmp_path):
     p.write_text("Campagne,Emplacement,Format,Début,Fin,Annonce,Créatif,URL\n"
                  "C1,P1,300 x 250,02/11/2026,01/11/2026,A1,K1,https://x.fr\n", encoding="utf-8")
     _analyze(page, str(p))
-    text = page.inner_text("#summary")
+    text = page.inner_text("#result")
     assert "campaign_name ← colonne « Campagne »" in text
     assert "avant début" in text and "À compléter" in text     # fin avant début : à corriger
     assert not page.is_disabled("#dl-cm360")                   # ça avance : export possible
@@ -120,10 +121,10 @@ def test_creative_files_checked_against_cm360_specs(page, tmp_path):
                     "C,2026-11-02,2026-12-15,P2,300x250,A2,K2,anim.zip,https://x.fr\n", encoding="utf-8")
     page.set_input_files("#creas", [str(tmp_path / "ban.png"), str(tmp_path / "anim.zip")])
     _analyze(page, str(plan))
-    text = page.inner_text("#summary")
+    text = page.inner_text("#result")
     assert "Contrôle des créatives (specs CM360)" in text
     assert "ban.png : conforme" in text and "aucun click tag" in text
-    assert "HTML5 display" in text
+    assert "HTML5" in text
     assert page.is_disabled("#dl-cm360")              # créative hors specs : export bloqué
     page.set_input_files("#creas", [])
 
@@ -141,8 +142,8 @@ def test_yellow_cells_mode_in_browser(page, tmp_path):
         ws.cell(row=3, column=c).fill = PatternFill("solid", fgColor="FFFF00")
     wb.save(tmp_path / "jaune.xlsx")
     _analyze(page, str(tmp_path / "jaune.xlsx"))
-    text = page.inner_text("#summary")
-    assert "Mode cases jaunes" in text and "Article" in text and "Home" not in text
+    text = page.inner_text("#result")
+    assert "Mode cases jaunes" in text and "Article" in text and "\tHome\t" not in text and " Home\t" not in text
 
 
 def test_page_stays_responsive_on_a_heavy_workbook(page, tmp_path):
@@ -166,17 +167,39 @@ def test_page_stays_responsive_on_a_heavy_workbook(page, tmp_path):
     assert page.evaluate("1 + 1") == 2                       # le fil principal répond
     assert time.time() - t0 < 2
     page.wait_for_function("!document.getElementById('analyze').disabled", timeout=120000)
-    assert "3000 ligne(s)" in page.inner_text("#summary")
+    assert "3000 ligne(s)" in page.inner_text("#result")
 
 
 def test_missing_info_left_empty_and_listed(page, tmp_path):
     p = tmp_path / "incomplet.csv"
     p.write_text("Campagne,Emplacement,Format\nHiver,Home,Pavé\nHiver,Article,Méga-bannière\n", encoding="utf-8")
     _analyze(page, str(p))
-    text = page.inner_text("#summary")
+    text = page.inner_text("#result")
     assert "À compléter (laissé vide)" in text
     assert "Date de début — à compléter" in text and "URL de destination — à compléter" in text
     assert "erreur(s)" in text and "0 erreur(s)" in text
     assert not page.is_disabled("#dl-cm360")                     # export possible, cases vides
     page.click("#delivery")
     page.wait_for_selector("text=Dates de campagne à compléter")
+
+
+def test_split_screen_edit_updates_preview(page, tmp_path):
+    p = tmp_path / "edit.csv"
+    p.write_text("Campagne,Régie,Emplacement,Format,Début,Fin,URL\n"
+                 "Hiver,Le Monde,Home,Pavé,02/11/2026,15/12/2026,https://x.fr\n", encoding="utf-8")
+    _analyze(page, str(p))
+    assert page.is_visible("#editor table") and page.is_visible("#preview-pane .preview")
+    assert "Home" in page.inner_text("#preview-pane")
+    # l'objectif saisi dans le tableau entre dans la nomenclature de l'aperçu
+    page.fill('#editor input[data-key="objective"]', "Notoriété")
+    page.wait_for_function("document.getElementById('preview-pane').innerText.includes('NOTORIETE-LE_MONDE-PAVE')",
+                           timeout=15000)
+    # vider l'URL : case orange + « à compléter »
+    page.fill('#editor input[data-key="landing_page_url"]', "")
+    page.wait_for_selector("text=URL de destination — à compléter", timeout=15000)
+    assert page.locator("#editor td.cell-missing").count() >= 1
+    # ajouter une ligne : nouvel emplacement dans l'aperçu
+    page.click("#add-row")
+    page.fill('#editor tr[data-row="1"] input[data-key="placement_name"]', "Article")
+    page.fill('#editor tr[data-row="1"] input[data-key="format_label"]', "Méga-bannière")
+    page.wait_for_function("document.getElementById('preview-pane').innerText.includes('728 × 90')", timeout=15000)
