@@ -1,0 +1,6 @@
+advertiser_id,advertiser_name,campaign_name,campaign_start,campaign_end,placement_name,site_id,site_name,size,pricing_type,ad_name,creative_name,creative_type,snippet,creative_path,landing_page_url,active
+,Client XYZ,Printemps_2026_FR,2026-11-02,2026-12-15,BN_Home_300x250,123456,,300x250,CPM,Ad_Printemps_300x250,Crea_300x250_A,REDIRECT,"<script src=""https://adserver.exemple.com/imp?z=250&c=xyz""></script>",,https://www.clientxyz.fr/offre-printemps,1
+,Client XYZ,Printemps_2026_FR,2026-11-02,2026-12-15,BN_Home_300x250,123456,,300x250,CPM,Ad_Printemps_300x250,Crea_300x250_B,REDIRECT,"<script src=""https://adserver.exemple.com/imp?z=250&c=xyz2""></script>",,https://www.clientxyz.fr/offre-printemps,1
+,Client XYZ,Printemps_2026_FR,2026-11-02,2026-12-15,BN_Home_728x90,123456,,728x90,CPM,Ad_Printemps_728x90,Crea_728x90_A,REDIRECT,"<script src=""https://adserver.exemple.com/imp?z=90&c=xyz3""></script>",,https://www.clientxyz.fr/offre-printemps,1
+,Client XYZ,Printemps_2026_FR,2026-11-02,2026-12-15,BN_Home_300x250,123456,,300x250,CPM,Ad_Printemps_300x250_Image,Crea_300x250_PNG,IMAGE,,/creatives/banner_300x250.png,https://www.clientxyz.fr/offre-printemps,1
+

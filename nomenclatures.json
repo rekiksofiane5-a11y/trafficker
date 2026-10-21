@@ -1,0 +1,44 @@
+
+{
+  "defaults": {
+    "campaign": "{advertiser_name}_{campaign_name}_{start_yyyymm}",
+    "placement": "{campaign_name}_{placement_name}_{size}",
+    "ad": "{campaign_name}_{ad_name}",
+    "creative": "{ad_name}_{creative_name}_{size}",
+    "options": {
+      "separator": "_",
+      "case": "upper",
+      "strip_accents": true,
+      "max_length": 90,
+      "forbidden": []
+    }
+  },
+  "advertisers": {
+    "Client XYZ": {
+      "campaign": "XYZ_{campaign_name}_{start_yyyymm}",
+      "placement": "XYZ_{campaign_name}_{site_name}_{placement_name}_{size}",
+      "ad": "XYZ_{campaign_name}_{ad_name}",
+      "creative": "XYZ_{ad_name}_{creative_name}_{size}",
+      "options": {
+        "separator": "_",
+        "case": "upper",
+        "strip_accents": true,
+        "max_length": 95,
+        "forbidden": ["-"]
+      }
+    },
+    "1234567": {
+      "campaign": "ADV{advertiser_id}_{campaign_name}_{year}",
+      "placement": "{campaign_name}_{placement_name}_{site_name}_{size}",
+      "ad": "{campaign_name}_{ad_name}",
+      "creative": "{ad_name}_{creative_name}_{size}",
+      "options": {
+        "separator": "_",
+        "case": "title",
+        "strip_accents": true,
+        "max_length": 80
+      }
+    }
+  }
+}
+
