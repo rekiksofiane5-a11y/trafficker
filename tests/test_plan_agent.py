@@ -132,3 +132,44 @@ def test_parse_period(raw, out):
                                      ("2026-11-02 00:00:00", "2026-11-02"), ("pas une date", "")])
 def test_parse_date(raw, out):
     assert plan_agent.parse_date(raw) == out
+
+
+def test_format_names_and_missing_formats(tmp_path):
+    p = _xlsx(tmp_path / "noms.xlsx", [("Plan", [
+        ["Version 1.5"],
+        [],
+        ["Campagne", "Support", "Format", "Début", "Fin", "URL"],
+        ["Hiver", "Le Monde", "Pavé", "2026-11-02", "2026-12-15", "https://x.fr"],
+        ["Hiver", "Le Monde", "Méga-bannière", "2026-11-02", "2026-12-15", "https://x.fr"],
+        ["Hiver", "L'Équipe", "Preroll 15s", "2026-11-02", "2026-12-15", "https://x.fr"],
+        ["Hiver", "Leboncoin", "Habillage", "2026-11-02", "2026-12-15", "https://x.fr"],
+        ["Hiver", "Marmiton", "", "2026-11-02", "2026-12-15", "https://x.fr"],
+    ])])
+    rows, plan, errors, report = _plan(p)
+    assert errors == []
+    assert [r["size"] for r in rows] == ["300x250", "728x90", "640x360", "1x1", "1x1"]
+    cats = {p.name: p.category for p in next(iter(plan.values())).placements.values()}
+    assert [cats[r["placement_name"]] for r in rows] == ["display", "display", "video", "tracking", "tracking"]
+    assert "en-tête ligne 3" in report
+    assert "format IAB converti" in report and "emplacement de tracking" in report
+
+
+@pytest.mark.parametrize("name,size", [("Grand angle", "300x600"), ("MPU", "300x250"),
+                                       ("Interstitiel mobile", "320x480"), ("Billboard", "970x250"),
+                                       ("Skyscraper", "120x600"), ("Bannière mobile", "320x50"),
+                                       ("Native", "")])
+def test_size_from_name(name, size):
+    assert plan_agent.size_from_name(name) == size
+
+
+def test_explicit_iab_size_is_display_with_its_dimension(tmp_path):
+    p = _xlsx(tmp_path / "iab.xlsx", [("Plan", [
+        ["Campagne", "Emplacement", "Format", "Début", "Fin", "URL"],
+        ["Hiver", "Home", "300x600", "2026-11-02", "2026-12-15", "https://x.fr"],
+        ["Hiver", "Mobile", "320x50", "2026-11-02", "2026-12-15", "https://x.fr"],
+    ])])
+    rows, plan, errors, report = _plan(p)
+    assert errors == []
+    ps = next(iter(plan.values())).placements
+    assert (ps["Home"].width, ps["Home"].height, ps["Home"].category) == (300, 600, "display")
+    assert (ps["Mobile"].width, ps["Mobile"].height, ps["Mobile"].category) == (320, 50, "display")

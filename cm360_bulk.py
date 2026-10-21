@@ -103,7 +103,7 @@ VOCAB = {
         "TRACKING": ("Tracking", "Display"),
     },
     "ad_type": {"standard": "Standard", "tracking": "Tracking"},
-    "placement_compat": {"display": "Display", "video": "In-stream video"},
+    "placement_compat": {"display": "Display", "video": "In-stream video", "tracking": "Display"},
     "cost_structure": {
         "PRICING_TYPE_CPM": "CPM", "PRICING_TYPE_CPC": "CPC",
         "PRICING_TYPE_CPA": "CPA", "PRICING_TYPE_FLAT_RATE": "Flat rate",
@@ -261,7 +261,7 @@ def plan_to_bulk_rows(plan) -> List[List[str]]:
                     put("Site name\n(Placement)", p.site_name)
                     put("Placement name\n(Placement)", p.name)
                     put("Compatibility\n(Placement)", VOCAB["placement_compat"][
-                        "video" if c.ctype == "VIDEO" else "display"])
+                        p.category or ("video" if c.ctype == "VIDEO" else "display")])
                     put("Dimensions\n(Placement)", f"{p.width}x{p.height}")
                     put("Start date\n(Placement)", camp.start)
                     put("End date\n(Placement)", camp.end)

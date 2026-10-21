@@ -175,6 +175,38 @@ def _kind(v: str) -> str:
     return "text"
 
 
+# Noms de formats usuels (FR/EN, IAB) → dimensions. Ordre : du plus précis au plus général.
+FORMAT_NAMES = [
+    (r"grand[\s_-]*angle|half[\s_-]*page|demi[\s_-]*page|large[\s_-]*pav", "300x600"),
+    (r"billboard|masthead|maxi[\s_-]*banni|super[\s_-]*banni", "970x250"),
+    (r"large[\s_-]*leaderboard|super[\s_-]*leaderboard", "970x90"),
+    (r"m[eé]ga[\s_-]*banni|leaderboard|banni[eè]re[\s_-]*haute|top[\s_-]*banner", "728x90"),
+    (r"wide[\s_-]*sky|large[\s_-]*sky|sky[\s_-]*large", "160x600"),
+    (r"skyscraper|\bsky\b|gratte[\s_-]*ciel", "120x600"),
+    (r"interstitiel|interstitial|plein[\s_-]*[eé]cran", "320x480"),
+    (r"large[\s_-]*mobile|mobile[\s_-]*large|banni[eè]re[\s_-]*mobile[\s_-]*large", "320x100"),
+    (r"banni[eè]re[\s_-]*mobile|mobile[\s_-]*banner|\bbanner[\s_-]*mobile|smartphone[\s_-]*banni", "320x50"),
+    (r"pav[eé]|\bmpu\b|medium[\s_-]*rectangle|rectangle|carr[eé]", "300x250"),
+    (r"pre[\s_-]?roll|mid[\s_-]?roll|in[\s_-]?stream|vid[eé]o|spot", "640x360"),
+]
+TRACKING_SIZE = "1x1"
+VIDEO_SIZE = "640x360"
+
+
+def category_from_name(text: str) -> str:
+    """Catégorie d'emplacement déduite d'un nom de format : vidéo ou display (IAB)."""
+    return "video" if VIDEO_HINT.search(text or "") else ("display" if size_from_name(text) else "")
+
+
+def size_from_name(text: str) -> str:
+    """« Pavé », « Méga-bannière », « Preroll 15s »… → dimensions ; '' si inconnu."""
+    t = text or ""
+    for pattern, size in FORMAT_NAMES:
+        if re.search(pattern, t, re.I):
+            return size
+    return ""
+
+
 # --- 2. En-tête et feuille -------------------------------------------------------------
 
 def _header_score(row: List[str]) -> int:
@@ -398,13 +430,38 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
                 r[f] = last[f]
                 filled.add(f)
         # Informations au mauvais endroit : on les cherche dans la ligne
-        if not r.get("size"):
+        category = ""
+        if RE_SIZE.search(r.get("size", "")):
+            category = "display"
+        else:
+            written = r.get("size", "")
+            r["size"] = ""
             for t in names + others:
                 m = RE_SIZE.search(t or "")
                 if m:
                     r["size"] = f"{m.group(1)}x{m.group(2)}"
+                    category = "display"
                     derived.add("size ← retrouvé dans le nom de l'emplacement ou une autre cellule")
                     break
+            if not r["size"]:
+                for t in [written] + names + others:
+                    sz, cat = size_from_name(t), category_from_name(t)
+                    if sz:
+                        r["size"], category = sz, cat
+                        derived.add("size ← nom de format IAB converti en dimensions, emplacement "
+                                    "display (Pavé → 300x250, Méga-bannière → 728x90…)"
+                                    if cat == "display" else
+                                    "size ← format vidéo (preroll, in-stream…) : emplacement vidéo in-stream")
+                        break
+            if not r["size"]:
+                r["size"], category = TRACKING_SIZE, "tracking"
+                derived.add(f"size ← aucun format reconnaissable : {TRACKING_SIZE}, "
+                            "emplacement de tracking")
+        if VIDEO_HINT.search(" ".join(names + [r.get("size", "")])) or \
+                re.search(r"\.(mp4|mov|m4v|webm)\s*$", r.get("creative_path", ""), re.I):
+            category = "video"
+        if not r.get("placement_category"):
+            r["placement_category"] = category
         if not r.get("landing_page_url"):
             for t in others:
                 m = RE_URL.search(t)

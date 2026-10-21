@@ -101,6 +101,8 @@ PRICING_TYPES = {
     "flat": "PRICING_TYPE_FLAT_RATE",
 }
 
+PLACEMENT_CATEGORIES = {"display", "video", "tracking"}
+
 TRUE_VALUES = {"1", "oui", "yes", "true", "vrai", "o", "y"}
 
 # ---------------------------------------------------------------------------
@@ -285,6 +287,7 @@ class PlacementSpec:
     height: int = 0
     pricing_type: str = "PRICING_TYPE_CPM"
     row_index: int = 0
+    category: str = ""       # display (formats IAB) | video (in-stream) | tracking (1x1)
 
 @dataclass
 class CampaignSpec:
@@ -383,7 +386,7 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
         if not creative_name:
             fail(idx, "creative_name manquant.")
             continue
-        if not re.match(r"^\d{2,4}\s*[xX*]\s*\d{2,4}$", size or ""):
+        if not re.match(r"^\d{1,4}\s*[xX*]\s*\d{1,4}$", size or ""):
             fail(idx, f"size invalide ou manquant ('{size}', attendu '300x250').")
             continue
         dates_ok = True
@@ -434,6 +437,8 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
                 width=w, height=h,
                 pricing_type=PRICING_TYPES.get(get("pricing_type").lower(), "PRICING_TYPE_CPM"),
                 row_index=idx,
+                category=get("placement_category").lower()
+                if get("placement_category").lower() in PLACEMENT_CATEGORIES else "",
             )
 
         # Créative
@@ -475,6 +480,16 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
             ad["creatives"].append(creative)
         if lp:
             ad["landing_page_url"] = lp
+
+    # Catégorie d'emplacement non fournie : 1x1 -> tracking, vidéo in-stream si une
+    # créative vidéo y est diffusée, sinon display (formats IAB avec leur dimension)
+    for camp in plan.values():
+        video = {pn for ad in camp.ads.values() if any(c.ctype == "VIDEO" for c in ad["creatives"])
+                 for pn in ad["placements"]}
+        for p in camp.placements.values():
+            if not p.category:
+                p.category = ("tracking" if (p.width, p.height) == (1, 1)
+                              else "video" if p.name in video else "display")
 
     # Une annonce de tracking ne peut pas mélanger tracking et créatives affichées
     for camp in plan.values():

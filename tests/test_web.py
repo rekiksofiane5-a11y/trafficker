@@ -66,6 +66,7 @@ def test_template_plan_end_to_end(page):
     text = page.inner_text("#summary")
     assert "0 erreur(s)" in text and "Printemps_2026_FR" in text
     assert "TRACKING auto" in text and "VIDEO in-stream" in text
+    assert "Display" in text and "Vidéo in-stream" in text           # catégories d'emplacement
     page.click("#demo")
     page.wait_for_selector("text=Trafficking simulé")
     assert "0 erreur(s)" in page.inner_text("#out")

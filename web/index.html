@@ -209,6 +209,15 @@ function renderSummary(d) {
     const budget = c.budget_eur ? ` · budget ${Number(c.budget_eur).toLocaleString("fr-FR")} €` : "";
     wrap.append(el("div", {class: "meta"},
       `${c.start} → ${c.end} · annonceur : ${c.advertiser || "—"} · ${c.placements.length} emplacement(s)${budget}`));
+    const CAT = {display: "Display", video: "Vidéo in-stream", tracking: "Tracking"};
+    wrap.append(el("div", {class: "table-wrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Emplacement"), el("th", {}, "Format"),
+        el("th", {}, "Catégorie"), el("th", {}, "Site"))),
+      el("tbody", {}, ...c.placements.map((p) => el("tr", {},
+        el("td", {}, p.name), el("td", {}, p.size),
+        el("td", {}, el("span", {class: "chip " + (p.category === "video" ? "VIDEO" : p.category === "tracking" ? "TRACKING" : "")},
+          CAT[p.category] || p.category)),
+        el("td", {}, p.site || "—")))))));
     const rows = c.ads.map((a) => el("tr", {},
       el("td", {}, a.name), el("td", {}, a.placements.join(", ")),
       el("td", {}, ...a.creatives.map((cr) => el("span", {class: "chip " + cr.type.split(" ")[0]}, `${cr.name} · ${cr.type}`))),

@@ -22,7 +22,7 @@ def _summary(plan) -> list:
         out.append({
             "name": camp.name, "advertiser": str(camp.advertiser_id or camp.advertiser_name or ""),
             "start": camp.start, "end": camp.end, "budget_eur": camp.budget_eur,
-            "placements": [{"name": p.name, "size": f"{p.width}x{p.height}",
+            "placements": [{"name": p.name, "size": f"{p.width}x{p.height}", "category": p.category,
                             "site": str(p.site_id or p.site_name or "")}
                            for p in camp.placements.values()],
             "ads": [{"name": n, "placements": ad["placements"],
