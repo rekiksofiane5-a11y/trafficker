@@ -27,8 +27,8 @@ def test_template_is_valid(rows):
     plan, errors = plan_from_rows(rows)
     assert errors == []
     camp = next(iter(plan.values()))
-    assert set(camp.placements) == {"BN_Home_300x250", "BN_Home_728x90"}
-    assert len(camp.ads) == 3
+    assert set(camp.placements) == {"BN_Home_300x250", "BN_Home_728x90", "VID_Preroll_640x360"}
+    assert len(camp.ads) == 5
 
 
 def test_validation_errors(rows):
@@ -98,7 +98,7 @@ def test_mock_reporting_covers_placements(rows):
     deliveries, flags = report_for_plan(rows, MockReportingAdapter(log=lambda m: None))
     assert len(deliveries) == 1
     d = deliveries[0]
-    assert len(d.placements) == 2
+    assert len(d.placements) == 3
     assert sum(p.impressions for p in d.placements.values()) <= d.impressions
     assert d.spend > 0
     assert flags
@@ -153,3 +153,111 @@ def test_delivery_json_has_spend(rows):
     data = delivery_to_dict("mock", deliveries, flags)
     assert data["campaigns"][0]["spend"] > 0
     assert data["campaigns"][0]["placements"][0]["spend"] > 0
+
+
+# --- Typage des créatives ----------------------------------------------------
+
+from cm360_trafficker import resolve_creative_type
+
+
+@pytest.mark.parametrize("explicit,category,snippet,path,expected,auto", [
+    ("", "", "<script>", "", "REDIRECT", False),       # tag tiers
+    ("", "", "", "ban.png", "IMAGE", False),           # fichier image -> display
+    ("", "", "", "spot.MP4", "VIDEO", False),          # fichier vidéo -> in-stream
+    ("", "", "", "", "TRACKING", True),                # rien de partagé -> tracking auto
+    ("", "video", "", "fichier.bin", "VIDEO", False),  # catégorie forcée
+    ("tracking", "", "<script>", "", "TRACKING", False),  # type explicite prioritaire
+    ("instream", "", "", "spot.mp4", "VIDEO", False),  # alias
+])
+def test_resolve_creative_type(explicit, category, snippet, path, expected, auto):
+    assert resolve_creative_type(explicit, category, snippet, path)[:2] == (expected, auto)
+
+
+def test_unknown_file_format_is_rejected():
+    assert resolve_creative_type("", "", "", "banniere.zip")[2]
+
+
+def test_template_types(rows):
+    plan, _ = plan_from_rows(rows)
+    camp = next(iter(plan.values()))
+    types = {c.name: (c.ctype, c.auto) for ad in camp.ads.values() for c in ad["creatives"]}
+    assert types["Crea_Video_15s"] == ("VIDEO", False)
+    assert types["Crea_Tracking_A"] == ("TRACKING", True)
+    assert types["Crea_300x250_PNG"] == ("IMAGE", False)
+    assert types["Crea_300x250_A"] == ("REDIRECT", False)
+
+
+def test_ad_cannot_mix_tracking_and_display(rows):
+    bad = [dict(r) for r in rows]
+    extra = dict(bad[0]); extra["creative_name"] = "Crea_Track_Mix"
+    extra["snippet"] = ""; extra["creative_type"] = ""                      # sans tag ni fichier -> tracking, dans une annonce display
+    _, errors = plan_from_rows(bad + [extra])
+    assert any("mélange" in e for e in errors)
+
+
+def test_mock_logs_creative_categories(rows):
+    plan, _ = plan_from_rows(rows)
+    logs = []
+    traffic_plan(build_adapter("mock", log=logs.append), plan, log=logs.append)
+    text = "\n".join(logs)
+    assert "VIDEO in-stream" in text and "TRACKING auto" in text and "IMAGE display" in text
+
+
+# --- Corps des requêtes CM360 (service factice : aucune validation API réelle) ---
+
+class _FakeSvc:
+    """Enregistre les corps envoyés à creatives().insert / ads().insert."""
+    def __init__(self):
+        self.sent = {}
+
+    def _res(self, name):
+        outer = self
+
+        class R:
+            def list(self, **kw):
+                return type("X", (), {"execute": lambda s: {}})()
+
+            def insert(self, **kw):
+                outer.sent.setdefault(name, []).append(kw)
+                return type("X", (), {"execute": lambda s: {"id": 42, "assetIdentifier": {"name": "f", "type": "VIDEO"}}})()
+        return R()
+
+    def creatives(self): return self._res("creatives")
+    def ads(self): return self._res("ads")
+    def creativeAssets(self): return self._res("assets")
+    def campaignCreativeAssociations(self): return self._res("assoc")
+
+
+def _cm360(tmp_path):
+    from cm360_trafficker import CM360Adapter
+    svc = _FakeSvc()
+    return CM360Adapter(svc, 1, log=lambda m: None, creatives_dir=str(tmp_path)), svc
+
+
+def test_cm360_tracking_creative_body(tmp_path):
+    from cm360_trafficker import CreativeSpec
+    ad, svc = _cm360(tmp_path)
+    ad.ensure_creative(1, 2, CreativeSpec(name="T", ctype="TRACKING", auto=True), 300, 250)
+    body = svc.sent["creatives"][0]["body"]
+    assert body["type"] == "TRACKING_TEXT" and "creativeAssets" not in body
+
+
+def test_cm360_video_creative_is_instream(tmp_path, monkeypatch):
+    pytest.importorskip("googleapiclient")
+    from cm360_trafficker import CreativeSpec
+    (tmp_path / "v.mp4").write_bytes(b"\0" * 16)
+    ad, svc = _cm360(tmp_path)
+    ad.ensure_creative(1, 2, CreativeSpec(name="V", ctype="VIDEO", path="v.mp4"), 640, 360)
+    assert svc.sent["assets"][0]["body"]["assetIdentifier"]["type"] == "VIDEO"
+    assert svc.sent["creatives"][0]["body"]["type"] == "INSTREAM_VIDEO"
+
+
+def test_cm360_tracking_ad_type(tmp_path):
+    from cm360_trafficker import CreativeSpec
+    ad, svc = _cm360(tmp_path)
+    t = CreativeSpec(name="T", ctype="TRACKING", auto=True)
+    ad.ensure_ad(2, "A", {"creatives": [t], "landing_page_url": "https://x.fr"}, [1], {"T": 7})
+    assert svc.sent["ads"][0]["body"]["type"] == "AD_SERVING_TRACKING"
+    d = CreativeSpec(name="D", ctype="REDIRECT", snippet="<s>")
+    ad.ensure_ad(2, "B", {"creatives": [d], "landing_page_url": "https://x.fr"}, [1], {"D": 8})
+    assert svc.sent["ads"][1]["body"]["type"] == "AD_SERVING_STANDARD_AD"

@@ -39,6 +39,7 @@ from werkzeug.security import check_password_hash
 import trafficker_store as store
 
 from cm360_trafficker import (
+    _ctype_label,
     apply_nomenclature,
     build_adapter,
     load_nomenclature,
@@ -475,7 +476,7 @@ def _preview_html(rows, plan, errors, renames, token):
         for ad_name, ad in camp.ads.items():
             rows_html += (f"<tr><td>{ad_name}</td>"
                          f"<td>{', '.join(ad['placements'])}</td>"
-                         f"<td>{', '.join(c.name + ' (' + c.ctype + ')' for c in ad['creatives'])}</td>"
+                         f"<td>{', '.join(c.name + ' (' + _ctype_label(c) + ')' for c in ad['creatives'])}</td>"
                          f"<td>{ad['landing_page_url']}</td></tr>")
         parts.append(
             f"<div class='card'><b>Campagne :</b> {camp.name} "

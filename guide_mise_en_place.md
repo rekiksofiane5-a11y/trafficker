@@ -202,3 +202,4 @@ Outils exposés : `analyze_plan` (validation + nomenclatures), `traffic` (exécu
 - **Authentification et persistance** : voir `README.md` (variables `TRAFFICKER_PASSWORD_HASH`, `TRAFFICKER_USER`, `TRAFFICKER_SECRET_KEY`, `TRAFFICKER_DB`).
 - **Validation renforcée** : dates réelles, fin ≥ début, cohérence des dates entre lignes, doublons de créatives.
 - **Tests** : `python -m pytest -q tests`.
+- **Typage des créatives** : ni tag ni fichier → créative `TRACKING` générée automatiquement ; fichier image → display ; fichier vidéo → in-stream video ; voir `README.md`. Périmètre : CM360 et Adform uniquement.

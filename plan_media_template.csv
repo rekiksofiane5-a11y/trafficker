@@ -4,3 +4,5 @@ advertiser_id,advertiser_name,campaign_name,campaign_start,campaign_end,placemen
 ,Client XYZ,Printemps_2026_FR,2026-11-02,2026-12-15,BN_Home_728x90,123456,,728x90,CPM,Ad_Printemps_728x90,Crea_728x90_A,REDIRECT,"<script src=""https://adserver.exemple.com/imp?z=90&c=xyz3""></script>",,https://www.clientxyz.fr/offre-printemps,1,,
 ,Client XYZ,Printemps_2026_FR,2026-11-02,2026-12-15,BN_Home_300x250,123456,,300x250,CPM,Ad_Printemps_300x250_Image,Crea_300x250_PNG,IMAGE,,/creatives/banner_300x250.png,https://www.clientxyz.fr/offre-printemps,1,,
 ,
+,Client XYZ,Printemps_2026_FR,2026-11-02,2026-12-15,VID_Preroll_640x360,123456,,640x360,CPM,Ad_Printemps_Video,Crea_Video_15s,,,video_15s.mp4,https://www.clientxyz.fr/offre-printemps,1,,
+,Client XYZ,Printemps_2026_FR,2026-11-02,2026-12-15,BN_Home_728x90,123456,,728x90,CPM,Ad_Printemps_Tracking,Crea_Tracking_A,,,,https://www.clientxyz.fr/offre-printemps,1,,

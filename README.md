@@ -1,6 +1,6 @@
 # Trafficker
 
-Couche adops côté agence, au-dessus des ad servers (CM360, Adform) : ingestion de plans médias, nomenclatures, validation avant envoi, trafficking multi-plateformes, reporting réconcilié (livraison + pacing impressions et dépense), UI conversationnelle et serveur MCP. RGPD intégré (voir `conformite_rgpd.md`).
+Couche adops côté agence, au-dessus de deux ad servers : CM360 et Adform (périmètre volontairement limité à ces deux plateformes) : ingestion de plans médias, nomenclatures, validation avant envoi, trafficking multi-plateformes, reporting réconcilié (livraison + pacing impressions et dépense), UI conversationnelle et serveur MCP. RGPD intégré (voir `conformite_rgpd.md`).
 
 ## Démarrage rapide
 
@@ -34,6 +34,17 @@ python cm360_mcp_server.py                                             # 5. serv
 
 Pacing = livré / (objectif × fraction du vol écoulée) : OK entre 80 % et 120 %, EN RETARD en dessous, EN AVANCE au-dessus ; « NON DÉMARRÉE » avant le début du vol.
 
+## Typage automatique des créatives
+
+| Dans le plan | Type | Catégorie |
+|---|---|---|
+| tag tiers (`snippet`) | `REDIRECT` | display |
+| fichier image (`creative_path` png/jpg/gif) | `IMAGE` | display |
+| fichier vidéo (`creative_path` mp4/mov/webm…) | `VIDEO` | in-stream video |
+| **rien de partagé** (ni tag, ni fichier) | `TRACKING` | créative de tracking **générée automatiquement** |
+
+`creative_type` (REDIRECT/IMAGE/VIDEO/TRACKING) ou `creative_category` (display/video/tracking) forcent le type si besoin. Un format de fichier inconnu (zip, html…) est refusé à la validation. Une annonce ne peut pas mélanger tracking et display/vidéo (CM360 : annonce `AD_SERVING_TRACKING` dédiée).
+
 ## Validation avant envoi
 
 Le dry-run (et l'UI) signalent : champs manquants, tailles invalides, dates inexistantes ou fin avant début, dates incohérentes entre lignes d'une même campagne, doublons de créatives, créatives sans snippet/chemin.
@@ -58,4 +69,4 @@ python -m pytest -q tests        # le test navigateur est ignoré si Chromium es
 
 ## État et reste à faire
 
-Validés en local (mock) : trafficking, reporting, UI, MCP. **Non validés faute d'accès réel** : CM360 (clé de compte de service) et les statuts/colonnes de l'API Reports (`mediaCost` → colonne « Media Cost »). Pas encore implémentés : créatives HTML5 et vidéo, Floodlight, agent d'ingestion IA, adaptateur Adform complet, autres plateformes (DV360, TTD, Meta), multi-agences, déploiement SaaS.
+Validés en local (mock) : trafficking, reporting, UI, MCP. **Non validés faute d'accès réel** : CM360 (clé de compte de service) et les statuts/colonnes de l'API Reports (`mediaCost` → colonne « Media Cost »). Types CM360 `TRACKING_TEXT`, `INSTREAM_VIDEO` et `AD_SERVING_TRACKING` : corps de requête testés avec un service factice, **à valider sur un vrai compte**. Adform : authentification et diagnostic seulement, création d'objets à écrire avec un accès réel. Pas implémentés : HTML5, Floodlight, agent d'ingestion IA, multi-agences, déploiement SaaS.

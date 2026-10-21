@@ -47,9 +47,17 @@ Colonnes du plan média (en-têtes insensibles à la casse / accents / espaces) 
     pricing_type          CPM (défaut) | CPC | CPA | FLAT
     ad_name               Nom de l'annonce (obligatoire)
     creative_name         Nom de la créative (obligatoire)
-    creative_type         REDIRECT (tag tiers, recommandé) | IMAGE (fichier local)
-    snippet               Tag tiers complet (si creative_type=REDIRECT)
-    creative_path         Chemin du fichier image (si creative_type=IMAGE)
+    creative_type         (optionnel) REDIRECT | IMAGE | VIDEO | TRACKING — déduit si vide
+    creative_category     (optionnel) display | video | tracking — force la catégorie
+    snippet               Tag tiers complet (créative REDIRECT)
+    creative_path         Fichier créatif partagé : image -> display, vidéo -> in-stream
+
+    Règle de typage des créatives (si creative_type vide) :
+        tag tiers (snippet)            -> REDIRECT  (display, tag tiers)
+        fichier image (png/jpg/gif)    -> IMAGE     (display)
+        fichier vidéo (mp4/mov/...)    -> VIDEO     (in-stream video)
+        rien de partagé                -> TRACKING  (créative de tracking générée
+                                                     automatiquement)
     landing_page_url      URL de destination (obligatoire)
     active                1/oui/true pour activer (défaut : 1)
 
@@ -210,7 +218,8 @@ def resolve_creative_path(path: str, creatives_dir: str = "") -> str:
 @dataclass
 class CreativeSpec:
     name: str
-    ctype: str                      # REDIRECT | IMAGE
+    ctype: str                      # REDIRECT | IMAGE | VIDEO | TRACKING
+    auto: bool = False              # TRACKING générée automatiquement (rien de partagé)
     snippet: str = ""
     path: str = ""
     landing_page_url: str = ""
@@ -236,6 +245,54 @@ class CampaignSpec:
     end: str = ""
     placements: Dict[str, PlacementSpec] = field(default_factory=dict)
     ads: Dict[str, dict] = field(default_factory=dict)   # ad_name -> {"placements": [...], "creatives": [...]}
+
+
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif"}
+VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mpg", ".mpeg", ".avi", ".wmv"}
+CTYPE_ALIASES = {
+    "REDIRECT": "REDIRECT", "TAG": "REDIRECT", "IMAGE": "IMAGE", "DISPLAY": "IMAGE",
+    "VIDEO": "VIDEO", "INSTREAM": "VIDEO", "INSTREAM_VIDEO": "VIDEO",
+    "TRACKING": "TRACKING",
+}
+CATEGORY_TO_CTYPE = {"display": "IMAGE", "video": "VIDEO", "tracking": "TRACKING"}
+
+
+def resolve_creative_type(explicit: str, category: str, snippet: str,
+                          path: str) -> Tuple[str, bool, str]:
+    """Détermine le type de créative. Renvoie (type, auto, erreur).
+    Priorité : creative_type explicite > creative_category > déduction
+    (snippet -> REDIRECT ; fichier image -> IMAGE ; fichier vidéo -> VIDEO ;
+    rien de partagé -> TRACKING généré automatiquement)."""
+    if explicit:
+        ctype = CTYPE_ALIASES.get(explicit.strip().upper())
+        if not ctype:
+            return "", False, (f"creative_type inconnu '{explicit}' "
+                               "(REDIRECT, IMAGE, VIDEO ou TRACKING).")
+        return ctype, False, ""
+    cat = (category or "").strip().lower()
+    if cat:
+        if cat not in CATEGORY_TO_CTYPE:
+            return "", False, f"creative_category inconnue '{category}' (display, video ou tracking)."
+        if cat == "display" and snippet and not path:
+            return "REDIRECT", False, ""
+        return CATEGORY_TO_CTYPE[cat], False, ""
+    if snippet:
+        return "REDIRECT", False, ""
+    if path:
+        ext = os.path.splitext(path)[1].lower()
+        if ext in VIDEO_EXT:
+            return "VIDEO", False, ""
+        if ext in IMAGE_EXT:
+            return "IMAGE", False, ""
+        return "", False, (f"format de fichier non géré '{ext or path}' "
+                           "(image : png/jpg/gif ; vidéo : mp4/mov/webm...).")
+    return "TRACKING", True, ""
+
+
+def _ctype_label(c: "CreativeSpec") -> str:
+    """Libellé lisible : « VIDEO in-stream », « TRACKING auto »..."""
+    return {"VIDEO": "VIDEO in-stream", "IMAGE": "IMAGE display",
+            "REDIRECT": "REDIRECT display"}.get(c.ctype, c.ctype) + (" auto" if c.auto else "")
 
 
 def _as_bool(v: str) -> bool:
@@ -322,12 +379,13 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
             )
 
         # Créative
-        ctype = (get("creative_type") or "REDIRECT").upper()
-        if ctype not in ("REDIRECT", "IMAGE"):
-            fail(idx, f"creative_type inconnu '{ctype}' (REDIRECT ou IMAGE).")
+        ctype, auto, err = resolve_creative_type(
+            get("creative_type"), get("creative_category"), get("snippet"), get("creative_path"))
+        if err:
+            fail(idx, err)
             continue
         creative = CreativeSpec(
-            name=creative_name, ctype=ctype,
+            name=creative_name, ctype=ctype, auto=auto,
             snippet=get("snippet"), path=get("creative_path"),
             landing_page_url=lp or (camp.ads.get(ad_name) or {}).get("landing_page_url", ""),
             active=_as_bool(get("active") or "1"),
@@ -336,8 +394,14 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
         if ctype == "REDIRECT" and not creative.snippet:
             fail(idx, "snippet manquant pour une créative REDIRECT.")
             continue
-        if ctype == "IMAGE" and not creative.path:
-            fail(idx, "creative_path manquant pour une créative IMAGE.")
+        if ctype in ("IMAGE", "VIDEO") and not creative.path:
+            fail(idx, f"creative_path manquant pour une créative {ctype}.")
+            continue
+        if ctype == "VIDEO" and os.path.splitext(creative.path)[1].lower() not in VIDEO_EXT:
+            fail(idx, f"fichier '{creative.path}' : extension vidéo attendue pour une créative VIDEO.")
+            continue
+        if ctype == "IMAGE" and os.path.splitext(creative.path)[1].lower() not in IMAGE_EXT:
+            fail(idx, f"fichier '{creative.path}' : extension image attendue pour une créative IMAGE.")
             continue
 
         # Annonce (fusion des lignes partageant le même ad_name)
@@ -354,6 +418,13 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
         if lp:
             ad["landing_page_url"] = lp
 
+    # Une annonce de tracking ne peut pas mélanger tracking et créatives affichées
+    for camp in plan.values():
+        for ad_name, ad in camp.ads.items():
+            kinds = {c.ctype == "TRACKING" for c in ad["creatives"]}
+            if len(kinds) > 1:
+                errors.append(f"Annonce '{ad_name}' : mélange de créatives TRACKING et "
+                              "affichées/vidéo — séparez-les en deux annonces.")
     return plan, errors
 
 
@@ -368,7 +439,7 @@ def print_plan_summary(plan: Dict[str, CampaignSpec], errors: List[str]) -> None
         for ad_name, ad in camp.ads.items():
             print(f"  Annonce : {ad_name} -> placements {ad['placements']} — "
                   f"{len(ad['creatives'])} créative(s) : "
-                  + ", ".join(f"{c.name} ({c.ctype})" for c in ad["creatives"]))
+                  + ", ".join(f"{c.name} ({_ctype_label(c)})" for c in ad["creatives"]))
     for e in errors:
         print("  [ERREUR] " + e)
 
@@ -839,7 +910,40 @@ class CM360Adapter(TraffickingAdapter):
                 "snippet": c.snippet,
                 "backupImageClickThroughUrl": c.landing_page_url,
             }
-        else:  # IMAGE
+        elif c.ctype == "TRACKING":
+            # Créative de tracking : aucun fichier, aucune taille. La destination
+            # est portée par l'annonce (AD_SERVING_TRACKING). Types CM360 à valider
+            # avec un accès réel.
+            body = {
+                "advertiserId": advertiser_id,
+                "name": c.name,
+                "type": "TRACKING_TEXT",
+                "active": c.active,
+            }
+        elif c.ctype == "VIDEO":
+            # Vidéo in-stream : fichier uploadé comme asset VIDEO (envoi reprenable).
+            from googleapiclient.http import MediaFileUpload
+            full_path = resolve_creative_path(c.path, self.creatives_dir)
+            if not os.path.isfile(full_path):
+                raise ValueError(f"Créative VIDEO '{c.name}' : fichier introuvable ({full_path}).")
+            asset = self._call(
+                self.svc.creativeAssets().insert,
+                profileId=self.profile, advertiserId=advertiser_id,
+                body={"assetIdentifier": {"name": os.path.basename(full_path),
+                                          "type": "VIDEO"}},
+                media_body=MediaFileUpload(full_path, resumable=True))
+            body = {
+                "advertiserId": advertiser_id,
+                "name": c.name,
+                "type": "INSTREAM_VIDEO",
+                "active": c.active,
+                "creativeAssets": [{
+                    "assetIdentifier": asset["assetIdentifier"],
+                    "role": "PRIMARY",
+                }],
+                "backupImageClickThroughUrl": c.landing_page_url,
+            }
+        else:  # IMAGE (display)
             full_path = resolve_creative_path(c.path, self.creatives_dir)
             if not os.path.isfile(full_path):
                 raise ValueError(f"Créative IMAGE '{c.name}' : fichier introuvable ({full_path}).")
@@ -866,7 +970,7 @@ class CM360Adapter(TraffickingAdapter):
             }
         cr = self._call(self.svc.creatives().insert,
                         profileId=self.profile, body=body)
-        self.log(f"  Créative créée : {c.name} ({c.ctype}, id {cr['id']})")
+        self.log(f"  Créative créée : {c.name} ({_ctype_label(c)}, id {cr['id']})")
         self._record("creatives", c.name, cr["id"], True)
 
         # Obligatoire : associer la créative à la campagne AVANT l'annonce.
@@ -890,7 +994,9 @@ class CM360Adapter(TraffickingAdapter):
             "campaignId": campaign_id,
             "name": ad_name,
             "active": True,
-            "type": "AD_SERVING_STANDARD_AD",
+            "type": ("AD_SERVING_TRACKING"
+                     if all(c.ctype == "TRACKING" for c in ad["creatives"])
+                     else "AD_SERVING_STANDARD_AD"),
             "creativeRotation": {
                 "type": "CREATIVE_ROTATION_TYPE_RANDOM",
                 "creativeAssignments": [
@@ -1006,7 +1112,8 @@ class AdformAdapter(TraffickingAdapter):
                         width: int, height: int) -> int:
         raise NotImplementedError(
             "AdformAdapter.ensure_creative : à implémenter avec l'accès réel "
-            "(banners de l'API Adform).")
+            "(banners de l'API Adform). Typage déjà fourni par le plan : "
+            f"{c.ctype} (display / vidéo in-stream / tracking).")
 
     def ensure_ad(self, campaign_id: int, ad_name: str, ad: dict,
                   placement_ids: List[int], creative_ids: Dict[str, int]) -> int:
@@ -1065,7 +1172,7 @@ class MockAdapter(TraffickingAdapter):
                         width: int, height: int) -> int:
         # Mock : le fichier image n'est pas lu (simulation), pas de contrôle d'existence.
         return self._mock_id("creatives", c.name,
-                             f"Créative créée : {c.name} ({c.ctype}, {width}x{height})")
+                             f"Créative créée : {c.name} ({_ctype_label(c)}, {width}x{height})")
 
     def ensure_ad(self, campaign_id: int, ad_name: str, ad: dict,
                   placement_ids: List[int], creative_ids: Dict[str, int]) -> int:
