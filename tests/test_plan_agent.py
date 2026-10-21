@@ -267,3 +267,27 @@ def test_client_value_is_not_mistaken_for_a_label(tmp_path):
         ["Annonceur", "Client Démo"], ["Campagne", "Hiver"], ["Début", "2026-11-02"], ["Fin", "2026-12-15"]])
     camp = next(iter(plan.values()))
     assert (camp.advertiser_name, camp.name) == ("Client Démo", "Hiver")
+
+
+def test_one_plan_one_campaign_one_advertiser(tmp_path):
+    p = _xlsx(tmp_path / "multi.xlsx", [("Plan", [
+        ["Annonceur", "Campagne", "Objectif", "Régie", "Emplacement", "Format", "Début", "Fin", "URL"],
+        ["Démo", "Hiver", "Notoriété", "Le Monde", "Home", "Pavé", "2026-11-02", "2026-12-15", "https://x.fr"],
+        ["Démo SA", "Hiver Trafic", "Trafic", "Le Monde", "Article", "Pavé", "2026-11-10", "2026-12-20", "https://x.fr"],
+        ["Démo", "Hiver", "Trafic", "L'Équipe", "Preroll", "Preroll", "2026-11-02", "2026-12-15", "https://x.fr"],
+    ])])
+    rows, plan, errors, report = _plan(p)
+    assert errors == [] and len(plan) == 1
+    camp = next(iter(plan.values()))
+    assert (camp.name, camp.advertiser_name) == ("Hiver", "Démo")
+    assert (camp.start, camp.end) == ("2026-11-02", "2026-12-20")      # période couvrant tout
+    assert "1 plan = 1 campagne" in report and "1 plan = 1 annonceur" in report
+
+
+def test_typed_campaign_wins_for_the_whole_plan(tmp_path):
+    p = _xlsx(tmp_path / "m.xlsx", [("Plan", [
+        ["Campagne", "Emplacement", "Format", "Début", "Fin", "URL"],
+        ["A", "Home", "Pavé", "2026-11-02", "2026-12-15", "https://x.fr"],
+        ["B", "Article", "Pavé", "2026-11-02", "2026-12-15", "https://x.fr"]])])
+    rows, plan, errors, report = _plan(p, campaign_name="Saisie")
+    assert [c.name for c in plan.values()] == ["Saisie"]

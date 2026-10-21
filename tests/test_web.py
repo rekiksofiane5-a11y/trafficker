@@ -203,3 +203,19 @@ def test_split_screen_edit_updates_preview(page, tmp_path):
     page.fill('#editor tr[data-row="1"] input[data-key="placement_name"]', "Article")
     page.fill('#editor tr[data-row="1"] input[data-key="format_label"]', "Méga-bannière")
     page.wait_for_function("document.getElementById('preview-pane').innerText.includes('728 × 90')", timeout=15000)
+
+
+def test_campaign_header_applies_to_all_rows(page, tmp_path):
+    p = tmp_path / "entete.csv"
+    p.write_text("Objectif,Régie,Emplacement,Format,URL\n"
+                 "Notoriété,Le Monde,Home,Pavé,https://x.fr\n"
+                 "Trafic,Le Monde,Article,Pavé,https://x.fr\n", encoding="utf-8")
+    _analyze(page, str(p))
+    assert page.is_visible("#cf-campaign_name")
+    page.fill("#cf-campaign_name", "Printemps 2027")
+    page.fill("#cf-campaign_start", "01/03/2027")
+    page.fill("#cf-campaign_end", "31/03/2027")
+    page.wait_for_function("document.getElementById('preview-pane').innerText.includes('Printemps 2027')", timeout=15000)
+    pane = page.inner_text("#preview-pane")
+    assert "01/03/2027" in pane and pane.count("Printemps 2027") == 1        # une seule campagne
+    assert "PACKAGE-LE_MONDE-NOTORIETE" in pane and "PACKAGE-LE_MONDE-TRAFIC" in pane

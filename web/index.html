@@ -35,6 +35,11 @@ table.ed input:focus { border-color: var(--accent); outline: none; background: v
 table.ed td.cell-missing input { background: color-mix(in srgb, var(--warn) 14%, transparent); }
 table.ed td.cell-missing input::placeholder { color: var(--warn); font-style: italic; }
 table.ed .rm { background: none; color: var(--muted); padding: 2px 6px; font-weight: 400; }
+.camp-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 8px; margin: 8px 0; }
+.camp-form label { font-size: .78rem; margin: 0; }
+.camp-form input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
+                   background: var(--card); color: var(--text); font: inherit; margin-top: 2px; }
+.camp-form input.cell-missing { border-color: var(--warn); }
 .sync { font-size: .8rem; color: var(--muted); margin-left: 8px; }
 header h1 { margin: 0; font-size: 1.6rem; }
 header p { margin: 4px 0 0; color: var(--muted); }
@@ -141,6 +146,13 @@ a { color: var(--accent); }
       <div class="pane" aria-labelledby="t-pm">
         <h3 id="t-pm">Plan média classé par l'agent <span class="hint">— modifiable</span><span id="sync" class="sync" role="status"></span></h3>
         <p class="hint">Chaque modification met à jour l'aperçu. Cases orange : à compléter.</p>
+        <div class="camp-form" id="camp-form">
+          <label>Campagne<input id="cf-campaign_name" data-cf="campaign_name" placeholder="à compléter"></label>
+          <label>Annonceur<input id="cf-advertiser_name" data-cf="advertiser_name" placeholder="à compléter"></label>
+          <label>Début<input id="cf-campaign_start" data-cf="campaign_start" placeholder="JJ/MM/AAAA"></label>
+          <label>Fin<input id="cf-campaign_end" data-cf="campaign_end" placeholder="JJ/MM/AAAA"></label>
+        </div>
+        <p class="hint">1 plan média = 1 annonceur = 1 campagne → objectifs → régies → emplacements → créatives.</p>
         <div class="table-wrap" id="editor"></div>
         <div class="actions"><button id="add-row" class="secondary">+ Ajouter une ligne</button></div>
       </div>
@@ -373,11 +385,33 @@ function editorRow(row, i) {
   return tr;
 }
 
+// En-tête de campagne : saisi une fois, appliqué à toutes les lignes du plan
+function renderCampaignForm(camp) {
+  for (const input of document.querySelectorAll("#camp-form input")) {
+    const k = input.dataset.cf;
+    const v = camp[k] || "";
+    input.value = (k === "campaign_start" || k === "campaign_end") ? isoToFr(v) : v;
+    input.classList.toggle("cell-missing", !input.value.trim() && k !== "advertiser_name");
+  }
+}
+for (const input of document.querySelectorAll("#camp-form input")) {
+  input.addEventListener("input", () => {
+    const k = input.dataset.cf;
+    for (const row of table) row[k] = input.value;
+    input.classList.toggle("cell-missing", !input.value.trim() && k !== "advertiser_name");
+    scheduleRebuild();
+  });
+}
+function campaignValues() {
+  const out = {};
+  for (const input of document.querySelectorAll("#camp-form input")) out[input.dataset.cf] = input.value;
+  return out;
+}
+
 $("add-row").addEventListener("click", () => {
   const last = table[table.length - 1] || {};
-  const keep = ["campaign_name", "advertiser_name", "campaign_start", "campaign_end", "site_name",
-                "package", "objective", "audience", "targeting", "landing_page_url"];
-  const row = {};
+  const keep = ["site_name", "package", "objective", "audience", "targeting", "device", "landing_page_url"];
+  const row = campaignValues();
   for (const k of keep) if (last[k]) row[k] = last[k];
   table.push(row);
   renderEditor({table, columns});
@@ -420,7 +454,7 @@ $("analyze").addEventListener("click", async () => {
     $("result").classList.remove("hidden");
     document.querySelector("main").classList.add("wide");
     applyResult(d);
-    if (!d.fatal) renderEditor(d);
+    if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); }
     $("output").classList.add("hidden");
     $("result").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (e) {

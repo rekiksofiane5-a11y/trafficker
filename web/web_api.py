@@ -94,18 +94,20 @@ def preview(plan) -> list:
 
 
 # Colonnes du tableau modifiable (ordre, libellé) ; « toujours » = affichées même vides
+# 1 plan média = 1 annonceur = 1 campagne : campagne, annonceur et dates se saisissent
+# une fois (en-tête du volet), pas par ligne.
+CAMPAIGN_FIELDS = ["campaign_name", "advertiser_name", "campaign_start", "campaign_end"]
 TABLE_COLUMNS = [
-    ("campaign_name", "Campagne"), ("advertiser_name", "Annonceur"), ("campaign_start", "Début"),
-    ("campaign_end", "Fin"), ("site_name", "Régie / site"), ("package", "Package"),
-    ("objective", "Objectif"), ("audience", "Audience"), ("targeting", "Ciblage"),
+    ("objective", "Objectif"), ("site_name", "Régie / site"), ("package", "Package"),
+    ("audience", "Audience"), ("targeting", "Ciblage"), ("device", "Devices"),
     ("placement_name", "Emplacement"), ("format_label", "Format"), ("size", "Dimensions"),
     ("placement_category", "Catégorie"), ("pricing_type", "Achat"), ("ad_name", "Annonce"),
     ("creative_name", "Créative"), ("message", "Message"), ("creative_path", "Fichier créatif"),
     ("snippet", "Tag"), ("landing_page_url", "URL de destination"), ("budget_eur", "Budget €"),
     ("objective_impressions", "Volume"),
 ]
-ALWAYS = {"campaign_name", "campaign_start", "campaign_end", "site_name", "objective", "audience",
-          "targeting", "placement_name", "format_label", "size", "creative_name", "landing_page_url"}
+ALWAYS = {"site_name", "objective", "audience", "targeting", "placement_name", "format_label", "size",
+          "creative_name", "landing_page_url"}
 
 
 def _normalize(rows: list) -> list:
@@ -168,11 +170,14 @@ def _build(rows: list, nomenclature_json: str, creatives_dir: str, report: list)
                      for c in ad["creatives"]})
     _STATE.update(plan=plan, rows=rows, nomen=nomenclature_json, creatives_dir=creatives_dir)
     present = {k for r in rows for k, v in r.items() if v}
+    first = rows[0] if rows else {}
+    campaign = {f: first.get(f, "") for f in CAMPAIGN_FIELDS}
     columns = [{"key": k, "label": lbl} for k, lbl in TABLE_COLUMNS if k in ALWAYS or k in present]
     return json.dumps({
         "rows": len(rows), "errors": errors, "renames": renames, "ingest": report,
         "campaigns": _summary(plan), "specs": specs, "to_complete": plan_gaps(plan),
         "preview": preview(plan), "table": [dict(r) for r in rows], "columns": columns,
+        "campaign": campaign,
         "spec_refs": [s for s in (spec_summary(t) for t in ctypes) if s],
     }, ensure_ascii=False, default=str)
 

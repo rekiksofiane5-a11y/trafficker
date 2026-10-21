@@ -302,6 +302,7 @@ class PlacementSpec:
     targeting: str = ""      # ciblage — nomenclature
     format_label: str = ""   # format tel qu'écrit dans le plan (« Pavé »...), sinon la taille
     package: str = ""        # package CM360 (groupe d'emplacements), colonne optionnelle
+    device: str = ""         # devices (desktop, mobile, multidevice...) — granularité
 
 @dataclass
 class CampaignSpec:
@@ -532,7 +533,7 @@ def plan_from_rows(rows: List[Dict[str, str]], allow_incomplete: bool = False
                 if get("placement_category").lower() in PLACEMENT_CATEGORIES else "",
                 objective=get("objective"), audience=get("audience"),
                 targeting=get("targeting"), format_label=get("format_label"),
-                package=get("package"),
+                package=get("package"), device=get("device"),
             )
 
         # Créative
@@ -747,6 +748,8 @@ BASE_NOMENCLATURE = {
     "defaults": {
         "placement": "{objective}-{audience}-{regie}-{targeting}-{format}",
         "ad": "{placement_name}",
+        # Package CM360 = régie + objectif (créé si le plan n'en donne pas)
+        "package": "Package-{regie}-{objective}",
         "creative": "{regie}-{format}-{message}",
         "options": {"separator": "_", "case": "upper", "strip_accents": True,
                     "max_length": 255, "forbidden": []},
@@ -802,6 +805,10 @@ def apply_nomenclature(plan: Dict[str, CampaignSpec], naming: dict,
         need = rules.get("require_any") or []
         if need and not any(getattr(p, f, "") for p in camp.placements.values() for f in need):
             continue          # nomenclature de base sans données : noms d'origine conservés
+        if rules.get("package"):
+            for p in camp.placements.values():
+                if not p.package and p.objective:
+                    p.package = _apply_pattern(rules["package"], _pattern_context(camp, p=p), opts)
         if rules.get("placement"):
             new_placements: Dict[str, PlacementSpec] = {}
             used: set = set()

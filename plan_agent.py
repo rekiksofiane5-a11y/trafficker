@@ -809,6 +809,7 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
                     r["campaign_name"] = fallback
             report.append(f"campaign_name ← {origin} : « {fallback} » (à vérifier — sinon "
                           "saisissez la campagne dans les réglages ou surlignez-la en jaune).")
+    unify_campaign(rows, report, campaign_name, advertiser_name)
     _campaign_period(rows, report)
     _aggregate_campaign_totals(rows, cols, report)
 
@@ -826,6 +827,25 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
         report.append("Introuvables dans le plan, laissés vides (à compléter) : " + ", ".join(missing)
                       + (" — renseignez la campagne dans les réglages." if "campaign_name" in missing else ""))
     return rows, report
+
+
+def unify_campaign(rows: List[Dict[str, str]], report: List[str], campaign_name: str = "",
+                   advertiser_name: str = "") -> None:
+    """Règle : 1 plan média = 1 annonceur = 1 campagne. Valeurs différentes sur les
+    lignes -> une seule (saisie, sinon la plus fréquente), signalée dans le rapport."""
+    from collections import Counter
+    for f, given, label in (("campaign_name", campaign_name, "campagne"),
+                            ("advertiser_name", advertiser_name, "annonceur")):
+        values = Counter(r.get(f, "") for r in rows if r.get(f))
+        if not values:
+            continue
+        keep = given or values.most_common(1)[0][0]
+        if len(values) > 1:
+            others = [v for v in values if v != keep]
+            report.append(f"1 plan = 1 {label} : « {keep} » retenu "
+                          f"(autres valeurs trouvées : {', '.join(others[:5])}).")
+        for r in rows:
+            r[f] = keep
 
 
 def _campaign_period(rows: List[Dict[str, str]], report: List[str]) -> None:

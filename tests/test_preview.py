@@ -66,3 +66,18 @@ def test_rebuild_after_edit_updates_preview():
     pl = [r for r in d2["preview"] if r["kind"] == "placement"][0]
     assert pl["dimensions"] == "300 × 250" and pl["start"] == "02/11/2026"
     assert {c["key"] for c in d2["columns"]} >= {"objective", "audience", "format_label"}
+
+
+def test_package_per_regie_and_objective_and_devices():
+    import json
+    rows = [dict(ROWS[2], placement_name="Home", objective="Notoriété", device="Mobile"),
+            dict(ROWS[2], placement_name="Home2", objective="Notoriété", device="Desktop"),
+            dict(ROWS[2], placement_name="Art", objective="Trafic", ad_name="A2", creative_name="K2")]
+    web_api._STATE.clear()
+    d = json.loads(web_api._build(rows, "", "", []))
+    tree = [(r["level"], r["kind"], r["name"]) for r in d["preview"]]
+    pk = [n for lvl, k, n in tree if k == "package"]
+    assert pk == ["PACKAGE-LE_MONDE-NOTORIETE", "PACKAGE-LE_MONDE-TRAFIC"]
+    assert {c["key"] for c in d["columns"]} >= {"device", "objective"}
+    assert "campaign_name" not in {c["key"] for c in d["columns"]}           # saisi en en-tête
+    assert d["campaign"]["campaign_name"] == "Hiver"
