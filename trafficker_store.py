@@ -51,10 +51,12 @@ def save_job(job_id: str, state: dict) -> None:
              json.dumps(safe_delivery, ensure_ascii=False) if safe_delivery.get("rows") else None))
 
 
-def load_job(job_id: str) -> Optional[dict]:
+def load_job(job_id: str, max_age: Optional[int] = None) -> Optional[dict]:
+    """Charge un job ; avec `max_age`, un job plus ancien est ignoré (rétention)."""
+    oldest = time.time() - max_age if max_age is not None else 0
     with _lock, _conn() as c:
         r = c.execute("SELECT label, created, done, error, log, report, delivery"
-                      " FROM jobs WHERE id = ?", (job_id,)).fetchone()
+                      " FROM jobs WHERE id = ? AND created >= ?", (job_id, oldest)).fetchone()
     if not r:
         return None
     return {"label": r[0], "created": r[1], "done": bool(r[2]), "error": r[3],
@@ -62,10 +64,11 @@ def load_job(job_id: str) -> Optional[dict]:
             "delivery": json.loads(r[6]) if r[6] else {}}
 
 
-def list_jobs(limit: int = 20) -> List[Dict]:
+def list_jobs(limit: int = 20, max_age: Optional[int] = None) -> List[Dict]:
+    oldest = time.time() - max_age if max_age is not None else 0
     with _lock, _conn() as c:
-        rows = c.execute("SELECT id, label, done, error FROM jobs"
-                         " ORDER BY created DESC LIMIT ?", (limit,)).fetchall()
+        rows = c.execute("SELECT id, label, done, error FROM jobs WHERE created >= ?"
+                         " ORDER BY created DESC LIMIT ?", (oldest, limit)).fetchall()
     return [{"id": r[0], "label": r[1], "done": bool(r[2]), "error": bool(r[3])}
             for r in rows]
 

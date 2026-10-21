@@ -6,7 +6,7 @@ Couche adops côté agence, au-dessus de deux ad servers : CM360 et Adform (pér
 
 ```bash
 python -m venv venv && . venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -c requirements.lock   # versions figées
 python cm360_trafficker.py plan_media_template.csv --dry-run          # 1. validation
 python cm360_trafficker.py plan_media_template.csv --platform mock     # 2. démo
 python cm360_trafficker_ui.py                                          # 3. UI -> http://127.0.0.1:5000
@@ -96,7 +96,13 @@ export TRAFFICKER_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_h
 docker compose up -d --build
 ```
 
-gunicorn (1 processus, 8 threads), utilisateur non root, base SQLite dans un volume, cookie de session `Secure`, HTTPS et HSTS par Caddy, sonde `/healthz`. À la charge de l'agence : hébergeur dans l'UE et DPA signés (voir `conformite_rgpd.md`). Le Dockerfile n'a pas été construit dans l'environnement de développement (pas de Docker) ; gunicorn a été testé.
+gunicorn (**1 seul processus obligatoire**, 8 threads : jobs en cours, jetons d'analyse et compteur anti-force brute vivent en mémoire — plusieurs workers ou plusieurs conteneurs derrière un répartiteur les casseraient ; passer à Redis/SQLite pour ces états avant de monter en charge), utilisateur non root, base SQLite dans un volume, cookie de session `Secure`, HTTPS et HSTS par Caddy, sonde `/healthz`. À la charge de l'agence : hébergeur dans l'UE et DPA signés (voir `conformite_rgpd.md`). Le Dockerfile n'a pas été construit dans l'environnement de développement (pas de Docker) ; gunicorn a été testé.
+
+## Sécurité et rétention
+
+- Login actif : **toutes** les routes exigent la session (garde global `before_request`), sauf `/login` et `/healthz` ; un test parcourt la table des routes pour qu'aucune nouvelle route n'y échappe.
+- ZIP de créatives : extraction contrôlée (`safe_extract`) — refus des chemins absolus, `..`, lettres de lecteur, liens symboliques ; 200 fichiers et 200 Mo décompressés au plus (comptés pendant l'extraction).
+- Rétention 1 h : worker démarré dès le chargement de l'UI (quel que soit le serveur), purge aussi déclenchée par les requêtes (au plus une fois par minute), et un job expiré n'est jamais relu, même avant la purge.
 
 ## Tests
 

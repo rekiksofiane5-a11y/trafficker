@@ -24,6 +24,7 @@ job, jobs et rapports au plus tard 1 h après), secrets jamais journalisés.
 
 import html as _html
 import json
+import re
 import os
 import shutil
 import threading
@@ -531,10 +532,13 @@ def analyze():
         zipf.save(zpath)
         try:
             with zipfile.ZipFile(zpath) as z:
-                z.extractall(creatives_dir)
+                safe_extract(z, creatives_dir)
         except zipfile.BadZipFile:
             shutil.rmtree(creatives_dir, ignore_errors=True)
             return jsonify({"error": "ZIP de créatives invalide."})
+        except ValueError as e:
+            shutil.rmtree(creatives_dir, ignore_errors=True)
+            return jsonify({"error": f"ZIP de créatives refusé : {e}"})
         os.remove(zpath)
 
     renames: list = []
@@ -651,9 +655,17 @@ def run():
     return jsonify({"job_id": job_id})
 
 
+def _live_job(job_id: str):
+    """Job en mémoire ou en base, jamais au-delà de la durée de rétention."""
+    state = JOBS.get(job_id) or store.load_job(job_id, max_age=RETENTION_SECONDS)
+    if state and time.time() - state.get("created", 0) > RETENTION_SECONDS:
+        return None
+    return state
+
+
 @app.route("/status/<job_id>")
 def status(job_id):
-    state = (JOBS.get(job_id) or store.load_job(job_id)
+    state = (_live_job(job_id)
              or {"log": [], "done": True, "error": "job inconnu"})
     return jsonify({"log": state["log"], "done": state["done"], "error": state["error"]})
 
@@ -706,7 +718,7 @@ def adform_bulk(token):
 @app.route("/delivery/<job_id>", methods=["POST"])
 def delivery(job_id):
     """Rapport de diffusion + réconciliation pour le plan d'un job (lecture seule)."""
-    state = JOBS.get(job_id) or store.load_job(job_id)
+    state = _live_job(job_id)
     if not state or not state.get("delivery", {}).get("rows"):
         return jsonify({"error": "Plan introuvable (job inconnu ou purge après 1 h)."})
     d = state["delivery"]
@@ -757,19 +769,63 @@ def jobs_list():
         items.append({"id": jid, "label": st.get("label", "Trafficking"),
                       "done": st["done"], "error": bool(st["error"])})
     seen = {i["id"] for i in items}
-    items += [j for j in store.list_jobs() if j["id"] not in seen]   # jobs d'avant redémarrage
+    items += [j for j in store.list_jobs(max_age=RETENTION_SECONDS) if j["id"] not in seen]   # jobs d'avant redémarrage
     return jsonify({"jobs": items[:20]})
 
 
 @app.route("/report/<job_id>")
 def report(job_id):
-    state = JOBS.get(job_id) or store.load_job(job_id)
+    state = _live_job(job_id)
     if not state or not state.get("report"):
         return "<p>Rapport indisponible (job inconnu, échec, ou purge après 1 h).</p>"
     return app.response_class(
         json.dumps(state["report"], ensure_ascii=False, indent=2),
         mimetype="application/json",
         headers={"Content-Disposition": "attachment; filename=rapport_trafficking.json"})
+
+
+# ---------------------------------------------------------------------------
+# Extraction sûre du ZIP de créatives (zip-slip, zip bomb)
+# ---------------------------------------------------------------------------
+
+MAX_ZIP_FILES = 200
+MAX_ZIP_BYTES = 200 * 1024 * 1024   # 200 Mo décompressés au total
+
+
+def safe_extract(z: zipfile.ZipFile, dest: str) -> None:
+    """Extrait le ZIP dans `dest` en refusant : chemins absolus ou avec « .. »,
+    liens symboliques, plus de MAX_ZIP_FILES fichiers, plus de MAX_ZIP_BYTES
+    décompressés (compté pendant l'extraction : la taille annoncée par le ZIP
+    n'est pas crue sur parole)."""
+    root = os.path.realpath(dest)
+    infos = [i for i in z.infolist() if not i.is_dir()]
+    if len(infos) > MAX_ZIP_FILES:
+        raise ValueError(f"plus de {MAX_ZIP_FILES} fichiers.")
+    if sum(i.file_size for i in infos) > MAX_ZIP_BYTES:
+        raise ValueError("taille décompressée trop grande.")
+    for i in infos:
+        name = i.filename.replace("\\", "/")
+        parts = name.split("/")
+        if name.startswith("/") or ".." in parts or re.match(r"^[A-Za-z]:", name):
+            raise ValueError(f"chemin interdit « {i.filename} ».")
+        if (i.external_attr >> 16) & 0o170000 == 0o120000:
+            raise ValueError(f"lien symbolique interdit « {i.filename} ».")
+        target = os.path.realpath(os.path.join(root, name))
+        if not target.startswith(root + os.sep):
+            raise ValueError(f"chemin interdit « {i.filename} ».")
+    written = 0
+    for i in infos:
+        target = os.path.realpath(os.path.join(root, i.filename.replace("\\", "/")))
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with z.open(i) as src, open(target, "wb") as out:
+            while True:
+                chunk = src.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > MAX_ZIP_BYTES:
+                    raise ValueError("taille décompressée trop grande.")
+                out.write(chunk)
 
 
 # ---------------------------------------------------------------------------
@@ -796,12 +852,33 @@ def _retention_loop():
         purge_expired()
 
 
-# Purge RGPD lancée aussi sous un serveur WSGI (gunicorn), pas seulement en direct
-if os.environ.get("TRAFFICKER_WSGI") == "1":
-    threading.Thread(target=_retention_loop, daemon=True).start()
+_retention_started = threading.Event()
+_last_purge = [0.0]
+
+
+def start_retention() -> None:
+    """Démarre le worker de rétention une seule fois, quel que soit le mode de
+    lancement (python direct, gunicorn, flask run)."""
+    if not _retention_started.is_set():
+        _retention_started.set()
+        threading.Thread(target=_retention_loop, daemon=True).start()
+
+
+# Worker démarré dès l'import du module : python direct, gunicorn ou flask run.
+start_retention()
+
+
+@app.before_request
+def _retention_guard():
+    # Purge aussi à la lecture (au plus une fois par minute) : la rétention tient
+    # même si le serveur redémarre souvent ou si le worker n'a pas encore tourné.
+    if time.time() - _last_purge[0] > 60:
+        _last_purge[0] = time.time()
+        purge_expired()
+
 
 if __name__ == "__main__":
-    threading.Thread(target=_retention_loop, daemon=True).start()
+    start_retention()
     app.run(host=os.environ.get("TRAFFICKER_HOST", "127.0.0.1"),
             port=int(os.environ.get("TRAFFICKER_PORT", "5000")), debug=False)
 
