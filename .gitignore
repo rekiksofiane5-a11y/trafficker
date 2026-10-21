@@ -5,3 +5,5 @@ venv/
 cle*.json
 *.db
 .pytest_cache/
+node_modules/
+.wrangler/

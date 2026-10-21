@@ -7,3 +7,5 @@ tests
 .pytest_cache
 *.json.key
 cle*.json
+cloudflare
+node_modules

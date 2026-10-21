@@ -126,3 +126,13 @@ def test_purge_runs_on_requests(tmp_path, monkeypatch):
     ui._last_purge[0] = 0
     ui.app.test_client().get("/healthz")
     assert store.load_job("vieux") is None
+
+
+def test_cf_connecting_ip_only_when_trusted(auth_on, monkeypatch):
+    c = ui.app.test_client()
+    h = {"CF-Connecting-IP": "9.9.9.9"}
+    c.post("/login", data={"user": "admin", "password": "non"}, headers=h)
+    assert store.login_failures("9.9.9.9", 300) == 0          # en-tête ignoré par défaut
+    monkeypatch.setenv("TRAFFICKER_TRUST_CF", "1")
+    c.post("/login", data={"user": "admin", "password": "non"}, headers=h)
+    assert store.login_failures("9.9.9.9", 300) == 1

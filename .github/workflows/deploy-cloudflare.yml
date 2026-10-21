@@ -1,0 +1,40 @@
+# Déploiement de l'UI sur Cloudflare Containers, lancé à la main depuis GitHub :
+# onglet Actions -> deploy-cloudflare -> Run workflow.
+# Secrets GitHub requis (Settings -> Secrets and variables -> Actions) :
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, TRAFFICKER_PASSWORD
+name: deploy-cloudflare
+on: workflow_dispatch
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Vérifier les secrets
+        run: |
+          for v in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
+            [ -n "${!v}" ] || { echo "Secret GitHub manquant : $v"; exit 1; }
+          done
+          [ -n "${{ secrets.TRAFFICKER_PASSWORD }}" ] || { echo "Secret GitHub manquant : TRAFFICKER_PASSWORD"; exit 1; }
+      - run: npm ci
+      - name: Déployer le Worker et le conteneur
+        run: npx wrangler deploy
+      - name: Mot de passe (haché) et clé de session
+        env:
+          TRAFFICKER_PASSWORD: ${{ secrets.TRAFFICKER_PASSWORD }}
+        run: |
+          pip install -q werkzeug
+          HASH=$(python -c 'import os; from werkzeug.security import generate_password_hash as g; print(g(os.environ["TRAFFICKER_PASSWORD"]))')
+          KEY=$(openssl rand -hex 32)
+          echo "::add-mask::$HASH"; echo "::add-mask::$KEY"
+          printf '%s' "$HASH" | npx wrangler secret put TRAFFICKER_PASSWORD_HASH
+          printf '%s' "$KEY"  | npx wrangler secret put TRAFFICKER_SECRET_KEY

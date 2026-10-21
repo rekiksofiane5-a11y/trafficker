@@ -107,13 +107,22 @@ def _require_login():
     return jsonify({"error": "Authentification requise."}), 401
 
 
+def _client_ip() -> str:
+    """IP du visiteur. Derrière Cloudflare (TRAFFICKER_TRUST_CF=1), l'adresse vue par
+    le serveur est celle du proxy : on lit alors l'en-tête CF-Connecting-IP. À ne pas
+    activer sans Cloudflare devant (l'en-tête serait falsifiable)."""
+    if os.environ.get("TRAFFICKER_TRUST_CF") == "1" and request.headers.get("CF-Connecting-IP"):
+        return request.headers["CF-Connecting-IP"]
+    return request.remote_addr or "?"
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if not _auth_enabled():
         return redirect("/")
     if request.method == "GET":
         return LOGIN_PAGE.replace("__ERR__", "")
-    ip = request.remote_addr or "?"
+    ip = _client_ip()
     if store.login_failures(ip, ATTEMPT_WINDOW) >= MAX_ATTEMPTS:
         return (LOGIN_PAGE.replace("__ERR__", "<p class='err'>Trop d'essais, réessayez dans 5 minutes.</p>"), 429)
     ok_user = request.form.get("user", "") == os.environ.get("TRAFFICKER_USER", "admin")
