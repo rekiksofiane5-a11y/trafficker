@@ -134,7 +134,8 @@ def load_rows_from_path(path: str, campaign_name: str = "",
     # Cases surlignées en jaune : l'agent ne lit que celles-ci
     highlights = plan_agent.read_highlights(path)
     if highlights:
-        out, report = plan_agent.extract(grids, campaign_name, advertiser_name, highlights)
+        out, report = plan_agent.extract(grids, campaign_name, advertiser_name, highlights,
+                                         source_name=path)
         res = ingest.IngestedRows(out)
         res.ingest_report = report
         return res
@@ -147,7 +148,7 @@ def load_rows_from_path(path: str, campaign_name: str = "",
     if plan_agent.is_canonical(grids):
         return ingest.ingest_rows(rows, campaign_name, advertiser_name)
     # Plan « tel qu'il arrive » : l'agent retrouve chaque information
-    out, report = plan_agent.extract(grids, campaign_name, advertiser_name)
+    out, report = plan_agent.extract(grids, campaign_name, advertiser_name, source_name=path)
     res = ingest.IngestedRows(out)
     res.ingest_report = report
     return res
@@ -386,6 +387,32 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
     def fail(idx: int, msg: str):
         errors.append(f"Ligne {idx + 2} : {msg}")
 
+    def grouped(errs: List[str]) -> List[str]:
+        """« Ligne 2 : X », « Ligne 3 : X »… -> « Lignes 2 à 3 : X » (une erreur par cause)."""
+        order, lines = [], {}
+        for e in errs:
+            m = re.match(r"Ligne (\d+) : (.*)$", e, re.S)
+            key = m.group(2) if m else e
+            if key not in lines:
+                order.append(key)
+                lines[key] = []
+            if m:
+                lines[key].append(int(m.group(1)))
+        out = []
+        for key in order:
+            ns = lines[key]
+            hint = (" — renseignez la campagne (colonne, case jaune ou champ « Campagne »)."
+                    if key.startswith("campaign_name manquant") else "")
+            if not ns:
+                out.append(key)
+            elif len(ns) == 1:
+                out.append(f"Ligne {ns[0]} : {key}{hint}")
+            elif ns == list(range(ns[0], ns[-1] + 1)):
+                out.append(f"Lignes {ns[0]} à {ns[-1]} : {key}{hint}")
+            else:
+                out.append(f"Lignes {', '.join(map(str, ns))} : {key}{hint}")
+        return out
+
     for idx, r in enumerate(rows):
         get = lambda k: (r.get(k) or "").strip()
 
@@ -533,7 +560,7 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
             if len(kinds) > 1:
                 errors.append(f"Annonce '{ad_name}' : mélange de créatives TRACKING et "
                               "affichées/vidéo — séparez-les en deux annonces.")
-    return plan, errors
+    return plan, grouped(errors)
 
 
 def print_plan_summary(plan: Dict[str, CampaignSpec], errors: List[str]) -> None:

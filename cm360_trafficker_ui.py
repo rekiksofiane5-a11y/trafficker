@@ -568,14 +568,17 @@ def analyze():
     renames: list = []
     try:
         if f and f.filename:
-            suffix = os.path.splitext(f.filename)[1].lower()
-            tmp = os.path.join(os.environ.get("TMPDIR", "/tmp"),
-                               "plan_" + uuid.uuid4().hex + suffix)
+            # Nom d'origine conservé (sécurisé) : il peut servir de nom de campagne
+            from werkzeug.utils import secure_filename
+            tmpdir = os.path.join(os.environ.get("TMPDIR", "/tmp"), "plan_" + uuid.uuid4().hex)
+            os.makedirs(tmpdir)
+            name = secure_filename(f.filename) or ("plan" + os.path.splitext(f.filename)[1].lower())
+            tmp = os.path.join(tmpdir, name)
             f.save(tmp)
             try:
                 rows = load_rows_from_source(tmp, camp_name, adv_name)
             finally:
-                os.remove(tmp)
+                shutil.rmtree(tmpdir, ignore_errors=True)   # RGPD : purge immédiate
         else:
             rows = load_rows_from_source(sheet_url, camp_name, adv_name)
         plan, errors = plan_from_rows(rows)

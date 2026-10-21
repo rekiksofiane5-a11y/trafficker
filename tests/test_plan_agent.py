@@ -108,14 +108,14 @@ def test_several_sizes_in_one_cell(tmp_path):
     assert len({r["placement_name"] for r in rows}) == 3
 
 
-def test_missing_campaign_is_reported_not_invented(tmp_path):
+def test_missing_campaign_falls_back_to_file_name_flagged(tmp_path):
     p = _xlsx(tmp_path / "sans_campagne.xlsx", [("Plan", [
         ["Emplacement", "Format", "Début", "Fin", "URL"],
         ["Home", "300x250", "2026-11-02", "2026-12-15", "https://x.fr"],
     ])])
     rows, plan, errors, report = _plan(p)
-    assert "Introuvables dans le plan : campaign_name" in report
-    assert errors                                             # la validation bloque l'envoi
+    assert errors == [] and next(iter(plan.values())).name == "sans campagne"
+    assert "à vérifier" in report
 
 
 @pytest.mark.parametrize("raw,out", [
@@ -173,3 +173,41 @@ def test_explicit_iab_size_is_display_with_its_dimension(tmp_path):
     ps = next(iter(plan.values())).placements
     assert (ps["Home"].width, ps["Home"].height, ps["Home"].category) == (300, 600, "display")
     assert (ps["Mobile"].width, ps["Mobile"].height, ps["Mobile"].category) == (320, 50, "display")
+
+
+def test_campaign_from_file_name_when_absent(tmp_path):
+    p = _xlsx(tmp_path / "MIN._SANTE_Hiver_2026.xlsx", [("Feuil1", [
+        ["Emplacement", "Format", "Début", "Fin", "URL"],
+        ["Home", "300x250", "2026-11-02", "2026-12-15", "https://x.fr"],
+    ])])
+    rows, plan, errors, report = _plan(p)
+    assert errors == []
+    assert next(iter(plan.values())).name == "MIN. SANTE Hiver 2026"
+    assert "nom du fichier" in report and "à vérifier" in report
+
+
+def test_campaign_from_meaningful_sheet_name(tmp_path):
+    p = _xlsx(tmp_path / "export.xlsx", [("Campagne Noël 2026", [
+        ["Emplacement", "Format", "Début", "Fin", "URL"],
+        ["Home", "300x250", "2026-12-01", "2026-12-24", "https://x.fr"],
+    ])])
+    rows, plan, errors, report = _plan(p)
+    assert next(iter(plan.values())).name == "Campagne Noël 2026"
+
+
+def test_typed_campaign_wins_over_file_name(tmp_path):
+    p = _xlsx(tmp_path / "fichier.xlsx", [("Feuil1", [
+        ["Emplacement", "Format", "Début", "Fin", "URL"],
+        ["Home", "300x250", "2026-11-02", "2026-12-15", "https://x.fr"],
+    ])])
+    rows, plan, errors, report = _plan(p, campaign_name="Saisie")
+    assert next(iter(plan.values())).name == "Saisie"
+
+
+def test_repeated_errors_are_grouped():
+    rows = [{"campaign_name": "", "placement_name": f"P{i}", "size": "300x250", "ad_name": "A",
+             "creative_name": f"K{i}", "campaign_start": "2026-11-02", "campaign_end": "2026-12-15",
+             "landing_page_url": "https://x.fr"} for i in range(5)]
+    _, errors = plan_from_rows(rows)
+    assert len(errors) == 1
+    assert errors[0].startswith("Lignes 2 à 6 : campaign_name manquant") and "Campagne" in errors[0]

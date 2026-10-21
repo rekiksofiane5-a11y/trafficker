@@ -519,9 +519,18 @@ def _is_total(row: List[str]) -> bool:
     return any(RE_TOTAL.match(c or "") for c in row[:4])
 
 
+GENERIC_SHEET = re.compile(r"^(feuil(le)?|sheet|tableau|plan|plan[\s_-]*m[eé]dia|data|donn[eé]es|csv|export)\s*\d*$", re.I)
+
+
+def _clean_label(s: str) -> str:
+    s = os.path.splitext(os.path.basename(s or ""))[0]
+    s = re.sub(r"[_]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip(" .-")
+
+
 def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
-            advertiser_name: str = "", highlights: Optional[Highlights] = None
-            ) -> Tuple[List[Dict[str, str]], List[str]]:
+            advertiser_name: str = "", highlights: Optional[Highlights] = None,
+            source_name: str = "") -> Tuple[List[Dict[str, str]], List[str]]:
     """Lignes canoniques + rapport de provenance. Avec `highlights` (cases jaunes),
     seules les cases surlignées sont lues."""
     yellow_mode = bool(highlights and any(highlights.values()))
@@ -687,6 +696,20 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
         for f in ("campaign_start", "campaign_end"):
             if line.get(f):
                 line[f] = parse_date(line[f]) or line[f]
+    # Campagne introuvable (ni colonne, ni bloc d'infos, ni saisie) : nom de la feuille
+    # s'il est parlant, sinon nom du fichier — signalé « à vérifier »
+    if rows and not campaign_name and any(not r.get("campaign_name") for r in rows):
+        fallback, origin = "", ""
+        if not GENERIC_SHEET.match(sheet or ""):
+            fallback, origin = _clean_label(sheet), f"nom de la feuille « {sheet} »"
+        if not fallback and source_name:
+            fallback, origin = _clean_label(source_name), f"nom du fichier « {os.path.basename(source_name)} »"
+        if fallback:
+            for r in rows:
+                if not r.get("campaign_name"):
+                    r["campaign_name"] = fallback
+            report.append(f"campaign_name ← {origin} : « {fallback} » (à vérifier — sinon "
+                          "saisissez la campagne dans les réglages ou surlignez-la en jaune).")
     _campaign_period(rows, report)
     _aggregate_campaign_totals(rows, cols, report)
 

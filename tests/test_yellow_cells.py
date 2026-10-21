@@ -66,7 +66,8 @@ def test_campaign_not_highlighted_is_not_read(tmp_path):
     fills = {(1, 2): YELLOW}                                     # campagne non surlignée
     fills.update(_yellow_rows([5]))
     rows = load_rows_from_path(_book(tmp_path, ROWS, fills))
-    assert not rows[0].get("campaign_name")
+    assert rows[0]["campaign_name"] == "jaune"                  # pas « Hiver 2026 » : nom du fichier
+    assert any("à vérifier" in l for l in rows.ingest_report)
     rows = load_rows_from_path(_book(tmp_path, ROWS, fills), campaign_name="Saisie")
     assert rows[0]["campaign_name"] == "Saisie"
 

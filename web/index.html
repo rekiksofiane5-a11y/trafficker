@@ -262,7 +262,10 @@ $("analyze").addEventListener("click", async () => {
   try {
     const ext = planFile.name.toLowerCase().match(/\.(csv|xlsx|xlsm|xls)$/);
     if (!ext) throw new Error("Format non pris en charge (CSV, XLSX ou XLS).");
-    const path = "/tmp/plan_" + Date.now() + "." + ext[1];
+    // Nom d'origine conservé : il peut servir de nom de campagne (à vérifier)
+    const dir = "/tmp/up_" + Date.now();
+    py.FS.mkdirTree(dir);
+    const path = dir + "/" + planFile.name.replace(/[\/\\]/g, "_");
     py.FS.writeFile(path, new Uint8Array(await planFile.arrayBuffer()));
     const nomenFile = $("nomen").files[0];
     const nomen = nomenFile ? await nomenFile.text() : "";
