@@ -823,7 +823,7 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
         report.append("Colonnes non utilisées : " + ", ".join(ignored))
     missing = [f for f in ingest.REQUIRED if not any(x.get(f) for x in rows)]
     if missing:
-        report.append("Introuvables dans le plan : " + ", ".join(missing)
+        report.append("Introuvables dans le plan, laissés vides (à compléter) : " + ", ".join(missing)
                       + (" — renseignez la campagne dans les réglages." if "campaign_name" in missing else ""))
     return rows, report
 

@@ -52,6 +52,7 @@ from mcp.server.fastmcp import FastMCP
 from cm360_trafficker import (
     apply_nomenclature,
     naming_or_base,
+    plan_gaps,
     build_adapter,
     load_nomenclature,
     load_rows_from_path,
@@ -83,7 +84,7 @@ def _load_plan(source: str, nomenclature_path: str = "",
                 os.remove(src)
             except OSError:
                 pass
-    plan, errors = plan_from_rows(rows)
+    plan, errors = plan_from_rows(rows, allow_incomplete=True)
     renames = []
     naming = naming_or_base(load_nomenclature(nomenclature_path) if nomenclature_path else {})
     if naming and not errors:
@@ -96,6 +97,8 @@ def _plan_summary(plan, rows, renames, errors) -> str:
              f"{len(errors)} erreur(s)."]
     for line in getattr(rows, "ingest_report", []):
         lines.append("[INGESTION] " + line)
+    for line in plan_gaps(plan):
+        lines.append("[À COMPLÉTER] " + line + " (laissé vide)")
     for r in renames:
         lines.append("[NOMENCLATURE] " + r)
     for camp in plan.values():

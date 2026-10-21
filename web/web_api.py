@@ -9,7 +9,7 @@ import tempfile
 
 from cm360_trafficker import (
     _ctype_label, apply_nomenclature, build_adapter, load_nomenclature,
-    load_rows_from_path, naming_or_base, plan_from_rows, traffic_plan,
+    load_rows_from_path, naming_or_base, plan_from_rows, plan_gaps, traffic_plan,
 )
 
 # Plan analysé courant (une seule session : un onglet de navigateur)
@@ -48,7 +48,7 @@ def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
             os.remove(path)
         except OSError:
             pass
-    plan, errors = plan_from_rows(rows)
+    plan, errors = plan_from_rows(rows, allow_incomplete=True)
     renames = []
     if not errors:
         naming = {}
@@ -73,6 +73,7 @@ def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
         "ingest": list(getattr(rows, "ingest_report", [])),
         "campaigns": _summary(plan),
         "specs": specs,
+        "to_complete": plan_gaps(plan),
         "spec_refs": [s for s in (spec_summary(t) for t in ctypes) if s],
     }, ensure_ascii=False, default=str)
 
@@ -95,6 +96,8 @@ def run_demo() -> str:
 def delivery_demo() -> str:
     """Rapport de diffusion simulé + réconciliation (pacing impressions et dépense)."""
     from cm360_reporting import MockReportingAdapter, delivery_to_dict, report_for_plan
+    if any(not c.start or not c.end for c in _plan().values()):
+        raise ValueError("Dates de campagne à compléter avant le rapport de diffusion.")
     deliveries, flags = report_for_plan(_STATE["rows"] if _STATE.get("rows") else [],
                                         MockReportingAdapter(log=lambda m: None))
     return json.dumps(delivery_to_dict("mock", deliveries, flags), ensure_ascii=False)

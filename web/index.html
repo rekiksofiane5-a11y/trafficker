@@ -224,6 +224,12 @@ function renderSummary(d) {
     box.append(el("p", {class: "err"}, "À corriger avant tout envoi :"));
     box.append(el("ul", {class: "errors"}, ...d.errors.map((e) => el("li", {}, e))));
   }
+  if (d.to_complete && d.to_complete.length) {
+    box.append(el("h3", {}, "✏️ À compléter (laissé vide)"));
+    box.append(el("p", {class: "hint"}, "Non trouvé dans le plan : les exports contiennent ces cases vides, "
+      + "à remplir avant l'import. L'envoi réel vers l'ad server reste bloqué tant qu'elles manquent."));
+    box.append(el("ul", {class: "gaps"}, ...d.to_complete.map((g) => el("li", {}, g))));
+  }
   if (d.specs && d.specs.length) {
     const ICON = {erreur: "⛔", alerte: "⚠️", ok: "✅"};
     box.append(el("h3", {}, "Contrôle des créatives (specs CM360)"));

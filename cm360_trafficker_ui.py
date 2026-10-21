@@ -42,6 +42,7 @@ from cm360_trafficker import (
     _ctype_label,
     apply_nomenclature,
     naming_or_base,
+    plan_gaps,
     build_adapter,
     load_nomenclature,
     load_rows_from_source,
@@ -506,6 +507,8 @@ def _preview_html(rows, plan, errors, renames, token):
              f"<b>{len(errors)}</b> erreur(s).</p>"]
     for line in getattr(rows, "ingest_report", []):
         parts.append(f"<p class='hint'>🔎 {_html.escape(line)}</p>")
+    for line in plan_gaps(plan):
+        parts.append(f"<p class='hint'>✏️ {_html.escape(line)} (laissé vide)</p>")
     if renames:
         parts.append("<div class='card'><b>Nomenclatures de nommage appliquées "
                      f"({len(renames)} renommage(s)) :</b><ul>"
@@ -581,7 +584,7 @@ def analyze():
                 shutil.rmtree(tmpdir, ignore_errors=True)   # RGPD : purge immédiate
         else:
             rows = load_rows_from_source(sheet_url, camp_name, adv_name)
-        plan, errors = plan_from_rows(rows)
+        plan, errors = plan_from_rows(rows, allow_incomplete=True)
 
         # Couche de modification avant envoi : nomenclatures de l'annonceur
         nf = request.files.get("nomenclature")

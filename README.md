@@ -96,6 +96,10 @@ Base de référence : `specs/cm360_specs_creatives.xlsx` (12 specs officielles, 
 
 « Erreur » = refusé par CM360 : l'envoi et les exports sont bloqués. « Alerte » = accepté mais hors recommandation. Un fichier non joint est signalé sans bloquer. La version navigateur affiche aussi le rappel des specs de chaque type présent. Création HTML5/audio par l'API CM360 non encore validée : passer par l'export Campaign spreadsheet.
 
+## Informations introuvables : laissées vides, « à compléter »
+
+Ce que l'agent ne trouve pas (date de début, date de fin, URL de destination) n'est plus une erreur à la préparation : la case reste **vide** et l'aperçu liste « ✏️ À compléter » avec les objets concernés (campagne, annonces). Les exports CM360 et Adform sont produits avec ces cases vides, à remplir avant l'import ; la simulation l'indique. **L'envoi réel vers CM360/Adform reste bloqué** tant qu'une information manque, et une valeur présente mais invalide (date impossible, fin avant début) reste une erreur. Le rapport de diffusion demande les dates.
+
 ## Validation avant envoi
 
 Le dry-run (et l'UI) signalent : champs manquants, tailles invalides, dates inexistantes ou fin avant début, dates incohérentes entre lignes d'une même campagne, doublons de créatives, créatives sans snippet/chemin.

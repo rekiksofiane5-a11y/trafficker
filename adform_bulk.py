@@ -18,7 +18,7 @@ Valeurs par défaut reprises de l'exemple fourni : à adapter à chaque agence (
 import os
 import sys
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "templates", "adform_bulk_template.xlsx")
@@ -79,8 +79,9 @@ def _check_name(name: str) -> None:
                          + (f"caractères interdits {''.join(bad)}" if bad else "plus de 256 caractères"))
 
 
-def _date(s: str) -> datetime:
-    return datetime.strptime(s, "%Y-%m-%d")
+def _date(s: str) -> Optional[datetime]:
+    """Date absente du plan : case laissée vide (à compléter dans le classeur)."""
+    return datetime.strptime(s, "%Y-%m-%d") if s else None
 
 
 def write_adform_bulk(plan, path: str, campaign_type: str = "",

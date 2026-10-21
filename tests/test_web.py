@@ -167,3 +167,16 @@ def test_page_stays_responsive_on_a_heavy_workbook(page, tmp_path):
     assert time.time() - t0 < 2
     page.wait_for_function("!document.getElementById('analyze').disabled", timeout=120000)
     assert "3000 ligne(s)" in page.inner_text("#summary")
+
+
+def test_missing_info_left_empty_and_listed(page, tmp_path):
+    p = tmp_path / "incomplet.csv"
+    p.write_text("Campagne,Emplacement,Format\nHiver,Home,Pavé\nHiver,Article,Méga-bannière\n", encoding="utf-8")
+    _analyze(page, str(p))
+    text = page.inner_text("#summary")
+    assert "À compléter (laissé vide)" in text
+    assert "Date de début — à compléter" in text and "URL de destination — à compléter" in text
+    assert "erreur(s)" in text and "0 erreur(s)" in text
+    assert not page.is_disabled("#dl-cm360")                     # export possible, cases vides
+    page.click("#delivery")
+    page.wait_for_selector("text=Dates de campagne à compléter")

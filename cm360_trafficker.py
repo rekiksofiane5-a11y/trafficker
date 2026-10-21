@@ -310,6 +310,8 @@ class CampaignSpec:
     start: str = ""
     end: str = ""
     budget_eur: Optional[float] = None      # colonne optionnelle budget_eur
+    # Informations absentes du plan, laissées vides : {champ: [objets concernés]}
+    missing: Dict[str, List[str]] = field(default_factory=dict)
     placements: Dict[str, PlacementSpec] = field(default_factory=dict)
     ads: Dict[str, dict] = field(default_factory=dict)   # ad_name -> {"placements": [...], "creatives": [...]}
 
@@ -377,9 +379,17 @@ def _as_bool(v: str) -> bool:
     return str(v).strip().lower() in TRUE_VALUES
 
 
-def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec], List[str]]:
+GAP_LABELS = {"campaign_start": "Date de début", "campaign_end": "Date de fin",
+              "landing_page_url": "URL de destination"}
+
+
+def plan_from_rows(rows: List[Dict[str, str]], allow_incomplete: bool = False
+                   ) -> Tuple[Dict[str, CampaignSpec], List[str]]:
     """Groupe les lignes en campagnes -> emplacements / annonces / créas.
-    Renvoie (plan, erreurs). Une ligne = une créative dans une annonce."""
+    Renvoie (plan, erreurs). Une ligne = une créative dans une annonce.
+    allow_incomplete : dates et URL absentes ne sont pas des erreurs ; elles restent
+    vides et sont listées « à compléter » (camp.missing, plan_gaps). Une valeur
+    présente mais invalide reste une erreur."""
     plan: Dict[str, CampaignSpec] = {}
     errors: List[str] = []
     seen_rows: set = set()
@@ -440,7 +450,12 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
             fail(idx, f"size invalide ou manquant ('{size}', attendu '300x250').")
             continue
         dates_ok = True
+        row_gaps: List[str] = []
         for d, label in ((start, "campaign_start"), (end, "campaign_end")):
+            if not d and allow_incomplete:
+                row_gaps.append(label)
+                dates_ok = False
+                continue
             if not re.match(r"^\d{4}-\d{2}-\d{2}$", d or ""):
                 fail(idx, f"{label} manquant ou invalide (YYYY-MM-DD attendu).")
                 dates_ok = False
@@ -453,8 +468,11 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
         if dates_ok and end < start:
             fail(idx, f"campaign_end ({end}) est avant campaign_start ({start}).")
         if not lp:
-            fail(idx, "landing_page_url manquant.")
-            continue
+            if allow_incomplete:
+                row_gaps.append("landing_page_url")
+            else:
+                fail(idx, "landing_page_url manquant.")
+                continue
 
         w, h = [int(x) for x in re.split(r"[xX*]", size)]
         adv_id = get("advertiser_id") or None
@@ -466,9 +484,16 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
             advertiser_name=get("advertiser_name"),
             start=start, end=end,
         ))
+        if allow_incomplete:          # date absente sur une ligne : celle de la campagne
+            camp.start, camp.end = camp.start or start, camp.end or end
+            start, end = start or camp.start, end or camp.end
         if (start, end) != (camp.start, camp.end):
             fail(idx, f"dates incohérentes pour la campagne '{campaign_name}' "
                       f"({start} -> {end} au lieu de {camp.start} -> {camp.end}).")
+        for g in row_gaps:
+            who = ad_name if g == "landing_page_url" else f"campagne « {campaign_name} »"
+            if who not in camp.missing.setdefault(g, []):
+                camp.missing[g].append(who)
 
         raw_budget = get("budget_eur").replace(" ", "").replace(",", ".")
         if raw_budget:
@@ -561,6 +586,17 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
                 errors.append(f"Annonce '{ad_name}' : mélange de créatives TRACKING et "
                               "affichées/vidéo — séparez-les en deux annonces.")
     return plan, grouped(errors)
+
+
+def plan_gaps(plan: Dict[str, CampaignSpec]) -> List[str]:
+    """Champs laissés vides, à compléter avant l'envoi (une phrase par champ)."""
+    out = []
+    for camp in plan.values():
+        for f, who in camp.missing.items():
+            if f in ("campaign_start", "campaign_end") and getattr(camp, "start" if f == "campaign_start" else "end"):
+                continue          # renseignée sur une autre ligne de la campagne
+            out.append(f"{GAP_LABELS.get(f, f)} — à compléter : {', '.join(who)}")
+    return out
 
 
 def print_plan_summary(plan: Dict[str, CampaignSpec], errors: List[str]) -> None:
@@ -1415,6 +1451,16 @@ def traffic_plan(adapter: TraffickingAdapter, plan: Dict[str, CampaignSpec],
     """Exécute le trafficking complet via l'adaptateur. Renvoie le rapport."""
     for camp in plan.values():
         log(f"\n=== Campagne : {camp.name} [plateforme : {adapter.name}] ===")
+        gaps = plan_gaps({camp.name: camp})
+        if gaps:
+            if adapter.name != "mock":      # jamais d'envoi réel d'un plan incomplet
+                msg = (f"Campagne '{camp.name}' non envoyée : informations à compléter "
+                       f"({'; '.join(gaps)}).")
+                log("[ERREUR] " + msg)
+                adapter.report["errors"].append(msg)
+                continue
+            for g in gaps:
+                log("  [À COMPLÉTER] " + g)
         try:
             advertiser_id = adapter.ensure_advertiser(camp)
             default_lp = adapter.ensure_landing_page(advertiser_id, next(
@@ -1523,7 +1569,13 @@ def main():
     print(f"{len(rows)} ligne(s) lues dans {args.plan}")
     for line in getattr(rows, "ingest_report", []):
         print("  [INGESTION] " + line)
-    plan, errors = plan_from_rows(rows)
+    # Préparation (dry-run, exports, démo) : les informations absentes restent vides,
+    # listées « à compléter ». Envoi réel : elles bloquent (voir traffic_plan).
+    allow_incomplete = bool(args.dry_run or args.export_bulk or args.export_adform_bulk
+                            or args.platform == "mock")
+    plan, errors = plan_from_rows(rows, allow_incomplete=allow_incomplete)
+    for g in plan_gaps(plan):
+        print("  [À COMPLÉTER] " + g)
 
     # Couche de modification à la vérification (avant envoi vers l'ad
     # server) : nomenclatures de nommage propres à chaque annonceur.
