@@ -98,7 +98,7 @@ def read_grids(path: str) -> List[Tuple[str, Grid]]:
 RE_URL = re.compile(r"(https?://[^\s\"'<>]+|www\.[^\s\"'<>]+\.[a-z]{2,}[^\s\"'<>]*)", re.I)
 RE_SIZE = re.compile(r"(?<!\d)(\d{2,4})\s*[xX×*]\s*(\d{2,4})(?!\d)")
 RE_TAG = re.compile(r"<\s*(script|iframe|ins|img|noscript)\b|javascript:", re.I)
-RE_FILE = re.compile(r"\.(png|jpe?g|gif|webp|mp4|mov|m4v|webm|mpe?g|avi|wmv)\s*$", re.I)
+RE_FILE = re.compile(r"\.(png|jpe?g|gif|wbmp|webp|zip|adz|mp4|mov|m4v|webm|mpe?g|avi|wmv|mp3|ogg|oga|ogv)\s*$", re.I)
 RE_PRICING = re.compile(r"\b(cpm|cpc|cpa|cpv|cpcv|vcpm|flat|forfait|co[uû]t pour mille)\b", re.I)
 RE_TOTAL = re.compile(r"^\s*(sous[\s_-]*)?total\b|^\s*total\s", re.I)
 RE_MONEY = re.compile(r"(€|\beur\b|\beuros?\b|k€)", re.I)

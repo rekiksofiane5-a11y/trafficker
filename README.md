@@ -82,6 +82,19 @@ Le plan est lu « tel qu'il arrive » ; l'agent retrouve chaque information mêm
 
 **Option IA** (désactivée par défaut) : `TRAFFICKER_LLM=1`, `TRAFFICKER_LLM_MODEL=<modèle Claude>`, `ANTHROPIC_API_KEY`, `pip install anthropic`. Seules les colonnes encore inconnues et 3 valeurs d'exemple sont envoyées ; la réponse est filtrée (noms canoniques uniquement, pas de doublon).
 
+## Specs créatives CM360
+
+Base de référence : `specs/cm360_specs_creatives.xlsx` (12 specs officielles, sources aide CM360), convertie en `specs/cm360_creative_specs.json` et appliquée par `creative_specs.py` à chaque fichier créatif fourni (CLI `--creatives-dir`, ZIP de l'UI, fichiers joints dans la version navigateur) :
+
+| Type | Fichiers acceptés | Contrôles |
+|---|---|---|
+| Display image | GIF, JPG, PNG, WBMP | 9,5 Mo max ; ≤ 4000×4000 ; ratio = emplacement ; recommandé jusqu'à 2× la taille |
+| Display HTML5 | ZIP, ADZ | 10 Mo max ; 100 fichiers max ; types autorisés ; click tag obligatoire ; pas de `%`, de .zip imbriqué, de stockage local ; https ; `meta ad.size` ; image de secours |
+| Vidéo in-stream | MP4, MOV, M4V, AVI, MPEG, MPG, WEBM, WMV | 1 Go max ; 15 ou 30 s ; 1280×720 / 1920×1080 / 1440×1080 (portrait, carré) ; 16:9, 4:3, 9:16, 3:4 ; H.264 |
+| Audio in-stream | MP3, OGG, OGA | 1 Go max |
+
+« Erreur » = refusé par CM360 : l'envoi et les exports sont bloqués. « Alerte » = accepté mais hors recommandation. Un fichier non joint est signalé sans bloquer. La version navigateur affiche aussi le rappel des specs de chaque type présent. Création HTML5/audio par l'API CM360 non encore validée : passer par l'export Campaign spreadsheet.
+
 ## Validation avant envoi
 
 Le dry-run (et l'UI) signalent : champs manquants, tailles invalides, dates inexistantes ou fin avant début, dates incohérentes entre lignes d'une même campagne, doublons de créatives, créatives sans snippet/chemin.

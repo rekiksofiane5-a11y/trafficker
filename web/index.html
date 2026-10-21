@@ -91,6 +91,12 @@ a { color: var(--accent); }
       <div>
         <label for="nomen">Nomenclatures (JSON, facultatif)</label>
         <input id="nomen" type="file" accept=".json">
+        <div class="hint">Sans fichier : nomenclature de base OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT</div>
+      </div>
+      <div>
+        <label for="creas">Fichiers créatifs (facultatif)</label>
+        <input id="creas" type="file" multiple accept=".gif,.jpg,.jpeg,.png,.wbmp,.zip,.adz,.mp4,.mov,.m4v,.avi,.mpeg,.mpg,.webm,.wmv,.mp3,.ogg,.oga">
+        <div class="hint">Contrôlés selon les specs CM360 (poids, dimensions, durée, HTML5…)</div>
       </div>
     </div>
     <div class="actions">
@@ -165,6 +171,9 @@ async function boot() {
     }
     const app = "/home/pyodide/app";
     py.FS.mkdirTree(app + "/templates");
+    py.FS.mkdirTree(app + "/specs");
+    for (const s of manifest.specs)
+      py.FS.writeFile(app + "/specs/" + s, new Uint8Array(await (await fetch("py/specs/" + s)).arrayBuffer()));
     for (const m of manifest.modules)
       py.FS.writeFile(app + "/" + m, new Uint8Array(await (await fetch("py/" + m)).arrayBuffer()));
     for (const t of manifest.templates)
@@ -203,6 +212,22 @@ function renderSummary(d) {
     box.append(el("p", {class: "err"}, "À corriger avant tout envoi :"));
     box.append(el("ul", {class: "errors"}, ...d.errors.map((e) => el("li", {}, e))));
   }
+  if (d.specs && d.specs.length) {
+    const ICON = {erreur: "⛔", alerte: "⚠️", ok: "✅"};
+    box.append(el("h3", {}, "Contrôle des créatives (specs CM360)"));
+    box.append(el("ul", {class: "specs"}, ...d.specs.map((s) =>
+      el("li", {class: s.level === "erreur" ? "err" : ""}, `${ICON[s.level]} ${s.creative} — ${s.message}`))));
+  }
+  if (d.spec_refs && d.spec_refs.length) {
+    const det = el("details", {}, el("summary", {}, "Rappel des specs CM360 pour ces créatives"));
+    for (const s of d.spec_refs) {
+      det.append(el("h4", {}, s.id));
+      det.append(el("ul", {}, ...Object.entries(s).filter(([k]) => k !== "id" && !k.startsWith("URL"))
+        .map(([k, v]) => el("li", {}, `${k} : ${v}`))));
+      if (s["URL source (globale)"]) det.append(el("a", {href: s["URL source (globale)"], target: "_blank", rel: "noopener"}, "Source : aide CM360"));
+    }
+    box.append(det);
+  }
   for (const c of d.campaigns) {
     const wrap = el("div", {class: "camp"});
     wrap.append(el("h3", {}, c.name));
@@ -228,7 +253,7 @@ function renderSummary(d) {
       el("tbody", {}, ...rows))));
     box.append(wrap);
   }
-  return d.errors.length === 0;
+  return d.errors.length === 0 && !(d.specs || []).some((s) => s.level === "erreur");
 }
 
 $("analyze").addEventListener("click", async () => {
@@ -240,7 +265,11 @@ $("analyze").addEventListener("click", async () => {
     py.FS.writeFile(path, new Uint8Array(await planFile.arrayBuffer()));
     const nomenFile = $("nomen").files[0];
     const nomen = nomenFile ? await nomenFile.text() : "";
-    const d = JSON.parse(api.analyze(path, $("camp").value.trim(), $("adv").value.trim(), nomen));
+    const creasDir = "/tmp/creas_" + Date.now();
+    py.FS.mkdirTree(creasDir);
+    for (const f of $("creas").files)
+      py.FS.writeFile(creasDir + "/" + f.name, new Uint8Array(await f.arrayBuffer()));
+    const d = JSON.parse(api.analyze(path, $("camp").value.trim(), $("adv").value.trim(), nomen, creasDir));
     $("result").classList.remove("hidden");
     const ok = renderSummary(d);
     for (const id of ["demo", "delivery", "dl-cm360", "dl-adform"]) $(id).disabled = !ok;

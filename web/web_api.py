@@ -34,7 +34,7 @@ def _summary(plan) -> list:
 
 
 def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
-            nomenclature_json: str = "") -> str:
+            nomenclature_json: str = "", creatives_dir: str = "") -> str:
     """Lit le plan déposé (CSV, XLSX, XLS, export CM360), le valide et applique
     les nomenclatures éventuelles. Le fichier est supprimé après lecture."""
     try:
@@ -62,12 +62,18 @@ def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
                 os.remove(tmp)
         # Nomenclature de base (OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT) si aucun fichier
         plan, renames = apply_nomenclature(plan, naming_or_base(naming), log=lambda m: None)
+    from creative_specs import check_plan, spec_summary
+    specs = check_plan(plan, creatives_dir) if not errors else []
+    ctypes = sorted({c.ctype for camp in plan.values() for ad in camp.ads.values()
+                     for c in ad["creatives"]})
     _STATE.clear()
     _STATE.update(plan=plan, rows=rows)
     return json.dumps({
         "rows": len(rows), "errors": errors, "renames": renames,
         "ingest": list(getattr(rows, "ingest_report", [])),
         "campaigns": _summary(plan),
+        "specs": specs,
+        "spec_refs": [s for s in (spec_summary(t) for t in ctypes) if s],
     }, ensure_ascii=False, default=str)
 
 

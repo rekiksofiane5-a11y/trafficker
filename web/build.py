@@ -14,7 +14,8 @@ WEB = os.path.join(ROOT, "web")
 DIST = os.path.join(WEB, "dist")
 
 PY_MODULES = ["cm360_trafficker.py", "cm360_reporting.py", "cm360_bulk.py",
-              "adform_bulk.py", "ingest.py", "plan_agent.py", "web/web_api.py"]
+              "adform_bulk.py", "ingest.py", "plan_agent.py", "creative_specs.py",
+              "web/web_api.py"]
 PYODIDE_FILES = ["pyodide.js", "pyodide.asm.js", "pyodide.asm.wasm",
                  "python_stdlib.zip", "pyodide-lock.json"]
 EXAMPLES = ["plan_media_template.csv", "nomenclatures.json"]
@@ -33,6 +34,9 @@ def main() -> None:
         shutil.copy(os.path.join(ROOT, m), os.path.join(DIST, "py"))
     shutil.copy(os.path.join(ROOT, "templates", "adform_bulk_template.xlsx"),
                 os.path.join(DIST, "py", "templates"))
+    os.makedirs(os.path.join(DIST, "py", "specs"), exist_ok=True)
+    shutil.copy(os.path.join(ROOT, "specs", "cm360_creative_specs.json"),
+                os.path.join(DIST, "py", "specs"))
     wheels = sorted(f for f in os.listdir(os.path.join(WEB, "wheels")) if f.endswith(".whl"))
     for w in wheels:
         shutil.copy(os.path.join(WEB, "wheels", w), os.path.join(DIST, "wheels"))
@@ -41,7 +45,8 @@ def main() -> None:
     for f in EXAMPLES:
         shutil.copy(os.path.join(ROOT, f), os.path.join(DIST, "exemples"))
     manifest = {"modules": [os.path.basename(m) for m in PY_MODULES],
-                "templates": ["adform_bulk_template.xlsx"], "wheels": wheels}
+                "templates": ["adform_bulk_template.xlsx"],
+                "specs": ["cm360_creative_specs.json"], "wheels": wheels}
     with open(os.path.join(DIST, "py", "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f)
     size = sum(os.path.getsize(os.path.join(dp, f)) for dp, _, fs in os.walk(DIST) for f in fs)

@@ -101,7 +101,7 @@ PRICING_TYPES = {
     "flat": "PRICING_TYPE_FLAT_RATE",
 }
 
-PLACEMENT_CATEGORIES = {"display", "video", "tracking"}
+PLACEMENT_CATEGORIES = {"display", "video", "tracking", "audio"}
 
 TRUE_VALUES = {"1", "oui", "yes", "true", "vrai", "o", "y"}
 
@@ -306,14 +306,17 @@ class CampaignSpec:
     ads: Dict[str, dict] = field(default_factory=dict)   # ad_name -> {"placements": [...], "creatives": [...]}
 
 
-IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif"}
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".wbmp"}
+HTML5_EXT = {".zip", ".adz"}
+AUDIO_EXT = {".mp3", ".oga", ".ogg", ".ogv"}
 VIDEO_EXT = {".mp4", ".mov", ".m4v", ".webm", ".mpg", ".mpeg", ".avi", ".wmv"}
 CTYPE_ALIASES = {
     "REDIRECT": "REDIRECT", "TAG": "REDIRECT", "IMAGE": "IMAGE", "DISPLAY": "IMAGE",
     "VIDEO": "VIDEO", "INSTREAM": "VIDEO", "INSTREAM_VIDEO": "VIDEO",
-    "TRACKING": "TRACKING",
+    "TRACKING": "TRACKING", "HTML5": "HTML5", "HTML": "HTML5",
+    "AUDIO": "AUDIO", "INSTREAM_AUDIO": "AUDIO",
 }
-CATEGORY_TO_CTYPE = {"display": "IMAGE", "video": "VIDEO", "tracking": "TRACKING"}
+CATEGORY_TO_CTYPE = {"display": "IMAGE", "video": "VIDEO", "tracking": "TRACKING", "audio": "AUDIO"}
 
 
 def resolve_creative_type(explicit: str, category: str, snippet: str,
@@ -334,6 +337,8 @@ def resolve_creative_type(explicit: str, category: str, snippet: str,
             return "", False, f"creative_category inconnue '{category}' (display, video ou tracking)."
         if cat == "display" and snippet and not path:
             return "REDIRECT", False, ""
+        if cat == "display" and os.path.splitext(path)[1].lower() in HTML5_EXT:
+            return "HTML5", False, ""
         return CATEGORY_TO_CTYPE[cat], False, ""
     if snippet:
         return "REDIRECT", False, ""
@@ -343,14 +348,20 @@ def resolve_creative_type(explicit: str, category: str, snippet: str,
             return "VIDEO", False, ""
         if ext in IMAGE_EXT:
             return "IMAGE", False, ""
+        if ext in HTML5_EXT:
+            return "HTML5", False, ""
+        if ext in AUDIO_EXT:
+            return "AUDIO", False, ""
         return "", False, (f"format de fichier non géré '{ext or path}' "
-                           "(image : png/jpg/gif ; vidéo : mp4/mov/webm...).")
+                           "(specs CM360 — image : gif/jpg/png/wbmp ; HTML5 : zip/adz ; "
+                           "vidéo : mp4/mov/m4v/avi/mpeg/mpg/webm/wmv ; audio : mp3/ogg/oga).")
     return "TRACKING", True, ""
 
 
 def _ctype_label(c: "CreativeSpec") -> str:
     """Libellé lisible : « VIDEO in-stream », « TRACKING auto »..."""
-    return {"VIDEO": "VIDEO in-stream", "IMAGE": "IMAGE display",
+    return {"VIDEO": "VIDEO in-stream", "IMAGE": "IMAGE display", "HTML5": "HTML5 display",
+            "AUDIO": "AUDIO in-stream",
             "REDIRECT": "REDIRECT display"}.get(c.ctype, c.ctype) + (" auto" if c.auto else "")
 
 
@@ -465,7 +476,7 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
         if ctype == "REDIRECT" and not creative.snippet:
             fail(idx, "snippet manquant pour une créative REDIRECT.")
             continue
-        if ctype in ("IMAGE", "VIDEO") and not creative.path:
+        if ctype in ("IMAGE", "VIDEO", "HTML5", "AUDIO") and not creative.path:
             fail(idx, f"creative_path manquant pour une créative {ctype}.")
             continue
         if ctype == "VIDEO" and os.path.splitext(creative.path)[1].lower() not in VIDEO_EXT:
@@ -473,6 +484,12 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
             continue
         if ctype == "IMAGE" and os.path.splitext(creative.path)[1].lower() not in IMAGE_EXT:
             fail(idx, f"fichier '{creative.path}' : extension image attendue pour une créative IMAGE.")
+            continue
+        if ctype == "HTML5" and os.path.splitext(creative.path)[1].lower() not in HTML5_EXT:
+            fail(idx, f"fichier '{creative.path}' : archive .zip ou .adz attendue pour une créative HTML5.")
+            continue
+        if ctype == "AUDIO" and os.path.splitext(creative.path)[1].lower() not in AUDIO_EXT:
+            fail(idx, f"fichier '{creative.path}' : fichier mp3/ogg/oga attendu pour une créative audio.")
             continue
 
         # Annonce (fusion des lignes partageant le même ad_name)
@@ -494,10 +511,13 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
     for camp in plan.values():
         video = {pn for ad in camp.ads.values() if any(c.ctype == "VIDEO" for c in ad["creatives"])
                  for pn in ad["placements"]}
+        audio = {pn for ad in camp.ads.values() if any(c.ctype == "AUDIO" for c in ad["creatives"])
+                 for pn in ad["placements"]}
         for p in camp.placements.values():
             if not p.category:
                 p.category = ("tracking" if (p.width, p.height) == (1, 1)
-                              else "video" if p.name in video else "display")
+                              else "video" if p.name in video
+                              else "audio" if p.name in audio else "display")
 
     # Une annonce de tracking ne peut pas mélanger tracking et créatives affichées
     for camp in plan.values():
@@ -1076,6 +1096,12 @@ class CM360Adapter(TraffickingAdapter):
                 }],
                 "backupImageClickThroughUrl": c.landing_page_url,
             }
+        elif c.ctype in ("HTML5", "AUDIO"):
+            # Contrôlées selon les specs CM360 (creative_specs.py) ; création par l'API
+            # non encore validée sur un vrai compte : passer par l'export Campaign
+            # spreadsheet / le Bulk Editor, ou l'upload manuel.
+            raise ValueError(f"Créative {c.ctype} '{c.name}' : création via l'API CM360 pas encore "
+                             "disponible — utilisez l'export Campaign spreadsheet (Bulk Editor).")
         else:  # IMAGE (display)
             full_path = resolve_creative_path(c.path, self.creatives_dir)
             if not os.path.isfile(full_path):
@@ -1477,8 +1503,19 @@ def main():
 
     print_plan_summary(plan, errors)
 
+    # Contrôle des fichiers créatifs selon la base de specs CM360
+    spec_errors = 0
+    if not errors:
+        from creative_specs import check_plan
+        for f in check_plan(plan, args.creatives_dir):
+            tag = {"erreur": "ERREUR", "alerte": "ALERTE", "ok": "OK"}[f["level"]]
+            print(f"  [SPECS CM360 {tag}] {f['message']}")
+            spec_errors += f["level"] == "erreur"
+
     if errors:
         sys.exit("\nCorrigez les erreurs ci-dessus avant de lancer le trafficking.")
+    if spec_errors and not args.dry_run and not args.export_bulk and not args.export_adform_bulk:
+        sys.exit(f"\n{spec_errors} créative(s) hors specs CM360 : corrigez-les avant l'envoi.")
 
     if args.export_bulk:
         from cm360_bulk import write_bulk_xlsx

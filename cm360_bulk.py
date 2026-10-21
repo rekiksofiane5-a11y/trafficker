@@ -101,9 +101,12 @@ VOCAB = {
         "IMAGE": ("Image", "Display"),
         "VIDEO": ("In-stream video", "In-stream video"),
         "TRACKING": ("Tracking", "Display"),
+        "HTML5": ("HTML5", "Display"),
+        "AUDIO": ("In-stream audio", "In-stream audio"),
     },
     "ad_type": {"standard": "Standard", "tracking": "Tracking"},
-    "placement_compat": {"display": "Display", "video": "In-stream video", "tracking": "Display"},
+    "placement_compat": {"display": "Display", "video": "In-stream video", "tracking": "Display",
+                         "audio": "In-stream audio"},
     "cost_structure": {
         "PRICING_TYPE_CPM": "CPM", "PRICING_TYPE_CPC": "CPC",
         "PRICING_TYPE_CPA": "CPA", "PRICING_TYPE_FLAT_RATE": "Flat rate",

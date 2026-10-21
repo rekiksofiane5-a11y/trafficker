@@ -107,3 +107,22 @@ def test_nothing_sent_over_network(page, site):
     _analyze(page, os.path.join(ROOT, "plan_media_template.csv"))
     page.click("#demo")
     assert all(u.startswith(site) or u.startswith("blob:") or u.startswith("data:") for u in seen), seen
+
+
+def test_creative_files_checked_against_cm360_specs(page, tmp_path):
+    from test_creative_specs import html5_zip, png
+    (tmp_path / "ban.png").write_bytes(png(600, 500))
+    (tmp_path / "anim.zip").write_bytes(html5_zip("<html>pas de click</html>"))
+    plan = tmp_path / "plan.csv"
+    plan.write_text("campaign_name,campaign_start,campaign_end,placement_name,size,ad_name,"
+                    "creative_name,creative_path,landing_page_url\n"
+                    "C,2026-11-02,2026-12-15,P1,300x250,A1,K1,ban.png,https://x.fr\n"
+                    "C,2026-11-02,2026-12-15,P2,300x250,A2,K2,anim.zip,https://x.fr\n", encoding="utf-8")
+    page.set_input_files("#creas", [str(tmp_path / "ban.png"), str(tmp_path / "anim.zip")])
+    _analyze(page, str(plan))
+    text = page.inner_text("#summary")
+    assert "Contrôle des créatives (specs CM360)" in text
+    assert "ban.png : conforme" in text and "aucun click tag" in text
+    assert "HTML5 display" in text
+    assert page.is_disabled("#dl-cm360")              # créative hors specs : export bloqué
+    page.set_input_files("#creas", [])

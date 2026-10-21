@@ -174,7 +174,7 @@ def test_resolve_creative_type(explicit, category, snippet, path, expected, auto
 
 
 def test_unknown_file_format_is_rejected():
-    assert resolve_creative_type("", "", "", "banniere.zip")[2]
+    assert resolve_creative_type("", "", "", "brief.docx")[2]
 
 
 def test_template_types(rows):
