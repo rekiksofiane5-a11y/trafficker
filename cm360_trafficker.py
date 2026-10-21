@@ -277,6 +277,7 @@ class CreativeSpec:
     landing_page_url: str = ""
     active: bool = True
     row_index: int = 0
+    message: str = ""                # message créatif (nomenclature)
 
 @dataclass
 class PlacementSpec:
@@ -288,6 +289,10 @@ class PlacementSpec:
     pricing_type: str = "PRICING_TYPE_CPM"
     row_index: int = 0
     category: str = ""       # display (formats IAB) | video (in-stream) | tracking (1x1)
+    objective: str = ""      # objectif (notoriété, trafic...) — nomenclature
+    audience: str = ""       # audience / cible — nomenclature
+    targeting: str = ""      # ciblage — nomenclature
+    format_label: str = ""   # format tel qu'écrit dans le plan (« Pavé »...), sinon la taille
 
 @dataclass
 class CampaignSpec:
@@ -439,6 +444,8 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
                 row_index=idx,
                 category=get("placement_category").lower()
                 if get("placement_category").lower() in PLACEMENT_CATEGORIES else "",
+                objective=get("objective"), audience=get("audience"),
+                targeting=get("targeting"), format_label=get("format_label"),
             )
 
         # Créative
@@ -453,6 +460,7 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
             landing_page_url=lp or (camp.ads.get(ad_name) or {}).get("landing_page_url", ""),
             active=_as_bool(get("active") or "1"),
             row_index=idx,
+            message=get("message"),
         )
         if ctype == "REDIRECT" and not creative.snippet:
             fail(idx, "snippet manquant pour une créative REDIRECT.")
@@ -601,11 +609,17 @@ def _pattern_context(camp: CampaignSpec, p: Optional[PlacementSpec] = None,
             "site_id": p.site_id or "",
             "size": f"{p.width}x{p.height}",
             "pricing_type": p.pricing_type,
+            "regie": p.site_name or (str(p.site_id) if p.site_id else ""),
+            "objective": p.objective,
+            "audience": p.audience,
+            "targeting": p.targeting,
+            "format": p.format_label or f"{p.width}x{p.height}",
         })
     if ad_name:
         ctx["ad_name"] = ad_name
     if c is not None:
-        ctx.update({"creative_name": c.name, "creative_type": c.ctype})
+        ctx.update({"creative_name": c.name, "creative_type": c.ctype,
+                    "message": c.message or c.name})
     return ctx
 
 
@@ -614,7 +628,42 @@ def _apply_pattern(pattern: str, ctx: dict, opts: dict) -> str:
     for key, val in ctx.items():
         value = value.replace("{" + key + "}", str(val))
     value = re.sub(r"\{[a-zA-Z0-9_]+\}", "", value)   # jetons inconnus
+    # Segments vides (information absente du plan) : pas de « -- » ni de tiret final
+    value = re.sub(r"\s*([-_|/])(?:\s*\1)+\s*", r"\1", value).strip(" -_|/")
     return _apply_nomenclature_options(value, opts)
+
+
+# Nomenclature de base, appliquée quand aucun fichier de nomenclature n'est fourni :
+#   emplacement : OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT
+#   créative    : RÉGIE-FORMAT-MESSAGE   (annonce = nom de l'emplacement)
+BASE_NOMENCLATURE = {
+    "defaults": {
+        "placement": "{objective}-{audience}-{regie}-{targeting}-{format}",
+        "ad": "{placement_name}",
+        "creative": "{regie}-{format}-{message}",
+        "options": {"separator": "_", "case": "upper", "strip_accents": True,
+                    "max_length": 255, "forbidden": []},
+        # Sans objectif, audience ni ciblage, les noms d'origine sont conservés
+        "require_any": ["objective", "audience", "targeting"],
+    }
+}
+
+
+def naming_or_base(naming: dict) -> dict:
+    """Nomenclature fournie, sinon la nomenclature de base."""
+    return naming if naming else BASE_NOMENCLATURE
+
+
+def _unique(name: str, used: set) -> str:
+    """Évite deux objets du même nom (ils seraient fusionnés à l'envoi)."""
+    if name not in used:
+        used.add(name)
+        return name
+    n = 2
+    while f"{name}-{n}" in used:
+        n += 1
+    used.add(f"{name}-{n}")
+    return f"{name}-{n}"
 
 
 def apply_nomenclature(plan: Dict[str, CampaignSpec], naming: dict,
@@ -643,14 +692,17 @@ def apply_nomenclature(plan: Dict[str, CampaignSpec], naming: dict,
 
         # Emplacements (references remappees dans les annonces ensuite)
         placement_map: Dict[str, str] = {}
+        need = rules.get("require_any") or []
+        if need and not any(getattr(p, f, "") for p in camp.placements.values() for f in need):
+            continue          # nomenclature de base sans données : noms d'origine conservés
         if rules.get("placement"):
             new_placements: Dict[str, PlacementSpec] = {}
+            used: set = set()
             for p in camp.placements.values():
                 new_name = _apply_pattern(rules["placement"],
                                           _pattern_context(camp, p=p), opts)
-                if not new_name or new_name == p.name:
-                    new_name = p.name
-                else:
+                new_name = _unique(new_name or p.name, used)
+                if new_name != p.name:
                     renames.append(f"Emplacement : « {p.name} » -> « {new_name} »")
                 placement_map[p.name] = new_name
                 p.name = new_name
@@ -659,21 +711,29 @@ def apply_nomenclature(plan: Dict[str, CampaignSpec], naming: dict,
 
         # Annonces + creatives
         new_ads: Dict[str, dict] = {}
+        used_ads: set = set()
+        used_creas: set = set()
+        renamed_creas: Dict[int, str] = {}
         for ad_name, ad in camp.ads.items():
-            if rules.get("ad"):
-                new_ad_name = _apply_pattern(
-                    rules["ad"], _pattern_context(camp, ad_name=ad_name), opts)
-                if new_ad_name and new_ad_name != ad_name:
-                    renames.append(f"Annonce : « {ad_name} » -> « {new_ad_name} »")
-                    ad_name = new_ad_name
             if placement_map:
                 ad["placements"] = [placement_map.get(pn, pn)
                                      for pn in ad["placements"]]
+            p0 = camp.placements.get(ad["placements"][0]) if ad["placements"] else None
+            if rules.get("ad"):
+                new_ad_name = _apply_pattern(
+                    rules["ad"], _pattern_context(camp, p=p0, ad_name=ad_name), opts)
+                new_ad_name = _unique(new_ad_name or ad_name, used_ads)
+                if new_ad_name != ad_name:
+                    renames.append(f"Annonce : « {ad_name} » -> « {new_ad_name} »")
+                    ad_name = new_ad_name
             if rules.get("creative"):
-                p0 = camp.placements.get(ad["placements"][0]) if ad["placements"] else None
                 for c in ad["creatives"]:
+                    if id(c) in renamed_creas:
+                        continue          # même créative partagée par plusieurs annonces
                     ctx = _pattern_context(camp, p=p0, ad_name=ad_name, c=c)
-                    new_c_name = _apply_pattern(rules["creative"], ctx, opts)
+                    new_c_name = _unique(_apply_pattern(rules["creative"], ctx, opts) or c.name,
+                                         used_creas)
+                    renamed_creas[id(c)] = new_c_name
                     if new_c_name and new_c_name != c.name:
                         renames.append(f"Créative : « {c.name} » -> « {new_c_name} »")
                         c.name = new_c_name
@@ -1409,7 +1469,7 @@ def main():
     # server) : nomenclatures de nommage propres à chaque annonceur.
     renames: List[str] = []
     if not errors:
-        naming = load_nomenclature(args.nomenclature)
+        naming = naming_or_base(load_nomenclature(args.nomenclature))
         if naming:
             plan, renames = apply_nomenclature(plan, naming)
             for r in renames:

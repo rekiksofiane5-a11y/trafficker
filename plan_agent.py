@@ -323,6 +323,13 @@ def map_columns(headers: List[str], data: Grid) -> Tuple[Dict[int, str], List[st
         if n and n in by_header and by_header[n] not in cols.values():
             cols[i] = by_header[n]
             prov.append(f"{by_header[n]} ← colonne « {headers[i]} »")
+    # « Objectif » : texte (notoriété, trafic...) = objectif média ; chiffres = volume
+    for i, f in list(cols.items()):
+        if f in ("objective", "objective_impressions"):
+            kind, share = _profile([r[i] for r in data if i < len(r) and r[i]])
+            want = "objective_impressions" if kind in ("int", "money") else "objective"
+            if want != f and want not in cols.values():
+                cols[i] = want
     # Période dans une seule colonne (en-tête « Période », « Dates »...)
     for i, n in enumerate(norm):
         if i in cols or not n:
@@ -431,6 +438,7 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
                 filled.add(f)
         # Informations au mauvais endroit : on les cherche dans la ligne
         category = ""
+        written_label = r.get("size", "")
         if RE_SIZE.search(r.get("size", "")):
             category = "display"
         else:
@@ -462,6 +470,8 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
             category = "video"
         if not r.get("placement_category"):
             r["placement_category"] = category
+        if not r.get("format_label"):
+            r["format_label"] = written_label or r.get("size", "")
         if not r.get("landing_page_url"):
             for t in others:
                 m = RE_URL.search(t)
@@ -501,6 +511,7 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
         for sz in sizes:
             line = dict(r, size=sz)
             if len(sizes) > 1:
+                line["format_label"] = sz
                 base = line.get("placement_name") or "Emplacement"
                 if sz not in base:
                     line["placement_name"] = f"{base}_{sz}"
@@ -509,6 +520,7 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
 
     # Noms générés et normalisation
     gen = set()
+    seen_creas: set = set()
     for line in rows:
         if not line.get("placement_name"):
             line["placement_name"] = " ".join(x for x in (line.get("site_name"), line.get("size")) if x) or "Emplacement"
@@ -517,8 +529,13 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
             line["ad_name"] = line["placement_name"]
             gen.add("ad_name")
         if not line.get("creative_name"):
-            line["creative_name"] = f"{line['ad_name']}_crea"
+            base = f"{line['ad_name']}_{line['message']}" if line.get("message") else f"{line['ad_name']}_crea"
+            name, n = base, 2
+            while (line["ad_name"], name) in seen_creas:      # plusieurs créatives sur la même annonce
+                name, n = f"{base}_{n}", n + 1
+            line["creative_name"] = name
             gen.add("creative_name")
+        seen_creas.add((line["ad_name"], line["creative_name"]))
         if not line.get("creative_category") and not line.get("creative_path") and not line.get("snippet") \
                 and VIDEO_HINT.search(line.get("placement_name", "")):
             pass   # sans fichier : créative de tracking (règle Trafficker), même sur un emplacement vidéo

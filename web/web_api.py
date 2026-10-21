@@ -9,7 +9,7 @@ import tempfile
 
 from cm360_trafficker import (
     _ctype_label, apply_nomenclature, build_adapter, load_nomenclature,
-    load_rows_from_path, plan_from_rows, traffic_plan,
+    load_rows_from_path, naming_or_base, plan_from_rows, traffic_plan,
 )
 
 # Plan analysé courant (une seule session : un onglet de navigateur)
@@ -50,16 +50,18 @@ def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
             pass
     plan, errors = plan_from_rows(rows)
     renames = []
-    if nomenclature_json.strip() and not errors:
-        fd, tmp = tempfile.mkstemp(suffix=".json")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(nomenclature_json)
-        try:
-            naming = load_nomenclature(tmp)
-        finally:
-            os.remove(tmp)
-        if naming:
-            plan, renames = apply_nomenclature(plan, naming, log=lambda m: None)
+    if not errors:
+        naming = {}
+        if nomenclature_json.strip():
+            fd, tmp = tempfile.mkstemp(suffix=".json")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(nomenclature_json)
+            try:
+                naming = load_nomenclature(tmp)
+            finally:
+                os.remove(tmp)
+        # Nomenclature de base (OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT) si aucun fichier
+        plan, renames = apply_nomenclature(plan, naming_or_base(naming), log=lambda m: None)
     _STATE.clear()
     _STATE.update(plan=plan, rows=rows)
     return json.dumps({

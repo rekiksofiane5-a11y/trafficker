@@ -41,6 +41,7 @@ import trafficker_store as store
 from cm360_trafficker import (
     _ctype_label,
     apply_nomenclature,
+    naming_or_base,
     build_adapter,
     load_nomenclature,
     load_rows_from_source,
@@ -581,6 +582,7 @@ def analyze():
 
         # Couche de modification avant envoi : nomenclatures de l'annonceur
         nf = request.files.get("nomenclature")
+        naming = {}
         if nf and nf.filename:
             tmpn = os.path.join(os.environ.get("TMPDIR", "/tmp"),
                                 "nomen_" + uuid.uuid4().hex + ".json")
@@ -589,8 +591,9 @@ def analyze():
                 naming = load_nomenclature(tmpn)
             finally:
                 os.remove(tmpn)  # RGPD : purge immédiate du fichier
-            if naming:
-                plan, renames = apply_nomenclature(plan, naming)
+        if not errors:
+            # Fichier fourni, sinon nomenclature de base (OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT)
+            plan, renames = apply_nomenclature(plan, naming_or_base(naming))
     except SystemExit as e:
         shutil.rmtree(creatives_dir, ignore_errors=True)
         return jsonify({"error": str(e)})

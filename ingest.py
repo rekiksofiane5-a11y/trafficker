@@ -20,7 +20,8 @@ from typing import Callable, Dict, List, Optional, Tuple
 CANONICAL = [
     "advertiser_name", "campaign_name", "campaign_start", "campaign_end",
     "placement_name", "site_id", "site_name", "size", "pricing_type", "ad_name",
-    "creative_name", "creative_type", "creative_category", "placement_category", "snippet", "creative_path",
+    "creative_name", "creative_type", "creative_category", "placement_category",
+    "objective", "audience", "targeting", "format_label", "message", "snippet", "creative_path",
     "landing_page_url", "active", "objective_impressions", "budget_eur",
 ]
 REQUIRED = ["campaign_name", "campaign_start", "campaign_end", "placement_name",
@@ -45,7 +46,11 @@ SYNONYMS: Dict[str, List[str]] = {
     "creative_path": ["fichier", "fichier_creatif", "asset", "visuel", "creative_path", "chemin", "nom_du_fichier", "file", "filename"],
     "landing_page_url": ["url", "url_destination", "url_de_destination", "landing", "lp", "landing_page", "landing_page_url", "url_de_clic", "click_url", "clickthrough", "click_through_url", "destination"],
     "active": ["actif", "active", "statut", "status", "etat"],
-    "objective_impressions": ["objectif", "objectif_impressions", "volume", "impressions", "volume_impressions", "objective_impressions", "impressions_prevues"],
+    "objective": ["objectif", "objectif_campagne", "objectif_media", "objectif_marketing", "objective", "goal", "kpi_principal"],
+    "audience": ["audience", "cible", "cible_media", "coeur_de_cible", "target", "persona", "segment", "audiences"],
+    "targeting": ["ciblage", "targeting", "type_de_ciblage", "mode_de_ciblage", "criteres_de_ciblage", "ciblages"],
+    "message": ["message", "accroche", "message_creatif", "nom_du_message", "declinaison", "wording", "creative_message", "version_creative"],
+    "objective_impressions": ["objectif_impressions", "volume", "impressions", "volume_impressions", "objective_impressions", "impressions_prevues"],
     "budget_eur": ["budget", "budget_eur", "budget_ht", "budget_net", "budget_euros", "budget_media", "cout", "montant"],
 }
 _SYN_INDEX = {syn: canon for canon, syns in SYNONYMS.items() for syn in syns}

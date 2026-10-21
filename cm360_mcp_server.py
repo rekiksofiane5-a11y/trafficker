@@ -51,6 +51,7 @@ from mcp.server.fastmcp import FastMCP
 
 from cm360_trafficker import (
     apply_nomenclature,
+    naming_or_base,
     build_adapter,
     load_nomenclature,
     load_rows_from_path,
@@ -84,7 +85,7 @@ def _load_plan(source: str, nomenclature_path: str = "",
                 pass
     plan, errors = plan_from_rows(rows)
     renames = []
-    naming = load_nomenclature(nomenclature_path) if nomenclature_path else {}
+    naming = naming_or_base(load_nomenclature(nomenclature_path) if nomenclature_path else {})
     if naming and not errors:
         plan, renames = apply_nomenclature(plan, naming)
     return plan, rows, renames, errors
