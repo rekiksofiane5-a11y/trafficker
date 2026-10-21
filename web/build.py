@@ -4,6 +4,7 @@
 page, moteur Python (exécuté par Pyodide), modèle Adform, wheels pures Python et
 cœur Pyodide auto-hébergé (aucun CDN : le site fonctionne sans dépendance externe).
 Prérequis : `npm ci` (fournit node_modules/pyodide). Lancé par `wrangler deploy`."""
+import hashlib
 import json
 import os
 import shutil
@@ -44,7 +45,14 @@ def main() -> None:
         shutil.copy(os.path.join(pyo, f), os.path.join(DIST, "pyodide"))
     for f in EXAMPLES:
         shutil.copy(os.path.join(ROOT, f), os.path.join(DIST, "exemples"))
-    manifest = {"modules": [os.path.basename(m) for m in PY_MODULES],
+    # Version = empreinte du moteur : affichée sur la page, et ajoutée aux URL pour
+    # qu'aucun navigateur ne garde un ancien moteur en cache après un déploiement
+    h = hashlib.sha1()
+    for m in PY_MODULES:
+        with open(os.path.join(ROOT, m), "rb") as f:
+            h.update(f.read())
+    manifest = {"version": h.hexdigest()[:8],
+                "modules": [os.path.basename(m) for m in PY_MODULES],
                 "templates": ["adform_bulk_template.xlsx"],
                 "specs": ["cm360_creative_specs.json"], "wheels": wheels}
     with open(os.path.join(DIST, "py", "manifest.json"), "w", encoding="utf-8") as f:

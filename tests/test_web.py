@@ -49,7 +49,7 @@ def page(site):
         pg.errors = []
         pg.on("pageerror", lambda e: pg.errors.append(str(e)))
         pg.goto(site)
-        pg.wait_for_selector("text=Moteur prêt.", timeout=120000)
+        pg.wait_for_selector("text=Moteur prêt", timeout=120000)
         yield pg
         browser.close()
 

@@ -165,7 +165,8 @@ function busy(btn, on, label) {
 async function boot() {
   try {
     py = await loadPyodide({indexURL: new URL("pyodide/", location.href).href});
-    const manifest = await (await fetch("py/manifest.json")).json();
+    const manifest = await (await fetch("py/manifest.json", {cache: "no-store"})).json();
+    const v = "?v=" + manifest.version;
     for (const w of manifest.wheels) {
       const buf = await (await fetch("wheels/" + w)).arrayBuffer();
       py.unpackArchive(buf, "wheel");
@@ -174,15 +175,15 @@ async function boot() {
     py.FS.mkdirTree(app + "/templates");
     py.FS.mkdirTree(app + "/specs");
     for (const s of manifest.specs)
-      py.FS.writeFile(app + "/specs/" + s, new Uint8Array(await (await fetch("py/specs/" + s)).arrayBuffer()));
+      py.FS.writeFile(app + "/specs/" + s, new Uint8Array(await (await fetch("py/specs/" + s + v)).arrayBuffer()));
     for (const m of manifest.modules)
-      py.FS.writeFile(app + "/" + m, new Uint8Array(await (await fetch("py/" + m)).arrayBuffer()));
+      py.FS.writeFile(app + "/" + m, new Uint8Array(await (await fetch("py/" + m + v)).arrayBuffer()));
     for (const t of manifest.templates)
       py.FS.writeFile(app + "/templates/" + t,
-        new Uint8Array(await (await fetch("py/templates/" + t)).arrayBuffer()));
+        new Uint8Array(await (await fetch("py/templates/" + t + v)).arrayBuffer()));
     py.runPython(`import sys; sys.path.insert(0, "${app}")`);
     api = py.pyimport("web_api");
-    setStatus("Moteur prêt.");
+    setStatus("Moteur prêt (version " + manifest.version + ").");
     $("analyze").disabled = !planFile;
   } catch (e) {
     setStatus("Le moteur n'a pas pu se charger : " + e.message, true);
