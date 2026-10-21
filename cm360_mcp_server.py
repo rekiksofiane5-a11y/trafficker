@@ -93,6 +93,8 @@ def _load_plan(source: str, nomenclature_path: str = "",
 def _plan_summary(plan, rows, renames, errors) -> str:
     lines = [f"{len(rows)} ligne(s) lue(s), {len(plan)} campagne(s), "
              f"{len(errors)} erreur(s)."]
+    for line in getattr(rows, "ingest_report", []):
+        lines.append("[INGESTION] " + line)
     for r in renames:
         lines.append("[NOMENCLATURE] " + r)
     for camp in plan.values():

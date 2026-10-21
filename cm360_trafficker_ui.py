@@ -73,7 +73,9 @@ PLANS: dict = {}
 # Sans hash, l'UI reste ouverte : à n'utiliser qu'en local (127.0.0.1).
 
 app.secret_key = os.environ.get("TRAFFICKER_SECRET_KEY") or uuid.uuid4().hex
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  # derrière HTTPS (production) : TRAFFICKER_SECURE_COOKIE=1
+                  SESSION_COOKIE_SECURE=os.environ.get("TRAFFICKER_SECURE_COOKIE") == "1")
 LOGIN_ATTEMPTS: dict = defaultdict(list)   # ip -> horodatages des échecs
 MAX_ATTEMPTS, ATTEMPT_WINDOW = 5, 300
 
@@ -97,7 +99,7 @@ background:#1a73e8;color:#fff;font-weight:600;cursor:pointer}.err{color:#b00020}
 
 @app.before_request
 def _require_login():
-    if not _auth_enabled() or request.endpoint in ("login", "static"):
+    if not _auth_enabled() or request.endpoint in ("login", "static", "healthz"):
         return None
     if session.get("user"):
         return None
@@ -126,6 +128,12 @@ def login():
         return redirect("/")
     LOGIN_ATTEMPTS[ip].append(now)
     return (LOGIN_PAGE.replace("__ERR__", "<p class='err'>Identifiants incorrects.</p>"), 401)
+
+
+@app.route("/healthz")
+def healthz():
+    """Sonde de disponibilité (hébergement, répartiteur de charge)."""
+    return jsonify({"ok": True})
 
 
 @app.route("/logout")
@@ -471,6 +479,8 @@ def _preview_html(rows, plan, errors, renames, token):
     parts = [f"<p><b>{len(rows)}</b> ligne(s) lues, "
              f"<b>{len(plan)}</b> campagne(s), "
              f"<b>{len(errors)}</b> erreur(s).</p>"]
+    for line in getattr(rows, "ingest_report", []):
+        parts.append(f"<p class='hint'>🔎 {_html.escape(line)}</p>")
     if renames:
         parts.append("<div class='card'><b>Nomenclatures de nommage appliquées "
                      f"({len(renames)} renommage(s)) :</b><ul>"
@@ -786,7 +796,12 @@ def _retention_loop():
         purge_expired()
 
 
+# Purge RGPD lancée aussi sous un serveur WSGI (gunicorn), pas seulement en direct
+if os.environ.get("TRAFFICKER_WSGI") == "1":
+    threading.Thread(target=_retention_loop, daemon=True).start()
+
 if __name__ == "__main__":
     threading.Thread(target=_retention_loop, daemon=True).start()
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host=os.environ.get("TRAFFICKER_HOST", "127.0.0.1"),
+            port=int(os.environ.get("TRAFFICKER_PORT", "5000")), debug=False)
 

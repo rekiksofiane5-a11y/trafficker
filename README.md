@@ -24,6 +24,8 @@ python cm360_mcp_server.py                                             # 5. serv
 | `trafficker_store.py` | Persistance SQLite des jobs (rétention 1 h) |
 | `cm360_bulk.py` | Format « Campaign spreadsheet » CM360 (Bulk Editor) : export du plan et import comme source |
 | `adform_bulk.py`, `templates/` | Export campagnes + commandes au format bulk Adform (classeur v6, données d'exemple retirées) |
+| `ingest.py` | Ingestion d'un plan à colonnes libres (synonymes FR/EN, normalisation, option IA) |
+| `Dockerfile`, `docker-compose.yml`, `Caddyfile` | Déploiement (gunicorn + HTTPS automatique) |
 | `cm360_mcp_server.py` | Serveur MCP : `analyze_plan`, `traffic`, `check_access`, `report_delivery`, `export_campaign_spreadsheet`, `export_adform_bulk` |
 | `nomenclatures.json`, `plan_media_template.csv` | Templates |
 | `guide_mise_en_place.md`, `conformite_rgpd.md` | Guide complet, RGPD |
@@ -64,6 +66,12 @@ Pacing = livré / (objectif × fraction du vol écoulée) : OK entre 80 % et 120
 - Listes de valeurs Adform (types de campagne, modes de saisie…) : lues dans les listes déroulantes du classeur fourni.
 - Le classeur ne peut pas être importé comme plan (il ne décrit ni placements ni créatives).
 
+## Ingestion d'un plan quelconque
+
+Un plan dont les colonnes ne sont pas canoniques (« Campagne », « Support », « Format (px) », « Début », « Budget HT », « URL de destination »…) est converti automatiquement : synonymes FR/EN puis rapprochement approché, normalisation des valeurs (dates JJ/MM/AAAA, `300 x 250 px`, `4 000,50 €`, « Coût pour mille » → CPM). Le rapport (colonnes reconnues, ignorées, champs obligatoires manquants) s'affiche en CLI, dans l'UI et dans le MCP. `--campaign-name` / `--advertiser-name` comblent une colonne absente.
+
+**Option IA** (désactivée par défaut) : `TRAFFICKER_LLM=1`, `TRAFFICKER_LLM_MODEL=<modèle Claude>`, `ANTHROPIC_API_KEY`, `pip install anthropic`. Seules les colonnes encore inconnues et 3 valeurs d'exemple sont envoyées ; la réponse est filtrée (noms canoniques uniquement, pas de doublon).
+
 ## Validation avant envoi
 
 Le dry-run (et l'UI) signalent : champs manquants, tailles invalides, dates inexistantes ou fin avant début, dates incohérentes entre lignes d'une même campagne, doublons de créatives, créatives sans snippet/chemin.
@@ -78,6 +86,17 @@ Le dry-run (et l'UI) signalent : champs manquants, tailles invalides, dates inex
   ```
   5 échecs en 5 minutes bloquent l'IP (429). Derrière HTTPS en production, ajoutez `SESSION_COOKIE_SECURE`.
 - Jobs enregistrés dans SQLite (`TRAFFICKER_DB`, défaut `trafficker.db`) : visibles après redémarrage, purgés après 1 h. Aucun secret n'est stocké.
+
+## Déploiement (SaaS)
+
+```bash
+export DOMAIN=trafficker.mon-agence.fr
+export TRAFFICKER_PASSWORD_HASH='...'   # voir « UI : authentification »
+export TRAFFICKER_SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+docker compose up -d --build
+```
+
+gunicorn (1 processus, 8 threads), utilisateur non root, base SQLite dans un volume, cookie de session `Secure`, HTTPS et HSTS par Caddy, sonde `/healthz`. À la charge de l'agence : hébergeur dans l'UE et DPA signés (voir `conformite_rgpd.md`). Le Dockerfile n'a pas été construit dans l'environnement de développement (pas de Docker) ; gunicorn a été testé.
 
 ## Tests
 

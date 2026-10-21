@@ -53,3 +53,8 @@ Non requise a priori : pas de suivi à grande échelle, pas de données sensible
 - L'UI enregistre l'état des jobs (libellé, journal, rapport, lignes du plan) dans une base SQLite locale (`TRAFFICKER_DB`). **Aucun secret** (clé de compte de service, secret OAuth Adform) n'y est écrit.
 - Rétention : suppression automatique après 1 heure, comme les jobs en mémoire (`purge`).
 - Authentification optionnelle par mot de passe haché (werkzeug), session HTTP-only, blocage après 5 échecs en 5 minutes.
+
+## 8. Mise à jour v3 — ingestion IA (option)
+
+- Désactivée par défaut. Activée par `TRAFFICKER_LLM=1` : Anthropic devient sous-traitant (à inscrire au registre, DPA à signer).
+- Données envoyées : en-têtes de colonnes non reconnues + 3 valeurs d'exemple de ces colonnes. Pas de clé, pas de plan complet. Le plan média ne doit pas contenir de données personnelles (minimisation, voir §2).

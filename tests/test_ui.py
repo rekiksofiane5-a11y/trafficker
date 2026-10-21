@@ -90,3 +90,9 @@ def test_bulk_download_from_analysis():
     r = c.get(f"/bulk/{j['token']}")
     assert r.status_code == 200 and r.data[:2] == b"PK"      # xlsx = zip
     assert c.get("/bulk/inconnu").status_code == 404
+
+
+def test_healthz_open_even_with_auth(monkeypatch):
+    from werkzeug.security import generate_password_hash
+    monkeypatch.setenv("TRAFFICKER_PASSWORD_HASH", generate_password_hash("x"))
+    assert ui.app.test_client().get("/healthz").get_json() == {"ok": True}

@@ -128,6 +128,8 @@ def load_rows_from_path(path: str, campaign_name: str = "",
         import cm360_bulk
         if cm360_bulk.is_bulk_header(rows[0].keys()):
             return cm360_bulk.bulk_to_plan_rows(rows, campaign_name, advertiser_name)
+        import ingest
+        return ingest.ingest_rows(rows, campaign_name, advertiser_name)
     return rows
 
 
@@ -1373,6 +1375,8 @@ def main():
         if src != args.plan:
             os.remove(src)
     print(f"{len(rows)} ligne(s) lues dans {args.plan}")
+    for line in getattr(rows, "ingest_report", []):
+        print("  [INGESTION] " + line)
     plan, errors = plan_from_rows(rows)
 
     # Couche de modification à la vérification (avant envoi vers l'ad

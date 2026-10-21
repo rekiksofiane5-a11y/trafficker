@@ -1,0 +1,23 @@
+# Déploiement : UI derrière Caddy (HTTPS automatique). Hébergeur à choisir dans l'UE.
+services:
+  trafficker:
+    build: .
+    restart: unless-stopped
+    environment:
+      TRAFFICKER_PASSWORD_HASH: ${TRAFFICKER_PASSWORD_HASH:?hash du mot de passe requis}
+      TRAFFICKER_SECRET_KEY: ${TRAFFICKER_SECRET_KEY:?clé de session requise}
+      TRAFFICKER_USER: ${TRAFFICKER_USER:-admin}
+    volumes:
+      - data:/data
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?nom de domaine requis}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+volumes:
+  data:
+  caddy:
