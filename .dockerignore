@@ -9,3 +9,4 @@ tests
 cle*.json
 cloudflare
 node_modules
+web

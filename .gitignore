@@ -7,3 +7,4 @@ cle*.json
 .pytest_cache/
 node_modules/
 .wrangler/
+web/dist/

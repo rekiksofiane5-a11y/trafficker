@@ -1,19 +1,17 @@
 {
-  // Déploiement de l'UI Trafficker sur Cloudflare Containers (offre Workers payante).
+  // Version 100 % navigateur (offre gratuite) : site statique servi par Cloudflare.
+  // Le moteur Python tourne dans le navigateur (Pyodide) ; aucun conteneur.
+  // Version serveur (Containers, offre payante) : wrangler.containers.jsonc.
   "name": "trafficker",
-  "main": "cloudflare/worker.js",
+  "main": "web/worker.js",
   "compatibility_date": "2026-06-01",
-  "containers": [
-    {
-      "class_name": "TraffickerContainer",
-      "image": "./Dockerfile",
-      "instance_type": "basic",
-      "max_instances": 1
-    }
-  ],
-  "durable_objects": {
-    "bindings": [{ "class_name": "TraffickerContainer", "name": "TRAFFICKER" }]
-  },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TraffickerContainer"] }],
-  "observability": { "enabled": true }
+  "build": { "command": "python3 web/build.py" },
+  "assets": { "directory": "./web/dist", "binding": "ASSETS" },
+  // v1 a créé la classe du conteneur lors d'un premier essai ; v2 la supprime
+  // (le Worker gratuit n'en a pas besoin). Pour revenir à la version serveur,
+  // ajouter une migration v3 qui la recrée dans wrangler.containers.jsonc.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TraffickerContainer"] },
+    { "tag": "v2", "deleted_classes": ["TraffickerContainer"] }
+  ]
 }

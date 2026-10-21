@@ -25,7 +25,8 @@ python cm360_mcp_server.py                                             # 5. serv
 | `cm360_bulk.py` | Format « Campaign spreadsheet » CM360 (Bulk Editor) : export du plan et import comme source |
 | `adform_bulk.py`, `templates/` | Export campagnes + commandes au format bulk Adform (classeur v6, données d'exemple retirées) |
 | `ingest.py` | Ingestion d'un plan à colonnes libres (synonymes FR/EN, normalisation, option IA) |
-| `wrangler.jsonc`, `package.json`, `cloudflare/worker.js`, `.github/workflows/deploy-cloudflare.yml` | Mise en ligne sur Cloudflare Containers (déploiement en un clic depuis GitHub) |
+| `web/` (`index.html`, `web_api.py`, `build.py`, `worker.js`, `wheels/`), `wrangler.jsonc`, `package.json` | Version 100 % navigateur (Pyodide) servie gratuitement par Cloudflare |
+| `wrangler.containers.jsonc`, `cloudflare/worker.js`, `.github/workflows/deploy-cloudflare.yml` | Mise en ligne sur Cloudflare Containers (déploiement en un clic depuis GitHub) |
 | `Dockerfile`, `docker-compose.yml`, `Caddyfile` | Déploiement (gunicorn + HTTPS automatique) |
 | `cm360_mcp_server.py` | Serveur MCP : `analyze_plan`, `traffic`, `check_access`, `report_delivery`, `export_campaign_spreadsheet`, `export_adform_bulk` |
 | `nomenclatures.json`, `plan_media_template.csv` | Templates |
@@ -88,19 +89,20 @@ Le dry-run (et l'UI) signalent : champs manquants, tailles invalides, dates inex
   5 échecs en 5 minutes bloquent l'IP (429). Derrière HTTPS en production, ajoutez `SESSION_COOKIE_SECURE`.
 - État dans SQLite (`TRAFFICKER_DB`, défaut `trafficker.db`, mode WAL) : plans analysés, jobs (journal mis à jour en direct), échecs de login. Visible après redémarrage et depuis tous les processus, purgé après 1 h. **Aucun secret stocké** : clé de compte de service et secret Adform sont renvoyés par le navigateur à chaque lancement ou rapport.
 
-## Mise en ligne sur Cloudflare (accès navigateur)
+## Version 100 % navigateur (Cloudflare, gratuit)
 
-L'UI tourne dans un **Cloudflare Container** (le même `Dockerfile`), derrière un Worker (`cloudflare/worker.js`) ; HTTPS fourni par Cloudflare, adresse `https://trafficker.<ton-sous-domaine>.workers.dev`.
+`web/` : la même logique Python tourne **dans le navigateur** grâce à Pyodide (WebAssembly), servie comme site statique par Cloudflare (offre gratuite). Adresse : `https://trafficker.<ton-sous-domaine>.workers.dev`.
 
-Prérequis : compte Cloudflare avec l'offre **Workers payante** (Containers n'existe pas en gratuit).
+- Fonctions : analyse et validation du plan (CSV, XLSX, XLS, export CM360, colonnes libres), typage des créatives (display, vidéo in-stream, tracking auto), nomenclatures, exports **Campaign spreadsheet CM360** et **classeur bulk Adform**, trafficking et rapport de diffusion **simulés**.
+- Confidentialité : aucun fichier ne quitte le navigateur (test automatique : aucune requête hors du site). Pas de compte, pas de base, rien à purger.
+- Limite : pas d'appel direct aux API CM360/Adform depuis le navigateur — le trafficking réel passe par la version serveur (UI Flask, CLI ou MCP).
+- Déploiement : dépôt connecté au Worker `trafficker` (Workers Builds), réglages par défaut. `npx wrangler deploy` lance `python3 web/build.py` (copie du moteur, du modèle Adform, des wheels openpyxl/xlrd et du cœur Pyodide — auto-hébergé, sans CDN) puis publie `web/dist`.
+- Accès restreint (facultatif, gratuit) : Cloudflare Zero Trust → Access → application sur l'adresse du Worker, connexion par code envoyé par e-mail.
+- Local : `npm ci && python3 web/build.py && python3 -m http.server -d web/dist 8000`.
 
-1. Cloudflare → *My Profile → API Tokens → Create Token*, modèle **Edit Cloudflare Workers** (ajouter la permission Containers si elle est proposée). Noter aussi l'**Account ID** (page d'accueil du compte).
-2. GitHub → dépôt → *Settings → Secrets and variables → Actions* : créer `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `TRAFFICKER_PASSWORD` (le mot de passe de l'UI, utilisateur `admin`).
-3. GitHub → *Actions → deploy-cloudflare → Run workflow*. L'adresse s'affiche dans le journal de l'étape « Déployer ».
+### Version serveur sur Cloudflare Containers (offre payante)
 
-**Variante tableau de bord Cloudflare (Workers Builds, dépôt connecté)** : réglages de build par défaut (racine `/`, Deploy command `npx wrangler deploy` : `wrangler.jsonc` est à la racine) ; *Settings → Variables and Secrets* : secret **`TRAFFICKER_PASSWORD`** (mot de passe de l'UI, en clair, chiffré par Cloudflare) ; *Settings → Domains & Routes* : activer **workers.dev**. Puis relancer le build.
-
-Sécurité : sans mot de passe configuré, le Worker refuse de servir l'UI (503). L'IP réelle des visiteurs est lue dans `CF-Connecting-IP` (anti-force brute). Limite : le disque du conteneur n'est pas persistant — après 30 min d'inactivité il s'endort et l'historique des jobs repart de zéro (sans incidence sur CM360/Adform). Déploiement en local possible aussi : `npm ci && npx wrangler login && npx wrangler deploy` (à la racine) (Docker requis).
+`wrangler.containers.jsonc` + `cloudflare/worker.js` + workflow GitHub `deploy-cloudflare` (secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `TRAFFICKER_PASSWORD`). Nécessite Workers Paid et un jeton avec la permission Containers.
 
 ## Déploiement (SaaS)
 

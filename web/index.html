@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trafficker</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6675; --border: #dde1e7;
+  --accent: #1a5fd0; --accent-text: #ffffff; --ok: #12784a; --warn: #9a5b00; --err: #b3261e;
+  --chip: #eef2f8; --code: #f1f3f6;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #14171c; --card: #1d2128; --text: #e7eaf0; --muted: #a2aab7; --border: #333a45;
+          --accent: #6ea2ff; --accent-text: #0d1117; --ok: #5fd39a; --warn: #f0b45a; --err: #ff8a80;
+          --chip: #272d37; --code: #232830; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 64rem; margin: 0 auto; padding: 20px 16px 60px; }
+header h1 { margin: 0; font-size: 1.6rem; }
+header p { margin: 4px 0 0; color: var(--muted); }
+.badge { display: inline-block; margin-top: 10px; padding: 3px 10px; border-radius: 999px;
+         background: var(--chip); color: var(--ok); font-size: .82rem; font-weight: 600; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+        padding: 18px; margin-top: 18px; }
+.card h2 { margin: 0 0 12px; font-size: 1.1rem; }
+.status { font-size: .9rem; color: var(--muted); }
+.status.err { color: var(--err); }
+.drop { border: 2px dashed var(--border); border-radius: 12px; padding: 22px; text-align: center;
+        cursor: pointer; color: var(--muted); }
+.drop.over { border-color: var(--accent); color: var(--text); }
+.drop strong { color: var(--text); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px; margin-top: 14px; }
+label { display: block; font-size: .85rem; font-weight: 600; margin-bottom: 4px; }
+input[type=text], select { width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+        border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
+.hint { font-size: .8rem; color: var(--muted); margin-top: 3px; }
+button, .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border: 0;
+        border-radius: 9px; background: var(--accent); color: var(--accent-text); font: inherit;
+        font-weight: 600; cursor: pointer; text-decoration: none; }
+button.secondary { background: var(--chip); color: var(--text); }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; align-items: center; }
+.err { color: var(--err); }
+ul.errors { margin: 8px 0 0; padding-left: 20px; color: var(--err); }
+.info { background: var(--chip); border-radius: 8px; padding: 8px 12px; margin-top: 8px; font-size: .9rem; }
+.table-wrap { overflow-x: auto; margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+.chip { display: inline-block; padding: 1px 8px; margin: 1px 4px 1px 0; border-radius: 999px;
+        background: var(--chip); font-size: .8rem; white-space: nowrap; }
+.chip.TRACKING { color: var(--warn); } .chip.VIDEO { color: var(--accent); }
+pre.log { background: var(--code); border-radius: 8px; padding: 10px; max-height: 22rem; overflow: auto;
+          font-size: .82rem; white-space: pre-wrap; }
+.camp h3 { margin: 14px 0 4px; font-size: 1rem; }
+.meta { color: var(--muted); font-size: .88rem; }
+footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
+a { color: var(--accent); }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Trafficker</h1>
+    <p>Contrôle et préparation du trafficking CM360 / Adform à partir d'un plan média.</p>
+    <span class="badge">🔒 100 % dans votre navigateur — aucun fichier n'est envoyé</span>
+  </header>
+
+  <section class="card" aria-labelledby="t-plan">
+    <h2 id="t-plan">1. Plan média</h2>
+    <p id="engine" class="status" role="status">Chargement du moteur Python… (≈ 10 Mo la première fois)</p>
+    <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
+      <strong>Déposez votre plan ici</strong> ou cliquez pour choisir un fichier
+      <div id="drop-hint" class="hint">CSV, XLSX, XLS — plan d'agence aux colonnes libres ou export « Campaign spreadsheet » CM360</div>
+      <div id="file-name" class="hint"></div>
+    </div>
+    <input id="file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
+    <div class="grid">
+      <div>
+        <label for="camp">Campagne (si absente du fichier)</label>
+        <input id="camp" type="text" autocomplete="off">
+      </div>
+      <div>
+        <label for="adv">Annonceur (si absent du fichier)</label>
+        <input id="adv" type="text" autocomplete="off">
+      </div>
+      <div>
+        <label for="nomen">Nomenclatures (JSON, facultatif)</label>
+        <input id="nomen" type="file" accept=".json">
+      </div>
+    </div>
+    <div class="actions">
+      <button id="analyze" disabled>Analyser le plan</button>
+      <span class="hint">Exemples : <a href="exemples/plan_media_template.csv" download>plan média</a> ·
+        <a href="exemples/nomenclatures.json" download>nomenclatures</a></span>
+    </div>
+  </section>
+
+  <section id="result" class="card hidden" aria-labelledby="t-res" aria-live="polite">
+    <h2 id="t-res">2. Vérification avant envoi</h2>
+    <div id="summary"></div>
+    <div class="actions" id="actions">
+      <button id="demo" class="secondary">▶ Simuler le trafficking (démo)</button>
+      <button id="delivery" class="secondary">📊 Rapport de diffusion (démo)</button>
+      <button id="dl-cm360">⬇ Campaign spreadsheet CM360</button>
+      <span>
+        <button id="dl-adform">⬇ Classeur bulk Adform</button>
+        <select id="adform-type" aria-label="Type de campagne Adform">
+          <option>Non-programmatic</option><option>Programmatic</option><option>Hybrid</option>
+        </select>
+      </span>
+    </div>
+  </section>
+
+  <section id="output" class="card hidden" aria-labelledby="t-out" aria-live="polite">
+    <h2 id="t-out">3. Résultat</h2>
+    <div id="out"></div>
+  </section>
+
+  <footer>
+    Cette version tourne entièrement dans le navigateur : analyse, typage des créatives (display,
+    vidéo in-stream, tracking automatique), nomenclatures, exports CM360 et Adform, simulations.
+    Le trafficking réel via les API CM360/Adform se fait avec la version serveur (voir le README du dépôt).
+  </footer>
+</main>
+
+<script src="pyodide/pyodide.js"></script>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let py = null, api = null, planFile = null;
+
+function el(tag, attrs = {}, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v; else n.setAttribute(k, v);
+  }
+  for (const c of children) n.append(c instanceof Node ? c : document.createTextNode(String(c ?? "")));
+  return n;
+}
+function setStatus(text, isErr = false) {
+  $("engine").textContent = text; $("engine").classList.toggle("err", isErr);
+}
+function showOutput(...nodes) {
+  $("output").classList.remove("hidden"); $("out").replaceChildren(...nodes);
+  $("output").scrollIntoView({behavior: "smooth", block: "start"});
+}
+function busy(btn, on, label) {
+  btn.disabled = on;
+  if (on) { btn.dataset.label = btn.textContent; btn.textContent = label || "…"; }
+  else if (btn.dataset.label) btn.textContent = btn.dataset.label;
+}
+
+async function boot() {
+  try {
+    py = await loadPyodide({indexURL: new URL("pyodide/", location.href).href});
+    const manifest = await (await fetch("py/manifest.json")).json();
+    for (const w of manifest.wheels) {
+      const buf = await (await fetch("wheels/" + w)).arrayBuffer();
+      py.unpackArchive(buf, "wheel");
+    }
+    const app = "/home/pyodide/app";
+    py.FS.mkdirTree(app + "/templates");
+    for (const m of manifest.modules)
+      py.FS.writeFile(app + "/" + m, new Uint8Array(await (await fetch("py/" + m)).arrayBuffer()));
+    for (const t of manifest.templates)
+      py.FS.writeFile(app + "/templates/" + t,
+        new Uint8Array(await (await fetch("py/templates/" + t)).arrayBuffer()));
+    py.runPython(`import sys; sys.path.insert(0, "${app}")`);
+    api = py.pyimport("web_api");
+    setStatus("Moteur prêt.");
+    $("analyze").disabled = !planFile;
+  } catch (e) {
+    setStatus("Le moteur n'a pas pu se charger : " + e.message, true);
+  }
+}
+
+function pickFile(f) {
+  planFile = f || null;
+  $("file-name").textContent = f ? "Fichier : " + f.name : "";
+  $("analyze").disabled = !(planFile && api);
+}
+$("drop").addEventListener("click", () => $("file").click());
+$("drop").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
+$("file").addEventListener("change", (e) => pickFile(e.target.files[0]));
+for (const ev of ["dragenter", "dragover"])
+  $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.add("over"); });
+for (const ev of ["dragleave", "drop"])
+  $("drop").addEventListener(ev, (e) => { e.preventDefault(); $("drop").classList.remove("over"); });
+$("drop").addEventListener("drop", (e) => pickFile(e.dataTransfer.files[0]));
+
+function renderSummary(d) {
+  const box = $("summary"); box.replaceChildren();
+  if (d.fatal) { box.append(el("p", {class: "err"}, d.fatal)); return false; }
+  box.append(el("p", {}, `${d.rows} ligne(s) lue(s), ${d.campaigns.length} campagne(s), ${d.errors.length} erreur(s).`));
+  for (const line of d.ingest) box.append(el("div", {class: "info"}, "🔎 " + line));
+  for (const line of d.renames) box.append(el("div", {class: "info"}, "🏷️ " + line));
+  if (d.errors.length) {
+    box.append(el("p", {class: "err"}, "À corriger avant tout envoi :"));
+    box.append(el("ul", {class: "errors"}, ...d.errors.map((e) => el("li", {}, e))));
+  }
+  for (const c of d.campaigns) {
+    const wrap = el("div", {class: "camp"});
+    wrap.append(el("h3", {}, c.name));
+    const budget = c.budget_eur ? ` · budget ${Number(c.budget_eur).toLocaleString("fr-FR")} €` : "";
+    wrap.append(el("div", {class: "meta"},
+      `${c.start} → ${c.end} · annonceur : ${c.advertiser || "—"} · ${c.placements.length} emplacement(s)${budget}`));
+    const rows = c.ads.map((a) => el("tr", {},
+      el("td", {}, a.name), el("td", {}, a.placements.join(", ")),
+      el("td", {}, ...a.creatives.map((cr) => el("span", {class: "chip " + cr.type.split(" ")[0]}, `${cr.name} · ${cr.type}`))),
+      el("td", {}, a.landing_page_url)));
+    wrap.append(el("div", {class: "table-wrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Annonce"), el("th", {}, "Emplacements"),
+        el("th", {}, "Créatives"), el("th", {}, "Destination"))),
+      el("tbody", {}, ...rows))));
+    box.append(wrap);
+  }
+  return d.errors.length === 0;
+}
+
+$("analyze").addEventListener("click", async () => {
+  const btn = $("analyze"); busy(btn, true, "Analyse…");
+  try {
+    const ext = planFile.name.toLowerCase().match(/\.(csv|xlsx|xlsm|xls)$/);
+    if (!ext) throw new Error("Format non pris en charge (CSV, XLSX ou XLS).");
+    const path = "/tmp/plan_" + Date.now() + "." + ext[1];
+    py.FS.writeFile(path, new Uint8Array(await planFile.arrayBuffer()));
+    const nomenFile = $("nomen").files[0];
+    const nomen = nomenFile ? await nomenFile.text() : "";
+    const d = JSON.parse(api.analyze(path, $("camp").value.trim(), $("adv").value.trim(), nomen));
+    $("result").classList.remove("hidden");
+    const ok = renderSummary(d);
+    for (const id of ["demo", "delivery", "dl-cm360", "dl-adform"]) $(id).disabled = !ok;
+    $("output").classList.add("hidden");
+    $("result").scrollIntoView({behavior: "smooth", block: "start"});
+  } catch (e) {
+    $("result").classList.remove("hidden");
+    $("summary").replaceChildren(el("p", {class: "err"}, "Erreur : " + e.message));
+  } finally { busy(btn, false); }
+});
+
+$("demo").addEventListener("click", () => {
+  let d;
+  try { d = JSON.parse(api.run_demo()); }
+  catch (e) { showOutput(el("p", {class: "err"}, "Simulation impossible : " + e.message)); return; }
+  showOutput(
+    el("p", {}, `Trafficking simulé : ${d.created} objet(s) créé(s), ${d.errors.length} erreur(s). Aucune écriture réelle.`),
+    el("pre", {class: "log"}, ["[MODE DÉMO] Plateforme simulée.", ...d.logs].join("\n")));
+});
+
+$("delivery").addEventListener("click", () => {
+  let d;
+  try { d = JSON.parse(api.delivery_demo()); }
+  catch (e) { showOutput(el("p", {class: "err"}, "Rapport impossible : " + e.message)); return; }
+  const nodes = [el("p", {}, "Rapport de diffusion simulé (données fictives) :"),
+                 ...d.reconciliation.map((l) => el("div", {class: "info"}, l))];
+  for (const c of d.campaigns) {
+    if (!c.placements.length) continue;
+    const fmt = (n) => Number(n).toLocaleString("fr-FR");
+    nodes.push(el("h3", {}, c.name), el("div", {class: "table-wrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, ...["Emplacement", "Impressions", "Clics", "CTR", "Dépense"].map((h) => el("th", {}, h)))),
+      el("tbody", {}, ...c.placements.map((p) => el("tr", {},
+        el("td", {}, p.name), el("td", {}, fmt(p.impressions)), el("td", {}, fmt(p.clicks)),
+        el("td", {}, (p.impressions ? p.clicks / p.impressions * 100 : 0).toFixed(2) + " %"),
+        el("td", {}, fmt(p.spend.toFixed(2)) + " €")))))));
+  }
+  showOutput(...nodes);
+});
+
+function download(bytesProxy, name) {
+  const bytes = bytesProxy.toJs(); bytesProxy.destroy();
+  const url = URL.createObjectURL(new Blob([bytes], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+  const a = el("a", {href: url, download: name}); document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+$("dl-cm360").addEventListener("click", () => {
+  try { download(api.export_cm360(), "campaign_spreadsheet_cm360.xlsx"); }
+  catch (e) { showOutput(el("p", {class: "err"}, "Export CM360 impossible : " + e.message)); }
+});
+$("dl-adform").addEventListener("click", () => {
+  try { download(api.export_adform($("adform-type").value), "adform_bulk.xlsx"); }
+  catch (e) { showOutput(el("p", {class: "err"}, "Export Adform impossible : " + e.message)); }
+});
+
+boot();
+</script>
+</body>
+</html>
