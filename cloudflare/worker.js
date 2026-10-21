@@ -12,6 +12,8 @@ export class TraffickerContainer extends Container {
     // Secrets Cloudflare (wrangler secret put ...) -> variables du conteneur
     this.envVars = {
       TRAFFICKER_PASSWORD_HASH: env.TRAFFICKER_PASSWORD_HASH || "",
+      TRAFFICKER_PASSWORD: env.TRAFFICKER_PASSWORD || "",
+      // Sans clé fournie, l'UI en tire une au hasard (sessions perdues au redémarrage)
       TRAFFICKER_SECRET_KEY: env.TRAFFICKER_SECRET_KEY || "",
       TRAFFICKER_USER: env.TRAFFICKER_USER || "admin",
       TRAFFICKER_SECURE_COOKIE: "1",
@@ -24,10 +26,11 @@ export class TraffickerContainer extends Container {
 export default {
   async fetch(request, env) {
     // Refus explicite si le mot de passe n'est pas configuré : jamais d'UI ouverte en ligne
-    if (!env.TRAFFICKER_PASSWORD_HASH || !env.TRAFFICKER_SECRET_KEY) {
+    if (!env.TRAFFICKER_PASSWORD && !env.TRAFFICKER_PASSWORD_HASH) {
       return new Response(
-        "Trafficker : configurez les secrets TRAFFICKER_PASSWORD_HASH et TRAFFICKER_SECRET_KEY " +
-          "(npx wrangler secret put ...).", { status: 503 });
+        "Trafficker : ajoutez le secret TRAFFICKER_PASSWORD (Cloudflare > Worker > Settings > " +
+          "Variables and Secrets, type Secret), puis redéployez.",
+        { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } });
     }
     // Une seule instance : l'état (SQLite) vit dans ce conteneur
     return env.TRAFFICKER.getByName("main").fetch(request);

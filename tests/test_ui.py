@@ -96,3 +96,15 @@ def test_healthz_open_even_with_auth(monkeypatch):
     from werkzeug.security import generate_password_hash
     monkeypatch.setenv("TRAFFICKER_PASSWORD_HASH", generate_password_hash("x"))
     assert ui.app.test_client().get("/healthz").get_json() == {"ok": True}
+
+
+def test_auth_with_plain_password_secret(monkeypatch):
+    monkeypatch.delenv("TRAFFICKER_PASSWORD_HASH", raising=False)
+    monkeypatch.setenv("TRAFFICKER_PASSWORD", "clair-123")
+    ui.store.clear_login_failures()
+    c = ui.app.test_client()
+    assert c.post("/analyze").status_code == 401
+    assert c.post("/login", data={"user": "admin", "password": "faux"}).status_code == 401
+    assert c.post("/login", data={"user": "admin", "password": "clair-123"}).status_code == 302
+    assert c.get("/jobs").status_code == 200
+    ui.store.clear_login_failures()

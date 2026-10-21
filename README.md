@@ -79,7 +79,7 @@ Le dry-run (et l'UI) signalent : champs manquants, tailles invalides, dates inex
 
 ## UI : authentification et persistance
 
-- Login désactivé par défaut (local uniquement). Pour l'activer :
+- Login désactivé par défaut (local uniquement). Pour l'activer : `TRAFFICKER_PASSWORD` (secret chiffré par l'hébergeur, ex. Cloudflare) ou, mieux, un hash :
   ```bash
   export TRAFFICKER_PASSWORD_HASH="$(python -c 'from werkzeug.security import generate_password_hash as g; print(g("mon-mot-de-passe"))')"
   export TRAFFICKER_USER=admin            # défaut
@@ -97,6 +97,8 @@ Prérequis : compte Cloudflare avec l'offre **Workers payante** (Containers n'ex
 1. Cloudflare → *My Profile → API Tokens → Create Token*, modèle **Edit Cloudflare Workers** (ajouter la permission Containers si elle est proposée). Noter aussi l'**Account ID** (page d'accueil du compte).
 2. GitHub → dépôt → *Settings → Secrets and variables → Actions* : créer `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `TRAFFICKER_PASSWORD` (le mot de passe de l'UI, utilisateur `admin`).
 3. GitHub → *Actions → deploy-cloudflare → Run workflow*. L'adresse s'affiche dans le journal de l'étape « Déployer ».
+
+**Variante tableau de bord Cloudflare (Workers Builds, dépôt connecté)** : *Worker → Settings → Build* : **Root directory = `cloudflare`**, Deploy command = `npx wrangler deploy` ; *Settings → Variables and Secrets* : secret **`TRAFFICKER_PASSWORD`** (mot de passe de l'UI, en clair, chiffré par Cloudflare) ; *Settings → Domains & Routes* : activer **workers.dev**. Puis relancer le build.
 
 Sécurité : sans mot de passe configuré, le Worker refuse de servir l'UI (503). L'IP réelle des visiteurs est lue dans `CF-Connecting-IP` (anti-force brute). Limite : le disque du conteneur n'est pas persistant — après 30 min d'inactivité il s'endort et l'historique des jobs repart de zéro (sans incidence sur CM360/Adform). Déploiement en local possible aussi : `cd cloudflare && npm ci && npx wrangler login && npx wrangler deploy` (Docker requis).
 

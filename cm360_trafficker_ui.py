@@ -80,7 +80,18 @@ MAX_ATTEMPTS, ATTEMPT_WINDOW = 5, 300
 
 
 def _auth_enabled() -> bool:
-    return bool(os.environ.get("TRAFFICKER_PASSWORD_HASH"))
+    return bool(os.environ.get("TRAFFICKER_PASSWORD_HASH") or os.environ.get("TRAFFICKER_PASSWORD"))
+
+
+def _password_ok(given: str) -> bool:
+    """Hash werkzeug (TRAFFICKER_PASSWORD_HASH) de préférence ; sinon mot de passe
+    fourni en secret chiffré par l'hébergeur (TRAFFICKER_PASSWORD, ex. secret Cloudflare),
+    comparé en temps constant."""
+    h = os.environ.get("TRAFFICKER_PASSWORD_HASH")
+    if h:
+        return check_password_hash(h, given)
+    import hmac
+    return hmac.compare_digest(given.encode(), os.environ.get("TRAFFICKER_PASSWORD", "").encode())
 
 
 LOGIN_PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
@@ -126,8 +137,7 @@ def login():
     if store.login_failures(ip, ATTEMPT_WINDOW) >= MAX_ATTEMPTS:
         return (LOGIN_PAGE.replace("__ERR__", "<p class='err'>Trop d'essais, réessayez dans 5 minutes.</p>"), 429)
     ok_user = request.form.get("user", "") == os.environ.get("TRAFFICKER_USER", "admin")
-    ok_pwd = check_password_hash(os.environ["TRAFFICKER_PASSWORD_HASH"],
-                                 request.form.get("password", ""))
+    ok_pwd = _password_ok(request.form.get("password", ""))
     if ok_user and ok_pwd:
         session["user"] = request.form["user"]
         store.clear_login_failures(ip)
