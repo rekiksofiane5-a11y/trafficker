@@ -25,7 +25,7 @@ python cm360_mcp_server.py                                             # 5. serv
 | `cm360_bulk.py` | Format « Campaign spreadsheet » CM360 (Bulk Editor) : export du plan et import comme source |
 | `adform_bulk.py`, `templates/` | Export campagnes + commandes au format bulk Adform (classeur v6, données d'exemple retirées) |
 | `ingest.py` | Ingestion d'un plan à colonnes libres (synonymes FR/EN, normalisation, option IA) |
-| `cloudflare/`, `.github/workflows/deploy-cloudflare.yml` | Mise en ligne sur Cloudflare Containers (déploiement en un clic depuis GitHub) |
+| `wrangler.jsonc`, `package.json`, `cloudflare/worker.js`, `.github/workflows/deploy-cloudflare.yml` | Mise en ligne sur Cloudflare Containers (déploiement en un clic depuis GitHub) |
 | `Dockerfile`, `docker-compose.yml`, `Caddyfile` | Déploiement (gunicorn + HTTPS automatique) |
 | `cm360_mcp_server.py` | Serveur MCP : `analyze_plan`, `traffic`, `check_access`, `report_delivery`, `export_campaign_spreadsheet`, `export_adform_bulk` |
 | `nomenclatures.json`, `plan_media_template.csv` | Templates |
@@ -98,9 +98,9 @@ Prérequis : compte Cloudflare avec l'offre **Workers payante** (Containers n'ex
 2. GitHub → dépôt → *Settings → Secrets and variables → Actions* : créer `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `TRAFFICKER_PASSWORD` (le mot de passe de l'UI, utilisateur `admin`).
 3. GitHub → *Actions → deploy-cloudflare → Run workflow*. L'adresse s'affiche dans le journal de l'étape « Déployer ».
 
-**Variante tableau de bord Cloudflare (Workers Builds, dépôt connecté)** : *Worker → Settings → Build* : **Root directory = `cloudflare`**, Deploy command = `npx wrangler deploy` ; *Settings → Variables and Secrets* : secret **`TRAFFICKER_PASSWORD`** (mot de passe de l'UI, en clair, chiffré par Cloudflare) ; *Settings → Domains & Routes* : activer **workers.dev**. Puis relancer le build.
+**Variante tableau de bord Cloudflare (Workers Builds, dépôt connecté)** : réglages de build par défaut (racine `/`, Deploy command `npx wrangler deploy` : `wrangler.jsonc` est à la racine) ; *Settings → Variables and Secrets* : secret **`TRAFFICKER_PASSWORD`** (mot de passe de l'UI, en clair, chiffré par Cloudflare) ; *Settings → Domains & Routes* : activer **workers.dev**. Puis relancer le build.
 
-Sécurité : sans mot de passe configuré, le Worker refuse de servir l'UI (503). L'IP réelle des visiteurs est lue dans `CF-Connecting-IP` (anti-force brute). Limite : le disque du conteneur n'est pas persistant — après 30 min d'inactivité il s'endort et l'historique des jobs repart de zéro (sans incidence sur CM360/Adform). Déploiement en local possible aussi : `cd cloudflare && npm ci && npx wrangler login && npx wrangler deploy` (Docker requis).
+Sécurité : sans mot de passe configuré, le Worker refuse de servir l'UI (503). L'IP réelle des visiteurs est lue dans `CF-Connecting-IP` (anti-force brute). Limite : le disque du conteneur n'est pas persistant — après 30 min d'inactivité il s'endort et l'historique des jobs repart de zéro (sans incidence sur CM360/Adform). Déploiement en local possible aussi : `npm ci && npx wrangler login && npx wrangler deploy` (à la racine) (Docker requis).
 
 ## Déploiement (SaaS)
 
