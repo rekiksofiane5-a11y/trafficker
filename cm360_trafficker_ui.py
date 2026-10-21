@@ -22,6 +22,7 @@ job, jobs et rapports au plus tard 1 h après), secrets jamais journalisés.
     -> http://localhost:5000
 """
 
+import html as _html
 import json
 import os
 import shutil
@@ -30,8 +31,12 @@ import time
 import traceback
 import uuid
 import zipfile
+from collections import defaultdict
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, redirect, request, session
+from werkzeug.security import check_password_hash
+
+import trafficker_store as store
 
 from cm360_trafficker import (
     apply_nomenclature,
@@ -40,6 +45,11 @@ from cm360_trafficker import (
     load_rows_from_source,
     plan_from_rows,
     traffic_plan,
+)
+from cm360_reporting import (
+    build_reporting_adapter,
+    delivery_to_dict,
+    report_for_plan,
 )
 
 app = Flask(__name__)
@@ -52,6 +62,76 @@ RETENTION_SECONDS = 3600  # 1 heure
 JOBS: dict = {}
 # Plans analysés en attente d'exécution : token -> paramètres
 PLANS: dict = {}
+
+# ---------------------------------------------------------------------------
+# Authentification (optionnelle)
+# ---------------------------------------------------------------------------
+# Activée si TRAFFICKER_PASSWORD_HASH est défini (hash werkzeug du mot de passe,
+# voir le guide). TRAFFICKER_USER (défaut « admin ») et TRAFFICKER_SECRET_KEY
+# (clé de session ; aléatoire à chaque démarrage si absente) complètent.
+# Sans hash, l'UI reste ouverte : à n'utiliser qu'en local (127.0.0.1).
+
+app.secret_key = os.environ.get("TRAFFICKER_SECRET_KEY") or uuid.uuid4().hex
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+LOGIN_ATTEMPTS: dict = defaultdict(list)   # ip -> horodatages des échecs
+MAX_ATTEMPTS, ATTEMPT_WINDOW = 5, 300
+
+
+def _auth_enabled() -> bool:
+    return bool(os.environ.get("TRAFFICKER_PASSWORD_HASH"))
+
+
+LOGIN_PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Trafficker — connexion</title>
+<style>body{font-family:system-ui,sans-serif;background:#f4f4f4;display:flex;min-height:100vh;
+align-items:center;justify-content:center;margin:0}form{background:#fff;padding:28px;border-radius:16px;
+width:300px;box-shadow:0 2px 12px #0002}input{width:100%;box-sizing:border-box;padding:9px;margin:6px 0 14px;
+border:1px solid #ccc;border-radius:8px}button{width:100%;padding:10px;border:0;border-radius:8px;
+background:#1a73e8;color:#fff;font-weight:600;cursor:pointer}.err{color:#b00020}</style></head><body>
+<form method="post" action="/login"><h2>Trafficker</h2>__ERR__
+<label>Utilisateur<input name="user" autocomplete="username" required></label>
+<label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
+<button>Se connecter</button></form></body></html>"""
+
+
+@app.before_request
+def _require_login():
+    if not _auth_enabled() or request.endpoint in ("login", "static"):
+        return None
+    if session.get("user"):
+        return None
+    if request.method == "GET" and request.path == "/":
+        return redirect("/login")
+    return jsonify({"error": "Authentification requise."}), 401
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not _auth_enabled():
+        return redirect("/")
+    if request.method == "GET":
+        return LOGIN_PAGE.replace("__ERR__", "")
+    ip = request.remote_addr or "?"
+    now = time.time()
+    LOGIN_ATTEMPTS[ip] = [t for t in LOGIN_ATTEMPTS[ip] if now - t < ATTEMPT_WINDOW]
+    if len(LOGIN_ATTEMPTS[ip]) >= MAX_ATTEMPTS:
+        return (LOGIN_PAGE.replace("__ERR__", "<p class='err'>Trop d'essais, réessayez dans 5 minutes.</p>"), 429)
+    ok_user = request.form.get("user", "") == os.environ.get("TRAFFICKER_USER", "admin")
+    ok_pwd = check_password_hash(os.environ["TRAFFICKER_PASSWORD_HASH"],
+                                 request.form.get("password", ""))
+    if ok_user and ok_pwd:
+        session["user"] = request.form["user"]
+        LOGIN_ATTEMPTS.pop(ip, None)
+        return redirect("/")
+    LOGIN_ATTEMPTS[ip].append(now)
+    return (LOGIN_PAGE.replace("__ERR__", "<p class='err'>Identifiants incorrects.</p>"), 401)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
+
 
 # ---------------------------------------------------------------------------
 # Page conversationnelle (client)
@@ -295,7 +375,9 @@ async function launch(btn, token){
         m.querySelector('.body').insertAdjacentHTML('beforeend',
           s.error ? '<p class="err">Échec : ' + esc(s.error) + '</p>'
                   : '<p><b>Terminé.</b></p><a class="btn" href="/report/' +
-                    d.job_id + '">⬇ Télécharger le rapport JSON</a>');
+                    d.job_id + '">⬇ Télécharger le rapport JSON</a> ' +
+                    '<button class="btn" onclick="showDelivery(this, \\'' + d.job_id +
+                    '\\')">📊 Rapport de diffusion</button>');
         break;
       }
     }
@@ -325,8 +407,23 @@ async function showJob(id){
   let html = '<p>Exécution :</p><pre class="log">' + esc(s.log.join('\\n')) + '</pre>';
   if (s.done) html += s.error
     ? '<p class="err">Échec : ' + esc(s.error) + '</p>'
-    : '<a class="btn" href="/report/' + id + '">⬇ Rapport JSON</a>';
+    : '<a class="btn" href="/report/' + id + '">⬇ Rapport JSON</a> ' +
+      '<button class="btn" onclick="showDelivery(this, \\'' + id + '\\')">📊 Rapport de diffusion</button>';
   addMsg('bot', html);
+}
+
+async function showDelivery(btn, id){
+  btn.disabled = true; btn.textContent = 'Chargement…';
+  const t = addMsg('bot', '<span class="dots">…</span>');
+  try {
+    const d = await (await fetch('/delivery/' + id, {method: 'POST'})).json();
+    t.querySelector('.body').innerHTML =
+      d.error ? '<p class="err">' + esc(d.error) + '</p>' : d.html;
+  } catch (e) {
+    t.querySelector('.body').innerHTML = '<p class="err">Erreur réseau : ' + esc(String(e)) + '</p>';
+  }
+  btn.disabled = false; btn.textContent = '📊 Rapport de diffusion';
+  chat.scrollTop = chat.scrollHeight;
 }
 
 function newChat(){ chat.innerHTML = ''; greeting(); }
@@ -463,6 +560,7 @@ def analyze():
         "adform_client_id": request.form.get("adform_client_id", ""),
         "adform_client_secret": request.form.get("adform_client_secret", ""),
         "creatives_dir": creatives_dir,
+        "rows": rows,   # conservé pour le rapport de diffusion (purgé avec le plan)
         "demo": request.form.get("demo") == "on",
         "created": time.time(),
     }
@@ -498,7 +596,12 @@ def run():
     job_id = uuid.uuid4().hex
     label = next(iter(job["plan"].values())).name if job["plan"] else "Trafficking"
     JOBS[job_id] = {"log": [], "done": False, "report": None, "error": None,
-                    "created": time.time(), "label": label}
+                    "created": time.time(), "label": label,
+                    # Paramètres du rapport de diffusion (même plateforme que le job)
+                    "delivery": {k: job.get(k, "") for k in (
+                        "rows", "platform", "service_account", "profile_id", "demo")}}
+
+    store.save_job(job_id, JOBS[job_id])
 
     def worker():
         state = JOBS[job_id]
@@ -522,6 +625,7 @@ def run():
             # RGPD : purge des créatives extraites du ZIP dès la fin du job
             shutil.rmtree(job.get("creatives_dir") or "", ignore_errors=True)
             state["done"] = True
+            store.save_job(job_id, state)
 
     threading.Thread(target=worker, daemon=True).start()
     return jsonify({"job_id": job_id})
@@ -529,8 +633,56 @@ def run():
 
 @app.route("/status/<job_id>")
 def status(job_id):
-    state = JOBS.get(job_id, {"log": [], "done": True, "error": "job inconnu"})
+    state = (JOBS.get(job_id) or store.load_job(job_id)
+             or {"log": [], "done": True, "error": "job inconnu"})
     return jsonify({"log": state["log"], "done": state["done"], "error": state["error"]})
+
+
+@app.route("/delivery/<job_id>", methods=["POST"])
+def delivery(job_id):
+    """Rapport de diffusion + réconciliation pour le plan d'un job (lecture seule)."""
+    state = JOBS.get(job_id) or store.load_job(job_id)
+    if not state or not state.get("delivery", {}).get("rows"):
+        return jsonify({"error": "Plan introuvable (job inconnu ou purge après 1 h)."})
+    d = state["delivery"]
+    demo = d.get("demo", False)
+    platform = "mock" if demo else d.get("platform", "cm360")
+    if platform == "adform":
+        return jsonify({"error": "Reporting Adform : pas encore disponible "
+                                 "(utilisez CM360 ou le mode démo)."})
+    if platform == "cm360" and not d.get("service_account"):
+        return jsonify({"error": "CM360 : clé de compte de service manquante."})
+    try:
+        adapter = build_reporting_adapter(
+            platform=platform, log=lambda m: None,
+            service_account=d.get("service_account", ""),
+            profile_id=int(d["profile_id"]) if str(d.get("profile_id", "")).isdigit() else None)
+        deliveries, flags = report_for_plan(d["rows"], adapter)
+    except SystemExit as e:
+        return jsonify({"error": str(e)})
+    except Exception as e:
+        return jsonify({"error": f"Rapport impossible : {e}"})
+    data = delivery_to_dict(adapter.name, deliveries, flags)
+    return jsonify({"html": _delivery_html(data), "data": data})
+
+
+def _delivery_html(data: dict) -> str:
+    e = _html.escape
+    out = [f"<p><b>Rapport de diffusion</b> [{e(data['platform'])}]</p>"]
+    for line in data["reconciliation"]:
+        out.append(f"<p>{e(line)}</p>")
+    for c in data["campaigns"]:
+        if not c["placements"]:
+            continue
+        out.append(f"<p><b>{e(c['name'])}</b> — par emplacement :</p><ul>")
+        for p in c["placements"]:
+            ctr = p["clicks"] / p["impressions"] * 100 if p["impressions"] else 0
+            n = lambda v, f=",": format(v, f).replace(",", " ")
+            out.append(f"<li>{e(p['name'])} : {n(p['impressions'])} imp., "
+                       f"{n(p['clicks'])} clics (CTR {ctr:.2f} %), "
+                       f"{n(p['spend'], ',.2f')} €</li>")
+        out.append("</ul>")
+    return "".join(out)
 
 
 @app.route("/jobs")
@@ -539,12 +691,14 @@ def jobs_list():
     for jid, st in sorted(JOBS.items(), key=lambda kv: -kv[1]["created"])[:20]:
         items.append({"id": jid, "label": st.get("label", "Trafficking"),
                       "done": st["done"], "error": bool(st["error"])})
-    return jsonify({"jobs": items})
+    seen = {i["id"] for i in items}
+    items += [j for j in store.list_jobs() if j["id"] not in seen]   # jobs d'avant redémarrage
+    return jsonify({"jobs": items[:20]})
 
 
 @app.route("/report/<job_id>")
 def report(job_id):
-    state = JOBS.get(job_id)
+    state = JOBS.get(job_id) or store.load_job(job_id)
     if not state or not state.get("report"):
         return "<p>Rapport indisponible (job inconnu, échec, ou purge après 1 h).</p>"
     return app.response_class(
@@ -568,6 +722,7 @@ def purge_expired():
     for jid in [j for j, s in JOBS.items()
                 if now - s.get("created", now) > RETENTION_SECONDS]:
         JOBS.pop(jid, None)
+    store.purge(RETENTION_SECONDS)
 
 
 def _retention_loop():

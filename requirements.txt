@@ -1,0 +1,8 @@
+# Moteur + reporting
+openpyxl
+google-api-python-client
+google-auth
+# Interface web
+flask
+# Serveur MCP (l'API a changé en 2.x : le serveur utilise mcp.server.fastmcp)
+mcp[cli]<2

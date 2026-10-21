@@ -47,3 +47,9 @@ Non requise a priori : pas de suivi à grande échelle, pas de données sensible
 - DPA Mistral AI (Data Processing Addendum) : https://legal.mistral.ai/terms/data-processing-addendum/
 - RGPD : règlement (UE) 2016/679, art. 6, 9, 28, 30 (registre), 32 (sécurité), 35 (AIPD)
 
+
+## 7. Mise à jour v2 — persistance SQLite et authentification
+
+- L'UI enregistre l'état des jobs (libellé, journal, rapport, lignes du plan) dans une base SQLite locale (`TRAFFICKER_DB`). **Aucun secret** (clé de compte de service, secret OAuth Adform) n'y est écrit.
+- Rétention : suppression automatique après 1 heure, comme les jobs en mémoire (`purge`).
+- Authentification optionnelle par mot de passe haché (werkzeug), session HTTP-only, blocage après 5 échecs en 5 minutes.

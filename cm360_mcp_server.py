@@ -61,6 +61,7 @@ from cm360_trafficker import (
 )
 from cm360_reporting import (
     build_reporting_adapter,
+    delivery_to_dict,
     report_for_plan,
 )
 
@@ -231,15 +232,7 @@ def report_delivery(source: str, platform: str = "mock",
         return f"ERREUR : {e}\n" + "\n".join(logs)
     except Exception as e:
         return f"ERREUR : {e}\n" + "\n".join(logs)
-    payload = {"platform": adapter.name,
-               "campaigns": [{"name": d.name, "impressions": d.impressions,
-                              "clicks": d.clicks,
-                              "placements": [{"name": p.name,
-                                              "impressions": p.impressions,
-                                              "clicks": p.clicks}
-                                             for p in d.placements.values()]}
-                             for d in deliveries],
-               "reconciliation": flags}
+    payload = delivery_to_dict(adapter.name, deliveries, flags)
     return (f"Rapport de diffusion [{adapter.name}] :\n"
             + "\n".join(flags)
             + "\n\n--- Données (JSON) ---\n"

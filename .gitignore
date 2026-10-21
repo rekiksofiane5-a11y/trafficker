@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
 venv/
-*.json.key
+.venv/
 cle*.json
+*.db
+.pytest_cache/

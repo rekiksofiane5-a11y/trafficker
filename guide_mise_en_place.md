@@ -193,3 +193,12 @@ Outils exposés : `analyze_plan` (validation + nomenclatures), `traffic` (exécu
 - Comptes de service : https://developers.google.com/doubleclick-advertisers/service_accounts
 - Premiers pas : https://developers.google.com/doubleclick-advertisers/getting_started
 
+
+
+## 12. Compléments (v2)
+
+- **Colonnes optionnelles du plan** : `objective_impressions` (pacing impressions) et `budget_eur` (pacing dépense). La dépense lue sur CM360 vient de la métrique `mediaCost` (colonne « Media Cost » du CSV) — à valider avec un accès réel.
+- **Rapport de diffusion dans l'UI** : après un trafficking, bouton « 📊 Rapport de diffusion » (même plateforme que le job ; en mode démo : données simulées).
+- **Authentification et persistance** : voir `README.md` (variables `TRAFFICKER_PASSWORD_HASH`, `TRAFFICKER_USER`, `TRAFFICKER_SECRET_KEY`, `TRAFFICKER_DB`).
+- **Validation renforcée** : dates réelles, fin ≥ début, cohérence des dates entre lignes, doublons de créatives.
+- **Tests** : `python -m pytest -q tests`.

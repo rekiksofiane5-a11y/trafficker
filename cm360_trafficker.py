@@ -72,6 +72,7 @@ import sys
 import time
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Callable, Dict, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
@@ -246,6 +247,7 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
     Renvoie (plan, erreurs). Une ligne = une créative dans une annonce."""
     plan: Dict[str, CampaignSpec] = {}
     errors: List[str] = []
+    seen_rows: set = set()
 
     def fail(idx: int, msg: str):
         errors.append(f"Ligne {idx + 2} : {msg}")
@@ -276,9 +278,19 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
         if not re.match(r"^\d{2,4}\s*[xX*]\s*\d{2,4}$", size or ""):
             fail(idx, f"size invalide ou manquant ('{size}', attendu '300x250').")
             continue
+        dates_ok = True
         for d, label in ((start, "campaign_start"), (end, "campaign_end")):
             if not re.match(r"^\d{4}-\d{2}-\d{2}$", d or ""):
                 fail(idx, f"{label} manquant ou invalide (YYYY-MM-DD attendu).")
+                dates_ok = False
+            else:
+                try:
+                    date.fromisoformat(d)
+                except ValueError:
+                    fail(idx, f"{label} n'est pas une date réelle ('{d}').")
+                    dates_ok = False
+        if dates_ok and end < start:
+            fail(idx, f"campaign_end ({end}) est avant campaign_start ({start}).")
         if not lp:
             fail(idx, "landing_page_url manquant.")
             continue
@@ -293,6 +305,9 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
             advertiser_name=get("advertiser_name"),
             start=start, end=end,
         ))
+        if (start, end) != (camp.start, camp.end):
+            fail(idx, f"dates incohérentes pour la campagne '{campaign_name}' "
+                      f"({start} -> {end} au lieu de {camp.start} -> {camp.end}).")
 
         # Emplacement
         if placement_name not in camp.placements:
@@ -329,6 +344,11 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
         ad = camp.ads.setdefault(ad_name, {"placements": [], "creatives": [], "landing_page_url": lp})
         if placement_name not in ad["placements"]:
             ad["placements"].append(placement_name)
+        if (campaign_name, ad_name, creative_name, placement_name) in seen_rows:
+            fail(idx, f"doublon : créative '{creative_name}' déjà déclarée pour "
+                      f"l'annonce '{ad_name}' et l'emplacement '{placement_name}'.")
+            continue
+        seen_rows.add((campaign_name, ad_name, creative_name, placement_name))
         if not any(c.name == creative_name for c in ad["creatives"]):
             ad["creatives"].append(creative)
         if lp:

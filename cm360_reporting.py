@@ -56,12 +56,14 @@ class PlacementDelivery:
     name: str
     impressions: int = 0
     clicks: int = 0
+    spend: float = 0.0             # dépense média (devise du compte)
 
 @dataclass
 class CampaignDelivery:
     name: str
     impressions: int = 0
     clicks: int = 0
+    spend: float = 0.0             # dépense média (devise du compte)
     placements: Dict[str, PlacementDelivery] = field(default_factory=dict)
 
 
@@ -131,7 +133,7 @@ class CM360ReportingAdapter(ReportingAdapter):
             "criteria": {
                 "dateRange": {"startDate": start, "endDate": end},
                 "dimensions": [{"name": "campaign"}, {"name": "placement"}],
-                "metricNames": ["impressions", "clicks"],
+                "metricNames": ["impressions", "clicks", "mediaCost"],
             },
         }
         rep = self._call(self.svc.reports().insert,
@@ -166,7 +168,8 @@ class CM360ReportingAdapter(ReportingAdapter):
 def _parse_delivery_csv(data: bytes,
                         campaign_names: Optional[List[str]] = None
                         ) -> List[CampaignDelivery]:
-    """Parse l'export CSV (Campaign, Placement, Impressions, Clicks).
+    """Parse l'export CSV (Campaign, Placement, Impressions, Clicks[, Media Cost]).
+    La colonne « Media Cost » est optionnelle (nom à valider avec un accès réel).
     Filtre côté client sur les campagnes demandées."""
     wanted = {c.lower() for c in (campaign_names or [])}
     campaigns: Dict[str, CampaignDelivery] = {}
@@ -179,10 +182,12 @@ def _parse_delivery_csv(data: bytes,
         pl = PlacementDelivery(
             name=pname,
             impressions=int(float(r.get("Impressions") or 0)),
-            clicks=int(float(r.get("Clicks") or 0)))
+            clicks=int(float(r.get("Clicks") or 0)),
+            spend=float(r.get("Media Cost") or 0))
         camp.placements[pname] = pl
         camp.impressions += pl.impressions
         camp.clicks += pl.clicks
+        camp.spend += pl.spend
     return list(campaigns.values())
 
 
@@ -224,13 +229,16 @@ class MockReportingAdapter(ReportingAdapter):
             camp = CampaignDelivery(name=name)
             camp.impressions = 250_000 + (seed % 750_000)
             camp.clicks = int(camp.impressions * ((seed % 30) + 5) / 1000)
+            cpm = 2.0 + (seed % 60) / 10          # CPM fictif entre 2 et 8
+            camp.spend = round(camp.impressions * cpm / 1000, 2)
             # Emplacements du plan (fournis par report_for_plan), répartis à parts égales
             pls = self.plan_placements.get(name, [])
             for i, pname in enumerate(pls):
                 share = 1.0 / len(pls)
                 pl = PlacementDelivery(name=pname,
                                        impressions=int(camp.impressions * share),
-                                       clicks=int(camp.clicks * share))
+                                       clicks=int(camp.clicks * share),
+                                       spend=round(camp.spend * share, 2))
                 camp.placements[pname] = pl
             out.append(camp)
         return out
@@ -279,34 +287,70 @@ def extract_flights(rows: List[Dict[str, str]]
     return flights
 
 
+def extract_budgets(rows: List[Dict[str, str]]) -> Dict[str, float]:
+    """Budget média (€) par campagne, colonne optionnelle `budget_eur`.
+    Le budget est celui de la campagne : la dernière valeur renseignée sur
+    ses lignes est retenue (inutile de la répéter, mais ça ne gêne pas)."""
+    budgets: Dict[str, float] = {}
+    for r in rows:
+        name = (r.get("campaign_name") or "").strip()
+        raw = (r.get("budget_eur") or "").strip().replace(" ", "").replace(",", ".")
+        if name and raw:
+            try:
+                budgets[name] = float(raw)
+            except ValueError:
+                pass
+    return budgets
+
+
+def _n(v) -> str:
+    """Nombre avec espace comme séparateur de milliers (sans décimales)."""
+    return f"{v:,.0f}".replace(",", " ")
+
+
+def _pacing_status(ratio: float) -> str:
+    return "OK" if 0.8 <= ratio <= 1.2 else "EN RETARD" if ratio < 0.8 else "EN AVANCE"
+
+
 def reconcile(deliveries: List[CampaignDelivery],
               flights: Dict[str, Tuple[str, str, Optional[int]]],
-              today: Optional[date] = None) -> List[str]:
+              today: Optional[date] = None,
+              budgets: Optional[Dict[str, float]] = None) -> List[str]:
     """Compare la diffusion au plan :
     - pacing = livré / attendu, où attendu = objectif x fraction du vol écoulée ;
     - statuts : OK (0.8-1.2), EN RETARD (<0.8), EN AVANCE (>1.2) ;
+    - budget (€, colonne optionnelle `budget_eur`) : pacing dépense = dépensé /
+      (budget x fraction du vol écoulée), mêmes statuts ;
+    - vol pas encore commencé : « NON DÉMARRÉE » (pas de pacing) ;
     - sans objectif : livraison brute affichée (pas de pacing)."""
     today = today or date.today()
     # Index insensible à la casse : nom -> (start, end, objectif)
     index = {k.lower(): v for k, v in flights.items()}
+    budget_index = {k.lower(): v for k, v in (budgets or {}).items()}
     lines = []
     for d in deliveries:
         start_s, end_s, objective = index.get(d.name.lower(), ("", "", None))
         ctr = (d.clicks / d.impressions * 100) if d.impressions else 0.0
-        line = (f"{d.name} : {d.impressions:,} impressions, {d.clicks:,} clics "
-                f"(CTR {ctr:.2f}%)".replace(",", " "))
-        if objective:
+        line = (f"{d.name} : {_n(d.impressions)} impressions, {_n(d.clicks)} clics "
+                f"(CTR {ctr:.2f}%)")
+        budget = budget_index.get(d.name.lower())
+        if objective or budget:
             try:
                 start = date.fromisoformat(start_s)
                 end = date.fromisoformat(end_s)
                 total = (end - start).days or 1
                 elapsed = max(0, min(total, (today - start).days))
-                expected = objective * elapsed / total
-                ratio = d.impressions / expected if expected else 0
-                status = ("OK" if 0.8 <= ratio <= 1.2
-                          else "EN RETARD" if ratio < 0.8 else "EN AVANCE")
-                line += (f" — objectif {objective:,} : {elapsed}/{total} j de vol, "
-                         f"pacing {ratio * 100:.0f}% [{status}]").replace(",", " ")
+                if elapsed == 0:
+                    line += " — vol non démarré [NON DÉMARRÉE]"
+                else:
+                    if objective:
+                        ratio = d.impressions / (objective * elapsed / total)
+                        line += (f" — objectif {_n(objective)} : {elapsed}/{total} j de vol, "
+                                 f"pacing {ratio * 100:.0f}% [{_pacing_status(ratio)}]")
+                    if budget:
+                        ratio = d.spend / (budget * elapsed / total)
+                        line += (f" — budget {_n(budget)} € : dépensé {_n(d.spend)} €, "
+                                 f"pacing dépense {ratio * 100:.0f}% [{_pacing_status(ratio)}]")
             except (ValueError, TypeError):
                 pass
         lines.append(line)
@@ -336,7 +380,23 @@ def report_for_plan(rows: List[Dict[str, str]], adapter: ReportingAdapter,
                 pp[c].append(pl)
         adapter.plan_placements = pp
     deliveries = adapter.pull(names, min(starts), max(ends))
-    return deliveries, reconcile(deliveries, flights)
+    return deliveries, reconcile(deliveries, flights, budgets=extract_budgets(rows))
+
+
+def delivery_to_dict(platform: str, deliveries: List[CampaignDelivery],
+                     flags: List[str]) -> dict:
+    """Représentation JSON commune (CLI --json, MCP, UI)."""
+    return {
+        "platform": platform,
+        "campaigns": [
+            {"name": d.name, "impressions": d.impressions, "clicks": d.clicks,
+             "spend": round(d.spend, 2),
+             "placements": [{"name": p.name, "impressions": p.impressions,
+                             "clicks": p.clicks, "spend": round(p.spend, 2)}
+                            for p in d.placements.values()]}
+            for d in deliveries],
+        "reconciliation": flags,
+    }
 
 
 def main():
@@ -385,16 +445,7 @@ def main():
     print(f"\n{len(deliveries)} campagne(s), {n_pl} emplacement(s) couvert(s).")
 
     if args.json:
-        payload = {
-            "platform": adapter.name,
-            "campaigns": [
-                {"name": d.name, "impressions": d.impressions, "clicks": d.clicks,
-                 "placements": [{"name": p.name, "impressions": p.impressions,
-                                 "clicks": p.clicks}
-                                for p in d.placements.values()]}
-                for d in deliveries],
-            "reconciliation": flags,
-        }
+        payload = delivery_to_dict(adapter.name, deliveries, flags)
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
         print(f"Rapport écrit : {args.json}")
