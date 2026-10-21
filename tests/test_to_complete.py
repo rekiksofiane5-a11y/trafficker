@@ -25,10 +25,16 @@ def test_strict_mode_unchanged():
     assert errors
 
 
-def test_invalid_value_stays_an_error():
+def test_unreadable_values_are_left_empty_too():
     rows = [dict(ROWS[1], campaign_start="32/13/2026", campaign_end="2026-12-15")]
-    _, errors = plan_from_rows(rows, allow_incomplete=True)
-    assert errors
+    plan, errors = plan_from_rows(rows, allow_incomplete=True)
+    assert errors == []
+    assert any("valeur illisible « 32/13/2026 »" in g for g in plan_gaps(plan))
+    rows = [dict(ROWS[1], campaign_start="2026-12-15", campaign_end="2026-11-02")]
+    plan, errors = plan_from_rows(rows, allow_incomplete=True)
+    assert errors == [] and any("avant début" in g for g in plan_gaps(plan))
+    _, strict = plan_from_rows(rows)                          # mode strict : toujours bloquant
+    assert strict
 
 
 def test_date_found_on_another_line_fills_the_campaign():

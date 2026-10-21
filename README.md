@@ -98,7 +98,7 @@ Base de référence : `specs/cm360_specs_creatives.xlsx` (12 specs officielles, 
 
 ## Informations introuvables : laissées vides, « à compléter »
 
-Ce que l'agent ne trouve pas (date de début, date de fin, URL de destination) n'est plus une erreur à la préparation : la case reste **vide** et l'aperçu liste « ✏️ À compléter » avec les objets concernés (campagne, annonces). Les exports CM360 et Adform sont produits avec ces cases vides, à remplir avant l'import ; la simulation l'indique. **L'envoi réel vers CM360/Adform reste bloqué** tant qu'une information manque, et une valeur présente mais invalide (date impossible, fin avant début) reste une erreur. Le rapport de diffusion demande les dates.
+Ce que l'agent ne trouve pas (date de début, date de fin, URL de destination) n'est plus une erreur à la préparation : la case reste **vide** et l'aperçu liste « ✏️ À compléter » avec les objets concernés (campagne, annonces). Les exports CM360 et Adform sont produits avec ces cases vides, à remplir avant l'import ; la simulation l'indique. Une valeur illisible (date impossible, fin avant début) est traitée de même : vidée et listée avec la valeur d'origine. **L'envoi réel vers CM360/Adform reste bloqué** tant qu'une information manque. Le rapport de diffusion demande les dates.
 
 ## Validation avant envoi
 

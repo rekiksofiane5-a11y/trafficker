@@ -450,26 +450,39 @@ def plan_from_rows(rows: List[Dict[str, str]], allow_incomplete: bool = False
             fail(idx, f"size invalide ou manquant ('{size}', attendu '300x250').")
             continue
         dates_ok = True
-        row_gaps: List[str] = []
+        row_gaps: List[Tuple[str, str]] = []          # (champ, précision)
+        values = {"campaign_start": start, "campaign_end": end}
         for d, label in ((start, "campaign_start"), (end, "campaign_end")):
             if not d and allow_incomplete:
-                row_gaps.append(label)
+                row_gaps.append((label, ""))
                 dates_ok = False
                 continue
-            if not re.match(r"^\d{4}-\d{2}-\d{2}$", d or ""):
-                fail(idx, f"{label} manquant ou invalide (YYYY-MM-DD attendu).")
-                dates_ok = False
-            else:
+            valid = bool(re.match(r"^\d{4}-\d{2}-\d{2}$", d or ""))
+            if valid:
                 try:
                     date.fromisoformat(d)
                 except ValueError:
-                    fail(idx, f"{label} n'est pas une date réelle ('{d}').")
-                    dates_ok = False
+                    valid = False
+            if not valid and allow_incomplete:       # illisible : laissée vide, à compléter
+                row_gaps.append((label, f"valeur illisible « {d} »"))
+                values[label] = ""
+                dates_ok = False
+            elif not valid:
+                fail(idx, f"{label} manquant ou invalide (YYYY-MM-DD attendu)."
+                     if not re.match(r"^\d{4}-\d{2}-\d{2}$", d or "")
+                     else f"{label} n'est pas une date réelle ('{d}').")
+                dates_ok = False
+        start, end = values["campaign_start"], values["campaign_end"]
         if dates_ok and end < start:
-            fail(idx, f"campaign_end ({end}) est avant campaign_start ({start}).")
+            if allow_incomplete:
+                row_gaps += [("campaign_start", f"fin {end} avant début {start}"),
+                             ("campaign_end", f"fin {end} avant début {start}")]
+                start = end = ""
+            else:
+                fail(idx, f"campaign_end ({end}) est avant campaign_start ({start}).")
         if not lp:
             if allow_incomplete:
-                row_gaps.append("landing_page_url")
+                row_gaps.append(("landing_page_url", ""))
             else:
                 fail(idx, "landing_page_url manquant.")
                 continue
@@ -490,8 +503,10 @@ def plan_from_rows(rows: List[Dict[str, str]], allow_incomplete: bool = False
         if (start, end) != (camp.start, camp.end):
             fail(idx, f"dates incohérentes pour la campagne '{campaign_name}' "
                       f"({start} -> {end} au lieu de {camp.start} -> {camp.end}).")
-        for g in row_gaps:
+        for g, note in row_gaps:
             who = ad_name if g == "landing_page_url" else f"campagne « {campaign_name} »"
+            if note:
+                who += f" ({note})"
             if who not in camp.missing.setdefault(g, []):
                 camp.missing[g].append(who)
 

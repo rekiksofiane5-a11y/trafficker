@@ -96,8 +96,8 @@ def test_free_form_plan_and_errors(page, tmp_path):
     _analyze(page, str(p))
     text = page.inner_text("#summary")
     assert "campaign_name ← colonne « Campagne »" in text
-    assert "avant campaign_start" in text                     # fin avant début détectée
-    assert page.is_disabled("#dl-cm360")                       # pas d'export d'un plan invalide
+    assert "avant début" in text and "À compléter" in text     # fin avant début : à corriger
+    assert not page.is_disabled("#dl-cm360")                   # ça avance : export possible
 
 
 def test_nothing_sent_over_network(page, site):
