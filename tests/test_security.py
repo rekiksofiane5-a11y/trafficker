@@ -21,9 +21,9 @@ PROTECTED = [("POST", "/analyze"), ("POST", "/run"), ("GET", "/bulk/x"),
 def auth_on(monkeypatch):
     from werkzeug.security import generate_password_hash
     monkeypatch.setenv("TRAFFICKER_PASSWORD_HASH", generate_password_hash("s3cret"))
-    ui.LOGIN_ATTEMPTS.clear()
+    ui.store.clear_login_failures()
     yield
-    ui.LOGIN_ATTEMPTS.clear()
+    ui.store.clear_login_failures()
 
 
 @pytest.mark.parametrize("method,url", PROTECTED)

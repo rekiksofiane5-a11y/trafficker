@@ -32,7 +32,6 @@ import time
 import traceback
 import uuid
 import zipfile
-from collections import defaultdict
 
 from flask import Flask, jsonify, redirect, request, session
 from werkzeug.security import check_password_hash
@@ -60,10 +59,10 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 Mo
 # RGPD : durée maximale de conservation des jobs et plans (rapports inclus)
 RETENTION_SECONDS = 3600  # 1 heure
 
-# Jobs : job_id -> {"log", "done", "report", "error", "created", "label"}
+# État partagé (plans analysés, jobs, échecs de login) : SQLite (trafficker_store),
+# donc valable avec plusieurs processus. JOBS n'est qu'un cache local des jobs qui
+# tournent dans CE processus (journal le plus frais) ; la base fait foi pour les autres.
 JOBS: dict = {}
-# Plans analysés en attente d'exécution : token -> paramètres
-PLANS: dict = {}
 
 # ---------------------------------------------------------------------------
 # Authentification (optionnelle)
@@ -77,7 +76,6 @@ app.secret_key = os.environ.get("TRAFFICKER_SECRET_KEY") or uuid.uuid4().hex
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   # derrière HTTPS (production) : TRAFFICKER_SECURE_COOKIE=1
                   SESSION_COOKIE_SECURE=os.environ.get("TRAFFICKER_SECURE_COOKIE") == "1")
-LOGIN_ATTEMPTS: dict = defaultdict(list)   # ip -> horodatages des échecs
 MAX_ATTEMPTS, ATTEMPT_WINDOW = 5, 300
 
 
@@ -116,18 +114,16 @@ def login():
     if request.method == "GET":
         return LOGIN_PAGE.replace("__ERR__", "")
     ip = request.remote_addr or "?"
-    now = time.time()
-    LOGIN_ATTEMPTS[ip] = [t for t in LOGIN_ATTEMPTS[ip] if now - t < ATTEMPT_WINDOW]
-    if len(LOGIN_ATTEMPTS[ip]) >= MAX_ATTEMPTS:
+    if store.login_failures(ip, ATTEMPT_WINDOW) >= MAX_ATTEMPTS:
         return (LOGIN_PAGE.replace("__ERR__", "<p class='err'>Trop d'essais, réessayez dans 5 minutes.</p>"), 429)
     ok_user = request.form.get("user", "") == os.environ.get("TRAFFICKER_USER", "admin")
     ok_pwd = check_password_hash(os.environ["TRAFFICKER_PASSWORD_HASH"],
                                  request.form.get("password", ""))
     if ok_user and ok_pwd:
         session["user"] = request.form["user"]
-        LOGIN_ATTEMPTS.pop(ip, None)
+        store.clear_login_failures(ip)
         return redirect("/")
-    LOGIN_ATTEMPTS[ip].append(now)
+    store.add_login_failure(ip)
     return (LOGIN_PAGE.replace("__ERR__", "<p class='err'>Identifiants incorrects.</p>"), 401)
 
 
@@ -371,11 +367,18 @@ async function send(){
   busy = false;
 }
 
+// Identifiants envoyés à chaque action (jamais conservés côté serveur)
+function appendCreds(fd){
+  for (const k of ['service_account', 'profile_id', 'adform_client_id', 'adform_client_secret'])
+    fd.append(k, document.getElementById(k).value);
+}
+
 async function launch(btn, token){
   if (busy) return;
   busy = true;
   btn.disabled = true; btn.textContent = 'Lancement…';
   const fd = new FormData(); fd.append('token', token);
+  appendCreds(fd);
   try {
     const d = await (await fetch('/run', {method: 'POST', body: fd})).json();
     if (d.error) { btn.outerHTML = '<p class="err">' + esc(d.error) + '</p>'; busy = false; return; }
@@ -431,7 +434,8 @@ async function showDelivery(btn, id){
   btn.disabled = true; btn.textContent = 'Chargement…';
   const t = addMsg('bot', '<span class="dots">…</span>');
   try {
-    const d = await (await fetch('/delivery/' + id, {method: 'POST'})).json();
+    const fd = new FormData(); appendCreds(fd);
+    const d = await (await fetch('/delivery/' + id, {method: 'POST', body: fd})).json();
     t.querySelector('.body').innerHTML =
       d.error ? '<p class="err">' + esc(d.error) + '</p>' : d.html;
   } catch (e) {
@@ -576,18 +580,16 @@ def analyze():
         return jsonify({"error": f"Analyse impossible : {e}"})
 
     token = uuid.uuid4().hex
-    PLANS[token] = {
+    # Sans secret : clé SA et secret Adform sont renvoyés par le navigateur au lancement
+    store.save_plan(token, {
         "plan": plan,
         "platform": request.form.get("platform", "cm360"),
-        "service_account": request.form.get("service_account", ""),
         "profile_id": request.form.get("profile_id", ""),
-        "adform_client_id": request.form.get("adform_client_id", ""),
-        "adform_client_secret": request.form.get("adform_client_secret", ""),
         "creatives_dir": creatives_dir,
         "rows": rows,   # conservé pour le rapport de diffusion (purgé avec le plan)
         "demo": request.form.get("demo") == "on",
         "created": time.time(),
-    }
+    })
     html = _preview_html(rows, plan, errors, renames,
                          token if not errors else None)
     return jsonify({"html": html, "token": token, "errors": errors})
@@ -601,11 +603,17 @@ def analyze():
 def run():
     token = (request.form.get("token")
              or (request.get_json(silent=True) or {}).get("token") or "")
-    job = PLANS.pop(token, None)
+    job = store.take_plan(token, max_age=RETENTION_SECONDS)
     if not job:
         return jsonify({"error": "Plan expiré (plus d'une heure) — renvoyez le "
                                  "plan à l'analyse."})
 
+    # Identifiants : fournis à chaque lancement, jamais stockés
+    for k in ("service_account", "adform_client_id", "adform_client_secret"):
+        job[k] = request.form.get(k, "")
+    if request.form.get("profile_id"):
+        job["profile_id"] = request.form["profile_id"]
+    job["profile_id"] = str(job.get("profile_id") or "")
     demo = job.get("demo", False)
     platform = job.get("platform", "cm360")
     if not demo:
@@ -629,8 +637,14 @@ def run():
 
     def worker():
         state = JOBS[job_id]
+        last = [0.0]
+
         def log(msg):
             state["log"].append(msg)
+            # journal visible des autres processus (au plus 2 écritures par seconde)
+            if time.time() - last[0] > 0.5:
+                last[0] = time.time()
+                store.save_job(job_id, state)
         try:
             if demo:
                 log("[MODE DÉMO] Plateforme simulée — aucune écriture réelle.")
@@ -650,6 +664,7 @@ def run():
             shutil.rmtree(job.get("creatives_dir") or "", ignore_errors=True)
             state["done"] = True
             store.save_job(job_id, state)
+            JOBS.pop(job_id, None)   # terminé : la base fait foi
 
     threading.Thread(target=worker, daemon=True).start()
     return jsonify({"job_id": job_id})
@@ -673,7 +688,7 @@ def status(job_id):
 @app.route("/bulk/<token>")
 def bulk(token):
     """Télécharge le plan analysé au format Campaign spreadsheet CM360 (Bulk Editor)."""
-    job = PLANS.get(token)
+    job = store.load_plan(token, max_age=RETENTION_SECONDS)
     if not job:
         return "<p>Plan expiré (plus d'une heure) — renvoyez-le à l'analyse.</p>", 404
     import tempfile
@@ -694,7 +709,7 @@ def bulk(token):
 @app.route("/adform-bulk/<token>")
 def adform_bulk(token):
     """Télécharge campagnes + commandes du plan au format bulk Adform (classeur v6)."""
-    job = PLANS.get(token)
+    job = store.load_plan(token, max_age=RETENTION_SECONDS)
     if not job:
         return "<p>Plan expiré (plus d'une heure) — renvoyez-le à l'analyse.</p>", 404
     import tempfile
@@ -721,7 +736,8 @@ def delivery(job_id):
     state = _live_job(job_id)
     if not state or not state.get("delivery", {}).get("rows"):
         return jsonify({"error": "Plan introuvable (job inconnu ou purge après 1 h)."})
-    d = state["delivery"]
+    d = dict(state["delivery"])
+    d["service_account"] = request.form.get("service_account", "")   # jamais stocké
     demo = d.get("demo", False)
     platform = "mock" if demo else d.get("platform", "cm360")
     if platform == "adform":
@@ -836,14 +852,11 @@ def purge_expired():
     """RGPD : supprime les jobs et plans expirés, avec leurs fichiers
     temporaires (créatives extraites) et leurs rapports."""
     now = time.time()
-    for token, p in list(PLANS.items()):
-        if now - p.get("created", now) > RETENTION_SECONDS:
-            shutil.rmtree(p.get("creatives_dir") or "", ignore_errors=True)
-            PLANS.pop(token, None)
     for jid in [j for j, s in JOBS.items()
                 if now - s.get("created", now) > RETENTION_SECONDS]:
         JOBS.pop(jid, None)
-    store.purge(RETENTION_SECONDS)
+    for d in store.purge(RETENTION_SECONDS, login_window=ATTEMPT_WINDOW):
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def _retention_loop():

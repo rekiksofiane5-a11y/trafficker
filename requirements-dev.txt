@@ -1,3 +1,4 @@
 -r requirements.txt
 pytest
 playwright   # test navigateur ; Chromium : variable CHROMIUM_PATH (défaut /opt/pw-browsers/chromium)
+gunicorn     # test multi-processus (tests/test_multiprocess.py)

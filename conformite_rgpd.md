@@ -58,3 +58,9 @@ Non requise a priori : pas de suivi à grande échelle, pas de données sensible
 
 - Désactivée par défaut. Activée par `TRAFFICKER_LLM=1` : Anthropic devient sous-traitant (à inscrire au registre, DPA à signer).
 - Données envoyées : en-têtes de colonnes non reconnues + 3 valeurs d'exemple de ces colonnes. Pas de clé, pas de plan complet. Le plan média ne doit pas contenir de données personnelles (minimisation, voir §2).
+
+## 9. Mise à jour v4 — état partagé en base
+
+- Plans analysés, jobs et échecs de connexion (adresse IP + horodatage) sont dans la base SQLite ; même rétention (1 h ; échecs de connexion : fenêtre anti-force brute).
+- Les identifiants d'ad server ne sont jamais écrits : le navigateur les renvoie à chaque action (test automatique : le secret n'apparaît ni dans la base ni dans son journal WAL).
+- Les adresses IP des échecs de connexion sont des données personnelles : finalité sécurité (art. 32), conservées 5 minutes utiles, purgées au plus tard après 1 h.

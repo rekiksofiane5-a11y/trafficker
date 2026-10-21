@@ -7,13 +7,20 @@ import time
 
 import pytest
 
-sync_api = pytest.importorskip("playwright.sync_api")
+# En CI (TRAFFICKER_REQUIRE_BROWSER=1), un navigateur absent fait échouer au lieu d'ignorer.
+REQUIRED = os.environ.get("TRAFFICKER_REQUIRE_BROWSER") == "1"
+if REQUIRED:
+    import playwright.sync_api as sync_api
+else:
+    sync_api = pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 from werkzeug.serving import make_server
 
 import cm360_trafficker_ui as ui
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Chromium : CHROMIUM_PATH si défini, sinon celui de l'environnement de dev, sinon
+# celui installé par « playwright install » (cas de la CI).
 CHROMIUM = os.environ.get("CHROMIUM_PATH", "/opt/pw-browsers/chromium")
 
 
@@ -37,6 +44,8 @@ def test_browser_demo_flow(server):
         try:
             browser = p.chromium.launch(**kw)
         except Exception as e:  # pragma: no cover
+            if REQUIRED:
+                raise
             pytest.skip(f"Chromium indisponible : {e}")
         page = browser.new_page()
         errors = []

@@ -61,7 +61,7 @@ def test_jobs_persist_across_restart(tmp_path, monkeypatch):
 def test_auth(monkeypatch):
     from werkzeug.security import generate_password_hash
     monkeypatch.setenv("TRAFFICKER_PASSWORD_HASH", generate_password_hash("s3cret"))
-    ui.LOGIN_ATTEMPTS.clear()
+    ui.store.clear_login_failures()
     c = ui.app.test_client()
     assert c.get("/").status_code == 302                      # redirigé vers /login
     assert c.post("/analyze").status_code == 401              # API fermée
@@ -75,12 +75,12 @@ def test_auth(monkeypatch):
 def test_login_rate_limit(monkeypatch):
     from werkzeug.security import generate_password_hash
     monkeypatch.setenv("TRAFFICKER_PASSWORD_HASH", generate_password_hash("s3cret"))
-    ui.LOGIN_ATTEMPTS.clear()
+    ui.store.clear_login_failures()
     c = ui.app.test_client()
     codes = [c.post("/login", data={"user": "admin", "password": "x"}).status_code
              for _ in range(7)]
     assert codes[:5] == [401] * 5 and codes[5:] == [429, 429]
-    ui.LOGIN_ATTEMPTS.clear()
+    ui.store.clear_login_failures()
 
 
 def test_bulk_download_from_analysis():

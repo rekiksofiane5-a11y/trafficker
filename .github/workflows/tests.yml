@@ -8,5 +8,8 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -r requirements-dev.txt -c requirements.lock
+      # Chromium de Playwright, utilisé par tests/test_browser.py (échec si absent)
       - run: python -m playwright install --with-deps chromium
-      - run: CHROMIUM_PATH=none python -m pytest -q tests
+      - run: python -m pytest -q -rs tests
+        env:
+          TRAFFICKER_REQUIRE_BROWSER: "1"
