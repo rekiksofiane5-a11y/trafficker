@@ -280,6 +280,7 @@ class CampaignSpec:
     advertiser_name: str = ""
     start: str = ""
     end: str = ""
+    budget_eur: Optional[float] = None      # colonne optionnelle budget_eur
     placements: Dict[str, PlacementSpec] = field(default_factory=dict)
     ads: Dict[str, dict] = field(default_factory=dict)   # ad_name -> {"placements": [...], "creatives": [...]}
 
@@ -402,6 +403,13 @@ def plan_from_rows(rows: List[Dict[str, str]]) -> Tuple[Dict[str, CampaignSpec],
         if (start, end) != (camp.start, camp.end):
             fail(idx, f"dates incohérentes pour la campagne '{campaign_name}' "
                       f"({start} -> {end} au lieu de {camp.start} -> {camp.end}).")
+
+        raw_budget = get("budget_eur").replace(" ", "").replace(",", ".")
+        if raw_budget:
+            try:
+                camp.budget_eur = float(raw_budget)
+            except ValueError:
+                fail(idx, f"budget_eur invalide ('{get('budget_eur')}').")
 
         # Emplacement
         if placement_name not in camp.placements:
@@ -1331,6 +1339,11 @@ def main():
     ap.add_argument("--export-bulk", default="", metavar="FICHIER.xlsx",
                     help="Exporte le plan validé au format Campaign spreadsheet CM360 "
                          "(Bulk Editor), sans appel API")
+    ap.add_argument("--export-adform-bulk", default="", metavar="FICHIER.xlsx",
+                    help="Exporte campagnes et commandes au format bulk Adform (classeur v6), "
+                         "sans appel API")
+    ap.add_argument("--adform-campaign-type", default="",
+                    help="Type de campagne Adform (défaut : Non-programmatic)")
     ap.add_argument("--report", default="",
                     help="Fichier JSON où écrire le rapport d'IDs créés")
     args = ap.parse_args()
@@ -1382,6 +1395,13 @@ def main():
         n = write_bulk_xlsx(plan, args.export_bulk)
         print(f"\nCampaign spreadsheet CM360 écrit : {args.export_bulk} ({n} ligne(s)). "
               "Aucun appel API effectué.")
+        return
+
+    if args.export_adform_bulk:
+        from adform_bulk import write_adform_bulk
+        n = write_adform_bulk(plan, args.export_adform_bulk, args.adform_campaign_type)
+        print(f"\nClasseur bulk Adform écrit : {args.export_adform_bulk} ({n} campagne(s) + commandes). "
+              "Placements/annonces/créatives non exportés (voir adform_bulk.py). Aucun appel API.")
         return
 
     if args.dry_run:

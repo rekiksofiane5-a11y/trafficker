@@ -157,6 +157,29 @@ def export_campaign_spreadsheet(source: str, output_path: str,
 
 
 @mcp.tool()
+def export_adform_bulk(source: str, output_path: str, nomenclature_path: str = "",
+                       campaign_type: str = "Non-programmatic",
+                       campaign_name: str = "", advertiser_name: str = "") -> str:
+    """Exporte campagnes et commandes d'un plan valide au format bulk Adform
+    (classeur .xlsx v6 à importer dans Adform, sans clé API). Les placements,
+    annonces et créatives ne sont pas inclus dans ce format."""
+    if not output_path.lower().endswith(".xlsx"):
+        return "ERREUR : output_path doit se terminer par .xlsx"
+    try:
+        plan, rows, renames, errors = _load_plan(source, nomenclature_path,
+                                                 campaign_name, advertiser_name)
+        if errors:
+            return "Plan invalide, export annulé :\n" + "\n".join(errors)
+        from adform_bulk import write_adform_bulk
+        n = write_adform_bulk(plan, output_path, campaign_type)
+    except SystemExit as e:
+        return f"ERREUR : {e}"
+    except Exception as e:
+        return f"ERREUR : {e}"
+    return f"Classeur bulk Adform écrit : {output_path} ({n} campagne(s) + commandes)."
+
+
+@mcp.tool()
 def traffic(source: str, platform: str = "mock",
             nomenclature_path: str = "", creatives_dir: str = "",
             service_account: str = "",

@@ -495,7 +495,8 @@ def _preview_html(rows, plan, errors, renames, token):
     if token:
         parts.append(f"<p><button class='btn' onclick=\"launch(this, '{token}')\">"
                      "🚀 Lancer le trafficking</button> "
-                     f"<a class='btn' href='/bulk/{token}'>⬇ Campaign spreadsheet CM360</a></p>")
+                     f"<a class='btn' href='/bulk/{token}'>⬇ Campaign spreadsheet CM360</a> "
+                     f"<a class='btn' href='/adform-bulk/{token}'>⬇ Classeur bulk Adform</a></p>")
     return "".join(parts)
 
 
@@ -666,6 +667,30 @@ def bulk(token):
     return app.response_class(
         data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=campaign_spreadsheet.xlsx"})
+
+
+@app.route("/adform-bulk/<token>")
+def adform_bulk(token):
+    """Télécharge campagnes + commandes du plan au format bulk Adform (classeur v6)."""
+    job = PLANS.get(token)
+    if not job:
+        return "<p>Plan expiré (plus d'une heure) — renvoyez-le à l'analyse.</p>", 404
+    import tempfile
+    from adform_bulk import write_adform_bulk
+    fd, tmp = tempfile.mkstemp(suffix=".xlsx")
+    os.close(fd)
+    try:
+        try:
+            write_adform_bulk(job["plan"], tmp)
+        except ValueError as e:
+            return f"<p class='err'>{_html.escape(str(e))}</p>", 400
+        with open(tmp, "rb") as f:
+            data = f.read()
+    finally:
+        os.remove(tmp)   # RGPD : pas de fichier résiduel
+    return app.response_class(
+        data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=adform_bulk.xlsx"})
 
 
 @app.route("/delivery/<job_id>", methods=["POST"])

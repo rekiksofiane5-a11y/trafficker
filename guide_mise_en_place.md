@@ -203,3 +203,4 @@ Outils exposés : `analyze_plan` (validation + nomenclatures), `traffic` (exécu
 - **Validation renforcée** : dates réelles, fin ≥ début, cohérence des dates entre lignes, doublons de créatives.
 - **Tests** : `python -m pytest -q tests`.
 - **Typage des créatives** : ni tag ni fichier → créative `TRACKING` générée automatiquement ; fichier image → display ; fichier vidéo → in-stream video ; voir `README.md`. Périmètre : CM360 et Adform uniquement.
+- **Classeur bulk Adform** : voir `README.md` (export campagnes + commandes, sans API). Le vocabulaire Adform vient des listes déroulantes du classeur ; celui de CM360 (`VOCAB` dans `cm360_bulk.py`) reste à confirmer avec un export rempli, la documentation publique ne le listant pas.
