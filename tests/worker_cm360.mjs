@@ -53,6 +53,8 @@ const fake = createServer(async (req, res) => {
     return res.end("Umnia\nDate Range,x\n\nReport Fields\nDate,Placement ID,Impressions,Clicks\n2026-10-01,11,1000,4\n2026-10-02,11,1500,2\nGrand Total:,,2500,6\n");
   }
   if (p === "/reports/r1" && req.method === "DELETE") { res.writeHead(204); return res.end(); }
+  if (p === "/reports/r1" && req.method === "GET") return send({id: "r1", name: "Umnia - Citrate 2026 - Le Monde"});
+  if (p === "/reports/r1" && req.method === "PUT") return send(JSON.parse(raw));
   send({error: {message: "inconnu " + p}}, 404);
 });
 await new Promise((ok) => fake.listen(0, "127.0.0.1", ok));
@@ -85,10 +87,16 @@ try {
   assert.equal((await api("POST", "setup", {name: "A", email: "a@ag.fr", agency_id: "AG", password: "motdepasse1", setup_key: "cle-test-123"})).status, 200);
   assert.equal((await api("POST", "login", {email: "a@ag.fr", password: "motdepasse1"})).status, 200);
   assert.deepEqual((await api("GET", "adserver/status")).data, {cm360: true, adform: false});
+  const diag = (await api("GET", "adserver/diagnostic?adserver=cm360")).data;
+  assert.equal(diag.ok, true);
+  assert.deepEqual(diag.sample, ["UPSA", "UPSA Pharma"]);
+  const diagAf = (await api("GET", "adserver/diagnostic?adserver=adform")).data;
+  assert.equal(diagAf.ok, false);
+  assert.match(diagAf.error, /Adform non connecté/);
   assert.equal((await api("GET", "adserver/advertisers?adserver=adform")).status, 409);         // Adform non connecté
   const adv = (await api("GET", "adserver/advertisers?q=UPSA")).data.advertisers;
   assert.equal(adv.length, 2);
-  assert.ok(seen.find((s) => s.path.endsWith("/advertisers")).query.includes("searchString=UPSA"));
+  assert.ok(seen.some((s) => s.path.endsWith("/advertisers") && s.query.includes("searchString=UPSA")));
   const camps = (await api("GET", "adserver/campaigns?advertiser_id=9001")).data.campaigns;
   assert.deepEqual(camps[0], {id: "3417", name: "Citrate 2026", advertiser_id: "9001", start: "2026-10-01", end: "2026-12-31"});
   const pl = (await api("GET", "adserver/placements?campaign_id=3417")).data;
@@ -115,11 +123,28 @@ try {
                                   startDate: "2026-10-23", expirationDate: "2026-12-31"});
   assert.deepEqual(sch.delivery.recipients, [{email: "trafic@lemonde.fr", deliveryType: "ATTACHMENT", kind: "dfareporting#recipient"}]);
   assert.deepEqual(sch.criteria.dimensionFilters.map((f) => [f.dimensionName, f.id]), [["campaign", "3417"], ["site", "5"]]);
+  // Pause puis modification (reports.update) et suppression du report programmé
+  seen.length = 0;
+  const paused = await api("PUT", "adserver/schedule/r1", {campaign_id: "3417", site: {id: "5", name: "Le Monde"},
+    emails: ["trafic@lemonde.fr", "ops@lemonde.fr"], active: false,
+    schedule: {frequency: "daily", range: "period", start: "2026-10-23", end: "2026-12-31"}});
+  assert.deepEqual(paused.data, {report_id: "r1", active: false});
+  const put = JSON.parse(seen.find((x) => x.method === "PUT").body);
+  assert.equal(put.id, "r1");
+  assert.equal(put.schedule.active, false);
+  assert.equal(put.schedule.repeats, "DAILY");
+  assert.deepEqual(put.criteria.dateRange, {relativeDateRange: "YESTERDAY"});
+  assert.equal(put.delivery.recipients.length, 2);
+  assert.equal((await api("PUT", "adserver/schedule/r1", {campaign_id: "3417", emails: ["x"], schedule: {}})).status, 400);
+  seen.length = 0;
+  assert.deepEqual((await api("DELETE", "adserver/schedule/r1")).data, {ok: true});
+  assert.ok(seen.some((x) => x.method === "DELETE" && x.path.endsWith("/reports/r1")));
+  assert.equal((await api("PUT", "adserver/schedule/r1?adserver=adform", {adserver: "adform"})).status, 409);
   assert.equal((await api("POST", "contacts", {site: "Le Monde", emails: ["trafic@lemonde.fr", "pas-un-mail"]})).status, 200);
   assert.deepEqual((await api("GET", "contacts")).data.contacts, [{site: "Le Monde", email: "trafic@lemonde.fr"}]);
   cookie = "";
   assert.equal((await api("GET", "adserver/status")).status, 401);                                // connexion requise
-  console.log("OK : Worker + faux CM360 (jeton RS256, lecture, rapport asynchrone, programmation, carnet).");
+  console.log("OK : Worker + faux CM360 (jeton RS256, lecture, rapport asynchrone, programmation, pause / modification / suppression, carnet).");
 } catch (e) {
   console.error(log.slice(-3000));
   throw e;

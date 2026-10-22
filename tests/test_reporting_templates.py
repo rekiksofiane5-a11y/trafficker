@@ -64,3 +64,62 @@ def test_demo_delivery_is_deterministic_and_leaves_gaps():
     check = reporting.check(c, camp["placements"], a, "2026-10-22")
     assert 0 < check["kpis"]["placements_live"] < check["kpis"]["placements"]      # le check a des trous à montrer
     assert all(r["date"] < "2026-10-22" for r in a)
+
+
+TARGETS = {"source": "Plan test", "campaign": {"impressions": "", "budget": ""}, "placements": [
+    {"name": "lm pave", "impressions": "10000", "budget": "100"},            # même nom, casse / séparateurs différents
+    {"name": "LM-GA", "impressions": "5000", "budget": "50"},
+    {"name": "TEADS-VIDEO", "impressions": "1000", "budget": "20"},
+    {"name": "ABSENT-DE-L-ADSERVER", "impressions": "999"},
+]}
+
+
+def test_pacing_planned_vs_delivered():
+    # Campagne de 31 jours, données jusqu'au 09/10 : 9 jours écoulés
+    c = reporting.check(CAMPAIGN, PLACEMENTS, DELIVERY, "2026-10-10", TARGETS)
+    pc = c["pacing"]
+    assert pc["available"] and pc["matched"] == 3 and pc["unmatched_plan"] == ["ABSENT-DE-L-ADSERVER"]
+    lm = next(p for p in c["placements"] if p["id"] == "11")["pacing"]
+    assert lm["expected"] == round(10000 * 9 / 31) and lm["delivered"] == 3000
+    assert lm["pace"] == 103.3 and lm["pace_status"] == reporting.ON_TRACK      # 3000 livrées / 2903 prévues
+    ga = next(p for p in c["placements"] if p["id"] == "12")["pacing"]
+    assert ga["pace"] == 0 and ga["pace_status"] == reporting.LATE
+    assert lm["spent"] == 30.0                                    # 3000 / 10000 x 100 €
+    k = pc["kpis"]
+    assert k["planned"] == 16000 and k["budget"] == 170 and k["level"] == "emplacements"
+    assert {s["site"] for s in pc["sites"]} == {"Le Monde", "Teads"}
+
+
+def test_pacing_campaign_level_and_absent():
+    t = {"source": "Plan global", "campaign": {"impressions": "31000", "budget": "310"}, "placements": []}
+    pc = reporting.check(CAMPAIGN, PLACEMENTS, DELIVERY, "2026-10-10", t)["pacing"]
+    assert pc["kpis"]["level"] == "campagne" and pc["kpis"]["expected"] == 9000 and pc["kpis"]["delivered"] == 3500
+    assert pc["kpis"]["pace_status"] == reporting.LATE
+    none = reporting.check(CAMPAIGN, PLACEMENTS, DELIVERY, "2026-10-10", {"campaign": {}, "placements": []})["pacing"]
+    assert not none["available"] and "ni volume ni budget" in none["reason"]
+    assert reporting.check(CAMPAIGN, PLACEMENTS, DELIVERY, "2026-10-10")["pacing"] == {"available": False}
+
+
+def test_pacing_sheet_in_excel():
+    openpyxl = pytest.importorskip("openpyxl")
+    wb = openpyxl.load_workbook(io.BytesIO(reporting.export_check(CAMPAIGN, PLACEMENTS, DELIVERY, "2026-10-10", TARGETS)))
+    assert "Rythme" in wb.sheetnames
+    values = [c.value for row in wb["Rythme"].iter_rows() for c in row]
+    assert reporting.LATE in values and "Total" in values
+    syn = [c.value for row in wb["Synthèse"].iter_rows() for c in row]
+    assert "Plan média lié" in syn
+
+
+def test_split_line_shares_budget_and_volume(tmp_path):
+    pytest.importorskip("openpyxl")
+    sys.path.insert(0, os.path.join(ROOT, "web"))
+    sys.path.insert(0, os.path.join(ROOT, "tests", "fixtures"))
+    from make_upsa import build
+    import web_api
+    path = tmp_path / "upsa.xlsx"
+    build(str(path), 1600000, "8 000 €")
+    d = json.loads(web_api.analyze(str(path), "", "", "", ""))
+    t = json.loads(web_api.plan_targets(json.dumps(d["table"]), "", "UPSA"))
+    assert len(t["placements"]) == 16
+    assert all(p["impressions"] == "100000" and p["budget"] == "500.00" for p in t["placements"])
+    assert float(t["campaign"]["budget"]) == 8000 and t["campaign"]["impressions"] == "1600000"

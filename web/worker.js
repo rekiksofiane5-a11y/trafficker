@@ -195,28 +195,44 @@ async function api(request, env, url) {
   // --- Ad servers (CM360 / Adform) : les clés restent dans les secrets du Worker ---
   if (path.startsWith("/api/adserver/")) {
     const q = url.searchParams;
-    const b = method === "POST" ? await body(request) : {};
+    const b = method === "POST" || method === "PUT" ? await body(request) : {};
     const adserver = (b.adserver || q.get("adserver")) === "adform" ? "adform" : "cm360";
     const route = path.slice("/api/adserver/".length);
     try {
       if (route === "status") return json(adserverStatus(env));
+      // Diagnostic de connexion (administrateurs) : jeton puis lecture des annonceurs
+      if (route === "diagnostic") {
+        if (user.role !== "admin") return fail("Réservé aux administrateurs.", 403);
+        const t0 = Date.now();
+        try {
+          const list = await client(adserver, env).advertisers("");
+          return json({ok: true, adserver, advertisers: list.length, sample: list.slice(0, 5).map((a) => a.name), ms: Date.now() - t0});
+        } catch (e) {
+          return json({ok: false, adserver, error: e.message, ms: Date.now() - t0});
+        }
+      }
       const c = client(adserver, env);
       if (route === "advertisers") return json({advertisers: await c.advertisers(clean(q.get("q"), 100))});
       if (route === "campaigns") return json({campaigns: await c.campaigns(clean(q.get("advertiser_id"), 40), clean(q.get("q"), 100))});
       if (route === "placements") return json(await c.placements(clean(q.get("campaign_id"), 40)));
       if (route === "delivery" && method === "POST") return json(await c.delivery(clean(b.campaign_id, 40)));
       if (route === "delivery" && method === "GET") return json(await c.deliveryFile(clean(q.get("report_id"), 40), clean(q.get("file_id"), 40)));
-      if (route === "schedule" && method === "POST") {
+      const sm = route.match(/^schedule(?:\/([A-Za-z0-9_-]+))?$/);
+      if (sm && method === "DELETE" && sm[1]) return json(await c.deleteSchedule(sm[1]));
+      if (sm && (method === "POST" || method === "PUT")) {
         const emails = [].concat(b.emails || []).map((e) => clean(e, 120).toLowerCase()).filter(Boolean);
         if (!emails.length || emails.length > 20 || !emails.every((e) => EMAIL.test(e))) return fail("E-mail(s) de la régie invalide(s).");
         const sc = b.schedule || {};
         if (!/^\d{4}-\d{2}-\d{2}$/.test(sc.start || "") || !/^\d{4}-\d{2}-\d{2}$/.test(sc.end || "") || sc.start > sc.end)
           return fail("Dates du calendrier invalides.");
         const site = {id: clean(b.site && b.site.id, 40), name: clean(b.site && b.site.name, 200)};
-        return json(await c.schedule(clean(b.campaign_id, 40), site, emails, {
+        const sched = {
           frequency: ["daily", "weekly", "monthly"].includes(sc.frequency) ? sc.frequency : "weekly",
           weekdays: [].concat(sc.weekdays || []).filter((d) => /^[A-Z]+DAY$/.test(d)), range: sc.range === "period" ? "period" : "cumul",
-          start: sc.start, end: sc.end, message: clean(sc.message, 1000)}));
+          start: sc.start, end: sc.end, message: clean(sc.message, 1000)};
+        if (method === "POST" && !sm[1]) return json(await c.schedule(clean(b.campaign_id, 40), site, emails, sched));
+        if (method === "PUT" && sm[1])
+          return json(await c.updateSchedule(sm[1], clean(b.campaign_id, 40), site, emails, sched, b.active !== false));
       }
     } catch (e) {
       if (e instanceof HttpError) return fail(e.message, e.status);

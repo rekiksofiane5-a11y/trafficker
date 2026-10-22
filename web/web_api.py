@@ -423,10 +423,43 @@ def report_demo(campaign_json: str, placements_json: str, today: str) -> str:
     return json.dumps(reporting.demo_delivery(json.loads(campaign_json), json.loads(placements_json), today))
 
 
-def report_check(campaign_json: str, placements_json: str, delivery_json: str, today: str) -> str:
+def plan_targets(table_json: str, nomenclature_json: str = "", source: str = "") -> str:
+    """Plan média d'une tâche de trafficking -> objectifs par emplacement (noms finaux, tels
+    qu'envoyés à l'ad server) pour le rythme de diffusion. Ne touche pas à l'état du moteur."""
+    rows = _normalize(json.loads(table_json))
+    plan, errors = plan_from_rows(rows, allow_incomplete=True)
+    if errors:
+        return json.dumps({"source": source, "campaign": {}, "placements": [], "errors": errors}, ensure_ascii=False)
+    naming = {}
+    if nomenclature_json.strip():
+        fd, tmp = tempfile.mkstemp(suffix=".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(nomenclature_json)
+        try:
+            naming = load_nomenclature(tmp)
+        finally:
+            os.remove(tmp)
+    plan, _ = apply_nomenclature(plan, naming_or_base(naming), log=lambda m: None)
+    camp = next(iter(plan.values()), None)
+    if camp is None:
+        return json.dumps({"source": source, "campaign": {}, "placements": []})
+    first = rows[0] if rows else {}
+    out = {"source": source,
+           "campaign": {"name": camp.name, "start": camp.start, "end": camp.end,
+                        "budget": camp.budget_eur or first.get("budget_eur", ""),
+                        "impressions": first.get("objective_impressions", "")},
+           "placements": [{"name": p.name, "site": p.site_name, "size": f"{p.width}x{p.height}" if p.width else "",
+                           "impressions": p.volume, "budget": p.budget, "start": camp.start, "end": camp.end}
+                          for p in camp.placements.values()]}
+    return json.dumps(out, ensure_ascii=False, default=str)
+
+
+def report_check(campaign_json: str, placements_json: str, delivery_json: str, today: str,
+                 targets_json: str = "") -> str:
     import reporting
     return json.dumps(reporting.check(json.loads(campaign_json), json.loads(placements_json),
-                                      json.loads(delivery_json), today), ensure_ascii=False)
+                                      json.loads(delivery_json), today,
+                                      json.loads(targets_json) if targets_json else None), ensure_ascii=False)
 
 
 def report_regie(campaign_json: str, placements_json: str, delivery_json: str, site: str) -> str:
@@ -435,10 +468,12 @@ def report_regie(campaign_json: str, placements_json: str, delivery_json: str, s
                                              json.loads(delivery_json), site), ensure_ascii=False)
 
 
-def export_report_check(campaign_json: str, placements_json: str, delivery_json: str, today: str) -> bytes:
+def export_report_check(campaign_json: str, placements_json: str, delivery_json: str, today: str,
+                        targets_json: str = "") -> bytes:
     import reporting
     return reporting.export_check(json.loads(campaign_json), json.loads(placements_json),
-                                  json.loads(delivery_json), today)
+                                  json.loads(delivery_json), today,
+                                  json.loads(targets_json) if targets_json else None)
 
 
 def export_report_regie(campaign_json: str, placements_json: str, delivery_json: str, site: str, today: str) -> bytes:

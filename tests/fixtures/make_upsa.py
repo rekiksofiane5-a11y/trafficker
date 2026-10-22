@@ -20,7 +20,7 @@ FORMAT = ("Bannières IAB\n(300*250)\n(160*600)\n(728*90) \n Idéalement prévoi
           "la visibilité ")
 
 
-def build(path):
+def build(path, volume=None, budget=None):
     wb = Workbook()
     ws = wb.active
     ws.title = "Plan"
@@ -30,14 +30,14 @@ def build(path):
         ws.cell(r, 1, k).fill = YELLOW
         ws.cell(r, 2, v).fill = YELLOW
     head = ["Régie", "Objectif", "KPI", "Emplacement", "Format", "Messages", "Device", " Dates de campagnes ",
-            None, "Ciblage", "Mode d'achat"]
+            None, "Ciblage", "Mode d'achat"] + (["Volume", "Budget"] if volume else [])
     for c, h in enumerate(head, start=1):
         ws.cell(9, c, h).fill = YELLOW
         ws.cell(10, c).fill = YELLOW
     ws.merge_cells("H9:I9")
     ws.merge_cells("A9:A10")
     row = [None, "Reach & Visibilité", "Imp", "Rotation Générale  (RON)", FORMAT, "1 message", "Multidevices",
-           "16 au 23 avril 2025", None, TARGETING, "dCPM (impressions)"]
+           "16 au 23 avril 2025", None, TARGETING, "dCPM (impressions)"] + ([volume, budget] if volume else [])
     for c, v in enumerate(row, start=1):
         cell = ws.cell(10, c, v)
         cell.fill = YELLOW

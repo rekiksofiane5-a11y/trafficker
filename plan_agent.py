@@ -428,6 +428,32 @@ def split_targeting(text: str) -> List[Tuple[str, str]]:
     return out
 
 
+def _amount(v: str) -> Optional[float]:
+    """« 12 500 € », « 1,5 », « 400000 » -> nombre ; sinon None."""
+    t = re.sub(r"[\s\u202f\xa0€]|eur(os?)?", "", str(v or ""), flags=re.I)
+    k = 1000 if t.lower().endswith("k") else 1
+    t = t.rstrip("kK").replace(",", ".")
+    try:
+        return float(t) * k
+    except ValueError:
+        return None
+
+
+def _share_out(lines: List[Dict[str, str]], derived: set) -> None:
+    """Une ligne du plan éclatée en n emplacements (formats, ciblages) : budget et volume de la
+    ligne répartis à parts égales, sinon chaque emplacement porterait le total de la ligne."""
+    if len(lines) < 2:
+        return
+    for f in ("budget_eur", "objective_impressions"):
+        v = _amount(lines[0].get(f, ""))
+        if not v:
+            continue
+        part = v / len(lines)
+        for line in lines:
+            line[f] = f"{part:.2f}" if f == "budget_eur" else str(int(round(part)))
+        derived.add(f"ligne éclatée en {len(lines)} emplacements : budget et volume répartis à parts égales")
+
+
 def _kind(v: str) -> str:
     """Nature d'une valeur : url, size, sizes, tag, file, pricing, period, date, money, int, text, ''."""
     v = (v or "").strip()
@@ -862,6 +888,7 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
                 last[f] = r[f]
         # Plusieurs formats dans une cellule -> une ligne par format
         sizes = [f"{a}x{b}" for a, b in RE_SIZE.findall(r.get("size", ""))] or [r.get("size", "")]
+        first_split = len(rows)
         for sz in sizes:
             line = dict(r, size=sz)
             if len(sizes) > 1:
@@ -882,6 +909,7 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
                 base = tl.get("placement_name") or "Emplacement"
                 tl["placement_name"] = f"{base}_{label}"
                 rows.append(tl)
+        _share_out(rows[first_split:], derived)
 
     # Noms générés et normalisation
     gen = set()

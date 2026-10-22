@@ -427,3 +427,46 @@ def test_reporting_check_and_scheduled_reports(page):
     assert page.locator(".tpl.on").get_attribute("data-tpl") == "regies"
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
+
+
+def test_pacing_from_linked_plan_and_manage_scheduled_reports(page, tmp_path):
+    """Check : rythme prévu (plan de la tâche de trafficking liée) vs livré ; reports programmés :
+    pause, reprise, modification, suppression."""
+    from fixtures.make_upsa import build
+    path = tmp_path / "upsa.xlsx"
+    build(str(path), 1600000, "8 000 €")
+    _create_task(page, "UPSA Citrate — trafficking", advertiser="UPSA")
+    _analyze(page, str(path), validate=False)
+    page.wait_for_function("document.getElementById('task-chips').textContent.includes('produit')")
+    page.click(".modes [data-mode=reporting]")
+    _create_task(page, "UPSA check")
+    page.click("#rp-adv-list button:has-text('UPSA')")
+    page.click("#rp-camp-list button:has-text('Citrate')")
+    page.click(".tpl[data-tpl=check]")
+    page.wait_for_selector("#rp-pace-table")
+    assert "UPSA Citrate — trafficking" in page.locator("#rp-plan option:checked").text_content()   # proposé seul
+    dash = page.text_content("#rp-dash")
+    assert "Rythme : livré / prévu à date" in dash and "Budget consommé (estimé)" in dash
+    assert "16 emplacement(s) rapprochés du plan" in dash
+    assert "sur 8 000 €" in dash.replace("\u202f", " ").replace("\xa0", " ")
+    page.select_option("#rp-plan", "")
+    page.wait_for_function("!document.getElementById('rp-pace-table')")
+    page.click(".tpl[data-tpl=regies]")
+    page.fill(".rp-regie input", "trafic@regie.fr")
+    page.click("#rp-launch")
+    page.wait_for_selector("#rp-sched-table")
+    page.click("#rp-sched-table button:has-text('Pause')")
+    assert "En pause" in page.text_content("#rp-sched-table") and "mis en pause" in page.text_content("#rp-send-msg")
+    page.click("#rp-sched-table button:has-text('Reprendre')")
+    assert "Actif" in page.text_content("#rp-sched-table")
+    page.click("#rp-sched-table button:has-text('Modifier')")
+    page.fill("#se-emails", "trafic@regie.fr, ops@regie.fr")
+    page.select_option("#se-freq", "daily")
+    page.click("#se-save")
+    row = page.text_content("#rp-sched-table tbody tr")
+    assert "ops@regie.fr" in row and "Quotidien" in row
+    page.once("dialog", lambda d: d.accept())
+    page.click("#rp-sched-table button:has-text('Supprimer')")
+    assert not page.is_visible("#rp-sched-table") and "supprimé" in page.text_content("#rp-send-msg")
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []

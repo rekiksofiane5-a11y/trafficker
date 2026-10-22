@@ -47,12 +47,15 @@ const COMMANDS = {
   // Reporting : objets JSON (campagne, emplacements, diffusion) -> templates
   report_demo: async ({campaign, placements, today}) =>
     api.report_demo(JSON.stringify(campaign), JSON.stringify(placements), today),
-  report_check: async ({campaign, placements, delivery, today}) =>
-    api.report_check(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), today),
+  plan_targets: async ({table, nomen, source}) => api.plan_targets(JSON.stringify(table), nomen || "", source || ""),
+  report_check: async ({campaign, placements, delivery, today, targets}) =>
+    api.report_check(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), today,
+                     targets ? JSON.stringify(targets) : ""),
   report_regie: async ({campaign, placements, delivery, site}) =>
     api.report_regie(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), site),
-  export_report_check: async ({campaign, placements, delivery, today}) =>
-    bytesOf(api.export_report_check(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), today)),
+  export_report_check: async ({campaign, placements, delivery, today, targets}) =>
+    bytesOf(api.export_report_check(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), today,
+                                    targets ? JSON.stringify(targets) : "")),
   export_report_regie: async ({campaign, placements, delivery, site, today}) =>
     bytesOf(api.export_report_regie(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), site, today)),
   delivery_demo: async () => api.delivery_demo(),

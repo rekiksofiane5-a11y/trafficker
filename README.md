@@ -145,6 +145,9 @@ Le dry-run (et l'UI) signalent : champs manquants, tailles invalides, dates inex
 2. **Template** :
    - **Check de mise en ligne** : toutes les régies et tous les emplacements, statut par emplacement (données reçues / aucune donnée / pas encore démarré) et par régie (complet / partiel / aucune donnée), petit tableau de bord (impressions, clics, CTR, emplacements et régies avec données, dernière donnée, impressions par régie), alerte sur les emplacements muets, Excel (Synthèse, Par régie, Emplacements, Données jour).
    - **Report d'envoi aux régies** : un bloc par régie (seules les régies de la campagne sont proposées, « ＋ Ajouter une régie »), e-mails libres avec **carnet d'adresses** par régie (mémorisé par agence en D1), calendrier (quotidien, hebdomadaire avec jours, mensuel ; cumul depuis le début ou période écoulée ; premier et dernier envoi ; message), **aperçu de l'Excel** envoyé à chaque régie et téléchargement. « Programmer les envois » : CM360 crée un rapport programmé par régie (filtres campagne + site, format Excel, destinataires) et l'envoie lui-même par e-mail. Adform : pas de rapport programmé par API — le calendrier est enregistré dans Umnia, le rapport est à programmer dans Adform (Excel prêt).
+- **Rythme de diffusion** (check) : « Plan média lié » = une tâche de trafficking de l'agence (proposée automatiquement : même annonceur, campagne la plus proche). Les emplacements de l'ad server sont rapprochés des lignes du plan par leur nom final (nomenclature) ; par emplacement, par régie et pour la campagne : prévu total, **prévu à date** (linéaire sur les dates de diffusion de l'ad server, jusqu'à la veille), livré, **rythme** (< 90 % en retard, > 110 % en avance), **projection de fin**, **budget consommé estimé** (budget × livré / prévu). Sans objectif par ligne : objectif global de la campagne. Onglet « Rythme » dans l'Excel. Une ligne du plan éclatée en plusieurs emplacements (formats, ciblages) voit son budget et son volume répartis à parts égales.
+- **Reports programmés** : pause / reprise, modification (destinataires, calendrier) et suppression depuis Umnia ; CM360 : le rapport programmé est mis à jour ou supprimé dans CM360 ; Adform : à répercuter dans Adform.
+- **Diagnostic** (Administration → Connexions ad servers) : « Tester CM360 / Adform » demande un jeton puis lit les annonceurs, et affiche l'erreur exacte sinon.
 - **Connexion des ad servers** (secrets du Worker, jamais dans la page) : CM360 → `CM360_SA_JSON` (JSON du compte de service ayant accès au profil) et `CM360_PROFILE_ID` ; Adform → `ADFORM_CLIENT_ID` et `ADFORM_CLIENT_SECRET` (endpoints Adform **à valider avec un accès réel**). Sans secret : **données de démonstration** (`web/demo_adserver.json`), signalées dans l'interface ; aucun e-mail n'est envoyé.
 - Templates de l'agence : les mises en forme actuelles (colonnes, onglets) sont un point de départ — à aligner sur les templates existants de l'agence.
 
@@ -171,7 +174,7 @@ gunicorn (`TRAFFICKER_WORKERS` processus, 2 par défaut, 8 threads chacun : plan
 
 ## Tests
 
-- `node tests/worker_cm360.mjs` : Worker + faux CM360 (jeton RS256, lecture annonceurs / campagnes / emplacements, rapport CSV asynchrone, programmation d'un report régie, carnet d'adresses).
+- `node tests/worker_cm360.mjs` : Worker + faux CM360 (jeton RS256, lecture annonceurs / campagnes / emplacements, rapport CSV asynchrone, programmation, pause / modification / suppression d'un report régie, diagnostic, carnet d'adresses).
 
 ```bash
 pip install -r requirements-dev.txt

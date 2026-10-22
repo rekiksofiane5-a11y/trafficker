@@ -157,27 +157,41 @@ function cm360(env) {
     },
     // Report régie programmé : CM360 génère et envoie lui-même le fichier par e-mail
     async schedule(campaignId, site, emails, sched) {
-      const campaign = await campaignOf(campaignId);
-      const relative = {daily: "YESTERDAY", weekly: "LAST_7_DAYS", monthly: "PREVIOUS_MONTH"}[sched.frequency];
-      const dateRange = sched.range === "period" && relative ? {relativeDateRange: relative}
-        : {startDate: campaign.start, endDate: campaign.end};
-      const body = {
-        name: `Umnia - ${campaign.name} - ${site.name}`.slice(0, 250), type: "STANDARD", format: "EXCEL",
-        criteria: {dateRange, dimensions: [{name: "date"}, {name: "site"}, {name: "placement"}, {name: "placementId"}],
-                   metricNames: ["impressions", "clicks"],
-                   dimensionFilters: [{dimensionName: "campaign", id: String(campaign.id), kind: "dfareporting#dimensionValue"},
-                                      {dimensionName: "site", id: String(site.id), kind: "dfareporting#dimensionValue"}]},
-        schedule: {active: true, every: 1, repeats: {daily: "DAILY", weekly: "WEEKLY", monthly: "MONTHLY"}[sched.frequency] || "WEEKLY",
-                   ...(sched.frequency === "weekly" ? {repeatsOnWeekDays: sched.weekdays && sched.weekdays.length ? sched.weekdays : ["MONDAY"]} : {}),
-                   ...(sched.frequency === "monthly" ? {runsOnDayOfMonth: "DAY_OF_MONTH"} : {}),
-                   startDate: sched.start, expirationDate: sched.end},
-        delivery: {emailOwner: false, emailOwnerDeliveryType: "ATTACHMENT", message: sched.message || "",
-                   recipients: emails.map((email) => ({email, deliveryType: "ATTACHMENT", kind: "dfareporting#recipient"}))},
-      };
-      const rep = await call("/reports", {method: "POST", body});
+      const rep = await call("/reports", {method: "POST", body: scheduleBody(await campaignOf(campaignId), site, emails, sched, true)});
       return {report_id: String(rep.id), sent_by: "cm360"};
     },
+    // Pause / reprise / modification : le rapport CM360 est réécrit (reports.update)
+    async updateSchedule(reportId, campaignId, site, emails, sched, active) {
+      const old = await call(`/reports/${encodeURIComponent(reportId)}`);
+      const body = {...scheduleBody(await campaignOf(campaignId), site, emails, sched, active), id: old.id};
+      await call(`/reports/${encodeURIComponent(reportId)}`, {method: "PUT", body});
+      return {report_id: String(old.id), active};
+    },
+    async deleteSchedule(reportId) {
+      await call(`/reports/${encodeURIComponent(reportId)}`, {method: "DELETE"});
+      return {ok: true};
+    },
   };
+
+  function scheduleBody(campaign, site, emails, sched, active) {
+    const relative = {daily: "YESTERDAY", weekly: "LAST_7_DAYS", monthly: "PREVIOUS_MONTH"}[sched.frequency];
+    const dateRange = sched.range === "period" && relative ? {relativeDateRange: relative}
+      : {startDate: campaign.start, endDate: campaign.end};
+    const body = {
+      name: `Umnia - ${campaign.name} - ${site.name}`.slice(0, 250), type: "STANDARD", format: "EXCEL",
+      criteria: {dateRange, dimensions: [{name: "date"}, {name: "site"}, {name: "placement"}, {name: "placementId"}],
+                 metricNames: ["impressions", "clicks"],
+                 dimensionFilters: [{dimensionName: "campaign", id: String(campaign.id), kind: "dfareporting#dimensionValue"},
+                                    {dimensionName: "site", id: String(site.id), kind: "dfareporting#dimensionValue"}]},
+      schedule: {active: !!active, every: 1, repeats: {daily: "DAILY", weekly: "WEEKLY", monthly: "MONTHLY"}[sched.frequency] || "WEEKLY",
+                 ...(sched.frequency === "weekly" ? {repeatsOnWeekDays: sched.weekdays && sched.weekdays.length ? sched.weekdays : ["MONDAY"]} : {}),
+                 ...(sched.frequency === "monthly" ? {runsOnDayOfMonth: "DAY_OF_MONTH"} : {}),
+                 startDate: sched.start, expirationDate: sched.end},
+      delivery: {emailOwner: false, emailOwnerDeliveryType: "ATTACHMENT", message: sched.message || "",
+                 recipients: emails.map((email) => ({email, deliveryType: "ATTACHMENT", kind: "dfareporting#recipient"}))},
+    };
+    return body;
+  }
 }
 
 function minDay(a, b) { return !a ? b : a < b ? a : b; }
@@ -272,6 +286,8 @@ function adform(env) {
       // dans Umnia et le rapport est à programmer dans Adform (Excel prêt à télécharger).
       return {report_id: "", sent_by: "manual"};
     },
+    async updateSchedule() { throw new HttpError("Adform : rapport programmé à modifier dans Adform.", 400); },
+    async deleteSchedule() { throw new HttpError("Adform : rapport programmé à supprimer dans Adform.", 400); },
   };
 }
 

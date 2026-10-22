@@ -14,10 +14,14 @@ Données en entrée (JSON, mêmes formats pour CM360, Adform et la démo) :
 """
 import hashlib
 import io
+import re
+import unicodedata
 from datetime import date, timedelta
 from typing import Dict, List, Optional
 
 LIVE, NO_DATA, NOT_STARTED = "Données reçues", "Aucune donnée", "Pas encore démarré"
+LATE, ON_TRACK, AHEAD = "En retard", "Dans le rythme", "En avance"
+PACE_LOW, PACE_HIGH = 90, 110          # % du prévu à date : en dessous = retard, au-dessus = sur-livraison
 
 
 def _d(s: str) -> Optional[date]:
@@ -63,10 +67,127 @@ def demo_delivery(campaign: Dict, placements: List[Dict], today: str) -> List[Di
     return out
 
 
+# --- Rythme de diffusion : prévu au plan média vs livré ---------------------------------------
+
+def _key(name: str) -> str:
+    s = unicodedata.normalize("NFKD", name or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "", s)
+
+
+def _num(v) -> float:
+    try:
+        return float(str(v).replace("\u202f", "").replace(" ", "").replace(",", "."))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def match_targets(placements: List[Dict], targets: List[Dict]) -> Dict[str, Dict]:
+    """Emplacement de l'ad server -> ligne prévue du plan : nom identique (casse, accents et
+    séparateurs ignorés), sinon un nom contenu dans l'autre (même régie de préférence)."""
+    by_key = {_key(t.get("name")): t for t in targets if t.get("name")}
+    out, used = {}, set()
+    for p in placements:
+        t = by_key.get(_key(p.get("name")))
+        if t:
+            out[str(p.get("id"))] = t
+            used.add(id(t))
+    for p in placements:
+        pid, k = str(p.get("id")), _key(p.get("name"))
+        if pid in out or not k:
+            continue
+        cands = [t for t in targets if id(t) not in used and _key(t.get("name"))
+                 and (_key(t.get("name")) in k or k in _key(t.get("name")))]
+        cands.sort(key=lambda t: (_key(t.get("site")) != _key(p.get("site")), abs(len(_key(t.get("name"))) - len(k))))
+        if cands:
+            out[pid] = cands[0]
+            used.add(id(cands[0]))
+    return out
+
+
+def _span(a: Optional[date], b: Optional[date]) -> int:
+    return (b - a).days + 1 if a and b and b >= a else 0
+
+
+def _pace(planned: float, budget: float, delivered: int, start: Optional[date], end: Optional[date],
+          today: date) -> Dict:
+    """Prévu à date (linéaire sur la période), rythme, projection de fin et budget consommé estimé.
+    Les données s'arrêtent à la veille : le prévu à date aussi."""
+    total = _span(start, end)
+    elapsed = _span(start, min(end, today - timedelta(days=1))) if start and end else 0
+    expected = planned * elapsed / total if total else 0.0
+    pace = round(delivered / expected * 100, 1) if expected else None
+    status = "" if pace is None else LATE if pace < PACE_LOW else AHEAD if pace > PACE_HIGH else ON_TRACK
+    projection = delivered / elapsed * total if elapsed else 0.0
+    return {"planned": int(round(planned)), "expected": int(round(expected)), "delivered": delivered,
+            "pace": pace, "pace_status": status,
+            "projection_pct": round(projection / planned * 100, 1) if planned and elapsed else None,
+            "budget": round(budget, 2), "spent": round(budget * delivered / planned, 2) if planned and budget else 0.0,
+            "elapsed_days": elapsed, "total_days": total}
+
+
+def pacing(campaign: Dict, placements: List[Dict], rows: List[Dict], targets: Optional[Dict], today: str) -> Dict:
+    """Rythme par emplacement, par régie et pour la campagne, à partir du plan média lié."""
+    if not targets:
+        return {"available": False}
+    now = _d(today)
+    plan_pl = targets.get("placements") or []
+    matched = match_targets(placements, plan_pl)
+    c_start, c_end = _d(campaign.get("start")), _d(campaign.get("end"))
+    per_pl, sites, tot = {}, {}, {"planned": 0.0, "budget": 0.0, "delivered": 0, "expected": 0.0}
+    for r in rows:
+        t = matched.get(r["id"])
+        planned, budget = (_num(t.get("impressions")), _num(t.get("budget"))) if t else (0.0, 0.0)
+        if not t or not (planned or budget):
+            continue
+        # Dates de diffusion : celles de l'ad server (emplacement puis campagne), sinon celles du plan
+        start = _d(r.get("start")) or c_start or _d(t.get("start"))
+        end = _d(r.get("end")) or c_end or _d(t.get("end"))
+        pc = _pace(planned, budget, r["impressions"], start, end, now)
+        pc["plan_name"] = t.get("name", "")
+        per_pl[r["id"]] = pc
+        s = sites.setdefault(r["site"], {"site": r["site"], "planned": 0.0, "expected": 0.0, "delivered": 0,
+                                         "budget": 0.0, "spent": 0.0})
+        for k in ("planned", "expected", "delivered", "budget", "spent"):
+            s[k] += pc[k]
+    for s in sites.values():
+        s["pace"] = round(s["delivered"] / s["expected"] * 100, 1) if s["expected"] else None
+        s["pace_status"] = "" if s["pace"] is None else LATE if s["pace"] < PACE_LOW else AHEAD if s["pace"] > PACE_HIGH else ON_TRACK
+        s["planned"], s["expected"] = int(round(s["planned"])), int(round(s["expected"]))
+        s["budget"], s["spent"] = round(s["budget"], 2), round(s["spent"], 2)
+    if per_pl:
+        tot = {k: sum(p[k] for p in per_pl.values()) for k in ("planned", "expected", "delivered", "budget", "spent")}
+        elapsed = max(p["elapsed_days"] for p in per_pl.values())
+        total_days = max(p["total_days"] for p in per_pl.values())
+        pace = round(tot["delivered"] / tot["expected"] * 100, 1) if tot["expected"] else None
+        kp = {**tot, "pace": pace, "pace_status": "" if pace is None else LATE if pace < PACE_LOW else AHEAD if pace > PACE_HIGH else ON_TRACK,
+              "projection_pct": round(sum(p["delivered"] / p["elapsed_days"] * p["total_days"] for p in per_pl.values()
+                                          if p["elapsed_days"]) / tot["planned"] * 100, 1) if tot["planned"] and elapsed else None,
+              "level": "emplacements", "elapsed_days": elapsed, "total_days": total_days}
+    else:
+        # Pas d'objectif par ligne : objectif global de la campagne (volume et budget du plan)
+        camp_t = targets.get("campaign") or {}
+        planned, budget = _num(camp_t.get("impressions")), _num(camp_t.get("budget"))
+        if not (planned or budget):
+            return {"available": False, "reason": "Le plan média lié ne donne ni volume ni budget.",
+                    "source": targets.get("source", "")}
+        kp = _pace(planned, budget, sum(r["impressions"] for r in rows),
+                   c_start or _d(camp_t.get("start")), c_end or _d(camp_t.get("end")), now)
+        kp["level"] = "campagne"
+    for k in ("planned", "expected"):
+        kp[k] = int(round(kp[k]))
+    kp["budget"], kp["spent"] = round(kp["budget"], 2), round(kp["spent"], 2)
+    names = {_key(t.get("name")) for t in matched.values()}
+    return {"available": True, "source": targets.get("source", ""), "kpis": kp, "placements": per_pl,
+            "sites": sorted(sites.values(), key=lambda s: -s["planned"]),
+            "matched": len(matched), "unmatched_plan": [t.get("name") for t in plan_pl if _key(t.get("name")) not in names]}
+
+
 # --- Check de mise en ligne -----------------------------------------------------------------
 
-def check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: str) -> Dict:
-    """Synthèse : par emplacement (statut, volumes, 1re / dernière impression) et par régie."""
+def check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: str,
+          targets: Optional[Dict] = None) -> Dict:
+    """Synthèse : par emplacement (statut, volumes, 1re / dernière impression) et par régie ;
+    avec le plan média lié (targets), rythme de diffusion prévu vs livré et budget."""
     now = _d(today)
     by_pl: Dict[str, Dict] = {}
     days = set()
@@ -114,7 +235,12 @@ def check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: s
     imp = sum(r["impressions"] for r in rows)
     clk = sum(r["clicks"] for r in rows)
     site_list = sorted(sites.values(), key=lambda s: -s["impressions"])
-    return {"campaign": campaign, "today": today,
+    pace = pacing(campaign, placements, rows, targets, today)
+    for r in rows:
+        r["pacing"] = pace.get("placements", {}).get(r["id"])
+    for s in site_list:
+        s["pacing"] = next((x for x in pace.get("sites", []) if x["site"] == s["site"]), None)
+    return {"campaign": campaign, "today": today, "pacing": pace,
             "kpis": {"impressions": imp, "clicks": clk, "ctr": _ctr(imp, clk),
                      "placements": len(rows), "placements_live": sum(r["status"] == LIVE for r in rows),
                      "sites": len(site_list), "sites_live": sum(s["live"] > 0 for s in site_list),
@@ -148,7 +274,16 @@ def regie_report(campaign: Dict, placements: List[Dict], delivery: List[Dict], s
 # --- Classeurs Excel ----------------------------------------------------------------------
 
 NAVY, CHAMPAGNE, GREEN, RED, GREY = "121A25", "EDE6D4", "D8EFDF", "F6D5D2", "ECE5D3"
-STATUS_FILL = {LIVE: GREEN, NO_DATA: RED, NOT_STARTED: GREY, "Partiel": "F7E6C4"}
+STATUS_FILL = {LIVE: GREEN, NO_DATA: RED, NOT_STARTED: GREY, "Partiel": "F7E6C4",
+               ON_TRACK: GREEN, LATE: RED, AHEAD: "F7E6C4"}
+
+
+def _pace_summary(pc: Dict) -> List[List]:
+    k = pc["kpis"]
+    return [["Plan média lié", pc.get("source", "")], ["Impressions prévues (total)", k["planned"]],
+            ["Prévu à date", k["expected"]], ["Rythme (livré / prévu à date)", _pct(k["pace"])],
+            ["Statut du rythme", k["pace_status"]], ["Projection fin de campagne", _pct(k["projection_pct"])],
+            ["Budget prévu (€)", k["budget"]], ["Budget consommé estimé (€)", k["spent"]]]
 
 
 def _sheet(ws, title_lines: List[str], header: List[str], rows: List[List], widths: List[int],
@@ -197,9 +332,14 @@ def _save(wb) -> bytes:
     return buf.getvalue()
 
 
-def export_check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: str) -> bytes:
+def _pct(v) -> str:
+    return "" if v is None else f"{v:.0f} %"
+
+
+def export_check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: str,
+                 targets: Optional[Dict] = None) -> bytes:
     from openpyxl import Workbook
-    c = check(campaign, placements, delivery, today)
+    c = check(campaign, placements, delivery, today, targets)
     k = c["kpis"]
     head = [f"Check de mise en ligne — {campaign.get('name', '')}",
             f"Annonceur : {campaign.get('advertiser', '')} · Période : {_fr(campaign.get('start'))} → "
@@ -211,7 +351,8 @@ def export_check(campaign: Dict, placements: List[Dict], delivery: List[Dict], t
         ["Impressions", k["impressions"]], ["Clics", k["clicks"]], ["CTR (%)", k["ctr"]],
         ["Emplacements avec données", f"{k['placements_live']} / {k['placements']}"],
         ["Régies avec données", f"{k['sites_live']} / {k['sites']}"],
-        ["Première impression", _fr(k["first"])], ["Dernière impression", _fr(k["last"])]], [34, 22])
+        ["Première impression", _fr(k["first"])], ["Dernière impression", _fr(k["last"])]]
+        + (_pace_summary(c["pacing"]) if c["pacing"].get("available") else []), [34, 22])
     _sheet(wb.create_sheet("Par régie"), head,
            ["Régie", "Emplacements", "Avec données", "Impressions", "Clics", "CTR (%)", "Statut"],
            [[s["site"], s["placements"], s["live"], s["impressions"], s["clicks"], s["ctr"], s["status"]]
@@ -223,6 +364,18 @@ def export_check(campaign: Dict, placements: List[Dict], delivery: List[Dict], t
            [[r["site"], r["name"], r["id"], r["size"], _fr(r["start"]), _fr(r["end"]), r["impressions"],
              r["clicks"], r["ctr"], _fr(r["first"]), _fr(r["last"]), r["status"]] for r in c["placements"]],
            [24, 44, 12, 10, 12, 12, 14, 10, 9, 14, 16, 20], status_col=11)
+    if c["pacing"].get("available"):
+        pc = c["pacing"]
+        _sheet(wb.create_sheet("Rythme"), head + [f"Plan média lié : {pc.get('source', '')} · niveau : {pc['kpis']['level']}"],
+               ["Régie", "Emplacement", "Prévu (total)", "Prévu à date", "Livré", "Rythme", "Statut", "Projection fin",
+                "Budget (€)", "Consommé estimé (€)"],
+               [[r["site"], r["name"], r["pacing"]["planned"], r["pacing"]["expected"], r["pacing"]["delivered"],
+                 _pct(r["pacing"]["pace"]), r["pacing"]["pace_status"], _pct(r["pacing"]["projection_pct"]),
+                 r["pacing"]["budget"], r["pacing"]["spent"]] for r in c["placements"] if r.get("pacing")],
+               [24, 44, 14, 14, 14, 10, 16, 14, 12, 18], status_col=6,
+               total=["Total", "", pc["kpis"]["planned"], pc["kpis"]["expected"], pc["kpis"]["delivered"],
+                      _pct(pc["kpis"]["pace"]), pc["kpis"]["pace_status"], _pct(pc["kpis"]["projection_pct"]),
+                      pc["kpis"]["budget"], pc["kpis"]["spent"]])
     pls = {str(p.get("id")): p for p in placements}
     _sheet(wb.create_sheet("Données jour"), head,
            ["Date", "Régie", "Emplacement", "ID", "Impressions", "Clics"],
