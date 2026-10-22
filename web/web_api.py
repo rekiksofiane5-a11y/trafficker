@@ -128,7 +128,7 @@ def preview(plan) -> list:
 # une fois (en-tête du volet), pas par ligne.
 CAMPAIGN_FIELDS = ["campaign_name", "advertiser_name", "campaign_start", "campaign_end"]
 TABLE_COLUMNS = [
-    ("objective", "Objectif"), ("site_name", "Régie / site"), ("package", "Package"),
+    ("objective", "Objectif"), ("site_name", "Régie / site"), ("site_id", "ID site CM360"), ("package", "Package"),
     ("audience", "Audience"), ("targeting", "Ciblage"), ("targeting_detail", "Détail du ciblage"), ("device", "Devices"),
     ("placement_name", "Emplacement"), ("format_label", "Format"), ("size", "Dimensions"),
     ("placement_category", "Catégorie"), ("pricing_type", "Achat"), ("ad_name", "Annonce"),
@@ -138,7 +138,7 @@ TABLE_COLUMNS = [
     ("creative_final", "Nom créa (imposé)"),
     ("objective_impressions", "Volume"),
 ]
-ALWAYS = {"site_name", "objective", "audience", "targeting", "placement_name", "format_label", "size",
+ALWAYS = {"site_name", "site_id", "objective", "audience", "targeting", "placement_name", "format_label", "size",
           "creative_name", "landing_page_url"}
 
 
@@ -210,10 +210,38 @@ def _build(rows: list, nomenclature_json: str, creatives_dir: str, report: list)
         "rows": len(rows), "errors": errors, "renames": renames, "ingest": report,
         "campaigns": _summary(plan), "specs": specs, "to_complete": plan_gaps(plan),
         "preview": preview(plan), "preview_adform": preview_adform(plan),
+        "cm360_issues": cm360_import_issues(plan) if not errors else [],
         "table": [dict(r) for r in rows], "columns": columns,
         "campaign": campaign,
         "spec_refs": [s for s in (spec_summary(t) for t in ctypes) if s],
     }, ensure_ascii=False, default=str)
+
+
+def cm360_import_issues(plan) -> list:
+    """Ce qui empêcherait l'import du Campaign spreadsheet de créer la structure dans CM360 :
+    sans Site ID ni nom de site existant, CM360 ne crée ni emplacement, ni annonce, ni
+    assignation (seules les créatives passent)."""
+    issues = []
+    for camp in plan.values():
+        no_site = sorted(p.name for p in camp.placements.values() if not p.site_id and not p.site_name)
+        if no_site:
+            issues.append({"level": "bloquant", "key": "site", "count": len(no_site), "items": no_site[:20],
+                           "message": f"{len(no_site)} emplacement(s) sans régie / site : CM360 ne créera ni ces "
+                                      "emplacements, ni leurs annonces, ni les assignations (seules les créatives "
+                                      "seraient importées). Renseignez « Régie / site » (nom exact du site dans CM360) "
+                                      "ou mieux « ID site CM360 »."})
+        by_name = sorted({p.site_name for p in camp.placements.values() if p.site_name and not p.site_id})
+        if by_name:
+            issues.append({"level": "alerte", "key": "site_id", "count": len(by_name), "items": by_name,
+                           "message": "Sites désignés par leur nom seulement : le nom doit être exactement celui du "
+                                      "site dans CM360, sinon l'emplacement est refusé. Plus sûr : « ID site CM360 »."})
+        packs = sorted({p.package for p in camp.placements.values() if p.package})
+        if packs:
+            issues.append({"level": "alerte", "key": "package", "count": len(packs), "items": packs,
+                           "message": f"{len(packs)} package(s) : non inclus dans le Campaign spreadsheet pour "
+                                      "l'instant (format à confirmer sur un export CM360 contenant un package) ; "
+                                      "à créer dans CM360 puis à rattacher aux emplacements."})
+    return issues
 
 
 def _num_fr(v: str, unit: str = "") -> str:

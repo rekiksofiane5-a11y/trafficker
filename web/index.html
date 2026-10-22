@@ -118,6 +118,8 @@ footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
 a { color: var(--accent); }
 .hidden { display: none; }
 [hidden] { display: none !important; }
+.cm360-issues { border: 1px solid var(--warn); border-radius: 10px; padding: 8px 12px; margin: 8px 0; font-size: .88rem; }
+.cm360-issues ul { margin: 4px 0 0; padding-left: 18px; }
 /* Reporting */
 .rp-link { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0; }
 .rp-link label { margin: 0; }
@@ -662,6 +664,14 @@ function renderSummary(d) {
   if (d.to_complete && d.to_complete.length)
     box.append(el("p", {class: "hint"}, `✏️ ${d.to_complete.length} information(s) à compléter — cases orange du plan `
       + "(laissées vides dans les exports ; l'envoi réel reste bloqué tant qu'elles manquent)."));
+  // Import CM360 : ce qui empêcherait la création des emplacements, annonces et assignations
+  if ($("adserver").value === "cm360" && d.cm360_issues && d.cm360_issues.length) {
+    box.append(el("div", {class: "cm360-issues", id: "cm360-issues"},
+      el("strong", {}, "Avant l'import dans CM360"),
+      el("ul", {}, ...d.cm360_issues.map((i) => el("li", {class: i.level === "bloquant" ? "err" : ""},
+        `${i.level === "bloquant" ? "⛔" : "⚠️"} ${i.message}`,
+        i.items && i.items.length ? el("div", {class: "hint"}, i.items.slice(0, 8).join(" · ") + (i.count > 8 ? " …" : "")) : "")))));
+  }
   if (d.specs && d.specs.length) {
     const ICON = {erreur: "⛔", alerte: "⚠️", ok: "✅"};
     box.append(el("h3", {}, "Contrôle des créatives (specs CM360)"));
@@ -1086,7 +1096,7 @@ function renderPreviewPane() {
   }
 }
 $("adserver").addEventListener("change", () => {
-  renderPreviewPane();
+  if (lastResult) renderSummary(lastResult); else renderPreviewPane();      // contrôles propres à l'ad server
   if (current) {
     current.adserver = $("adserver").value;
     if (current.mode === "reporting") { delete current.data.rp; current.advertiser = current.campaign = ""; rpOpen(); }
@@ -1229,6 +1239,8 @@ function download(bytes, name) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 $("dl-cm360").addEventListener("click", async () => {
+  const block = ((lastResult || {}).cm360_issues || []).find((i) => i.level === "bloquant");
+  if (block && !window.confirm(block.message + "\n\nExporter quand même ?")) return;
   try { download(await call("export_cm360"), "campaign_spreadsheet_cm360.xlsx"); }
   catch (e) { showOutput(el("p", {class: "err"}, "Export CM360 impossible : " + e.message)); }
 });

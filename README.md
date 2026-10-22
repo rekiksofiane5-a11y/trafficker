@@ -59,6 +59,8 @@ Pacing = livré / (objectif × fraction du vol écoulée) : OK entre 80 % et 120
 - **Import** : `python cm360_trafficker.py export.xls --dry-run --campaign-name NOM --advertiser-name ANNONCEUR` (.xls ou .xlsx ; détecté à ses en-têtes). Le format ne contient ni campagne ni annonceur : à fournir (CLI, MCP, ou ⚙️ dans l'UI). Dates de campagne = plus petit début / plus grande fin des placements ; `objective_impressions` = unités des placements CPM ; `budget_eur` = coûts, comptés une fois par placement. Dates lues en ISO ou JJ/MM/AAAA.
 - **Limites** : l'export fourni ne contenait que les en-têtes ; le vocabulaire des valeurs (Type d'annonce/créative, compatibilité, structure de coût) est déduit de l'interface CM360 et regroupé dans `VOCAB` (`cm360_bulk.py`) pour être corrigé avec un export rempli. Les créatives non-tracking n'ont ni tag ni fichier dans ce format : à compléter (`snippet` / `creative_path`) avant trafficking.
 
+**Constaté sur un vrai compte CM360** : une ligne sans Site ID ni nom de site existant ne crée ni emplacement, ni annonce, ni assignation — seules les créatives sont importées. Umnia l'affiche avant l'export (« Avant l'import dans CM360 ») et demande confirmation ; colonne « ID site CM360 » dans le plan (plus sûr que le nom). Packages : pas encore écrits dans le Campaign spreadsheet (format à confirmer sur un export CM360 rempli contenant un package).
+
 ## Classeur bulk Adform
 
 `python cm360_trafficker.py plan.csv --export-adform-bulk adform_bulk.xlsx [--adform-campaign-type Non-programmatic]` (aussi dans l'UI : « ⬇ Classeur bulk Adform », et via l'outil MCP `export_adform_bulk`).
