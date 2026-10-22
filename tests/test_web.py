@@ -555,3 +555,32 @@ def test_real_cm360_xlsx_export_and_keyword_filter(page, tmp_path):
     assert "179 000" in page.text_content("#rp-dash").replace(" ", " ")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
+
+
+def test_app_bar_history_and_menus(page):
+    """Barre du haut (modes, recherche, thème, compte, historique) et panneau Historique (récents)."""
+    page.click(".modes [data-mode=trafficking]")
+    _create_task(page, "Tâche historique")
+    assert page.is_visible("#history")
+    item = page.locator(".task-item:has-text('Tâche historique')")
+    assert "Brouillon" in item.text_content() and "instant" in item.text_content()
+    page.fill("#search", "historique")
+    page.wait_for_function("document.getElementById('history-q').value === 'historique'")
+    page.wait_for_function("document.querySelectorAll('#task-list .task-item').length === 1")
+    page.fill("#history-q", "")
+    page.dispatch_event("#history-q", "input")
+    page.click("#history-close")
+    assert not page.is_visible("#history") and page.get_attribute("#history-btn", "aria-expanded") == "false"
+    page.click("#history-btn")
+    assert page.is_visible("#history")
+    page.click("#theme-btn")
+    page.click("[data-theme-set=dark]")
+    assert page.evaluate("document.documentElement.dataset.theme") == "dark" and page.text_content("#theme-label") == "Thème : sombre"
+    page.click("#theme-btn")
+    page.click("[data-theme-set=auto]")
+    assert page.evaluate("document.documentElement.dataset.theme") is None
+    page.click("#account-btn")
+    assert page.is_visible("#open-settings")
+    page.keyboard.press("Escape")
+    assert not page.is_visible("#account-menu")
+    assert page.errors == []
