@@ -572,6 +572,13 @@ CONTEXT_KEYS = {
     "targeting": ["ciblage", "ciblage_general", "targeting"],
     "budget_eur": ["budget", "budget_total", "budget_net", "budget_ht", "budget_global", "montant"],
     "landing_page_url": ["url", "url_de_destination", "landing", "lp", "site_annonceur"],
+    # Champs de création de campagne CM360 (aide « Configurer une campagne »)
+    "billing_code": ["code_de_facturation", "code_facturation", "billing_code", "billing_invoice_code",
+                     "bon_de_commande", "numero_de_commande", "purchase_order", "po"],
+    "external_id": ["id_externe", "identifiant_externe", "external_id", "reference_campagne", "ref_campagne",
+                    "code_campagne"],
+    "eu_political": ["publicite_politique", "pub_politique", "politique", "political", "eu_political",
+                     "publicite_politique_ue"],
 }
 _CONTEXT_EXACT = {s: k for k, syns in CONTEXT_KEYS.items() for s in syns}
 _QUALIFIERS = {"general", "generale", "global", "globale", "principal", "principale", "total",
@@ -873,7 +880,8 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
                     break
         # Valeurs de campagne : bloc d'en-tête puis paramètres
         for f in ("advertiser_name", "campaign_name", "campaign_start", "campaign_end",
-                  "landing_page_url", "objective", "audience", "targeting"):
+                  "landing_page_url", "objective", "audience", "targeting", "billing_code", "external_id",
+                  "eu_political"):
             if not r.get(f) and f in context:
                 r[f] = context[f][0]
         if not r.get("campaign_name") and campaign_name:

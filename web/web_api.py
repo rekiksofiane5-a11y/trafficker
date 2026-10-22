@@ -4,6 +4,7 @@ navigateur par Pyodide. Aucune donnée ne quitte le navigateur : pas de serveur,
 pas d'appel réseau. Les fonctions renvoient du JSON (ou des octets pour les exports).
 """
 import json
+import re
 import os
 import tempfile
 
@@ -126,7 +127,8 @@ def preview(plan) -> list:
 # Colonnes du tableau modifiable (ordre, libellé) ; « toujours » = affichées même vides
 # 1 plan média = 1 annonceur = 1 campagne : campagne, annonceur et dates se saisissent
 # une fois (en-tête du volet), pas par ligne.
-CAMPAIGN_FIELDS = ["campaign_name", "advertiser_name", "campaign_start", "campaign_end"]
+CAMPAIGN_FIELDS = ["campaign_name", "advertiser_name", "campaign_start", "campaign_end",
+                   "default_landing_page", "billing_code", "external_id", "eu_political"]
 TABLE_COLUMNS = [
     ("objective", "Objectif"), ("site_name", "Régie / site"), ("site_id", "ID site CM360"), ("package", "Package"),
     ("audience", "Audience"), ("targeting", "Ciblage"), ("targeting_detail", "Détail du ciblage"), ("device", "Devices"),
@@ -210,11 +212,68 @@ def _build(rows: list, nomenclature_json: str, creatives_dir: str, report: list)
         "rows": len(rows), "errors": errors, "renames": renames, "ingest": report,
         "campaigns": _summary(plan), "specs": specs, "to_complete": plan_gaps(plan),
         "preview": preview(plan), "preview_adform": preview_adform(plan),
-        "cm360_issues": cm360_import_issues(plan) if not errors else [],
+        "cm360_issues": (cm360_campaign_sheet(rows)["issues"] + cm360_import_issues(plan)) if not errors else [],
+        "cm360_campaign": cm360_campaign_sheet(rows)["sheet"],
         "table": [dict(r) for r in rows], "columns": columns,
         "campaign": campaign,
         "spec_refs": [s for s in (spec_summary(t) for t in ctypes) if s],
     }, ensure_ascii=False, default=str)
+
+
+RE_EXTERNAL_ID = re.compile(r"^[A-Za-z0-9_-]{1,50}$")
+
+
+def eu_political_value(v: str) -> str:
+    t = (v or "").strip().lower()
+    if t in ("oui", "yes", "x", "1", "true", "vrai", "o", "y") or t.startswith("oui") or t.startswith("contient"):
+        return "oui"
+    if t in ("non", "no", "0", "false", "faux", "n") or t.startswith("non") or t.startswith("ne contient"):
+        return "non"
+    return ""
+
+
+def cm360_campaign_sheet(rows: list, today: str = "") -> dict:
+    """Règles de création d'une campagne CM360 (aide « Configurer une campagne ») : fiche à saisir
+    dans CM360 avant l'import du Campaign spreadsheet, et contrôles bloquants / alertes."""
+    from datetime import date
+    first = rows[0] if rows else {}
+    today = today or date.today().isoformat()
+    name = first.get("campaign_name", "")
+    start, end = first.get("campaign_start", ""), first.get("campaign_end", "")
+    lp = first.get("default_landing_page") or next((r.get("landing_page_url") for r in rows if r.get("landing_page_url")), "")
+    billing, ext = first.get("billing_code", ""), first.get("external_id", "")
+    eu = eu_political_value(first.get("eu_political", ""))
+    issues = []
+
+    def add(level, key, message):
+        issues.append({"level": level, "key": key, "count": 1, "items": [], "message": message})
+    if not name:
+        add("bloquant", "campaign_name", "Nom de campagne obligatoire.")
+    elif len(name) > 511:
+        add("bloquant", "campaign_name", "Nom de campagne trop long (512 caractères maximum, unique chez l'annonceur).")
+    if not start or not end:
+        add("bloquant", "campaign_dates", "Dates de début et de fin obligatoires pour créer la campagne.")
+    elif end < start:
+        add("bloquant", "campaign_dates", "La date de fin précède la date de début.")
+    elif start < today:
+        add("alerte", "campaign_dates", f"Début ({start}) dans le passé : CM360 n'accepte pas une nouvelle campagne qui "
+                                        "commence avant aujourd'hui — décalez les dates (sans effet si la campagne existe déjà).")
+    if not lp:
+        add("bloquant", "landing_page", "Page de destination par défaut obligatoire pour la campagne (URL de l'annonceur).")
+    if len(billing) > 64:
+        add("bloquant", "billing_code", "Code de facturation : 64 caractères maximum.")
+    if ext and not RE_EXTERNAL_ID.match(ext):
+        add("bloquant", "external_id", "ID externe : 50 caractères maximum, lettres, chiffres, tirets et traits de soulignement uniquement.")
+    if not eu:
+        add("alerte", "eu_political", "Déclarer si la campagne contient de la publicité à caractère politique dans l'UE "
+                                      "(champ demandé à la création de la campagne).")
+    fr = lambda d: "/".join(reversed(d.split("-"))) if d else ""
+    sheet = [["Advertiser", first.get("advertiser_name", "")], ["Campaign name", name],
+             ["Default landing page", lp], ["Start date", fr(start)], ["End date", fr(end)],
+             ["Billing invoice code", billing], ["External ID", ext],
+             ["EU political ads", {"oui": "This campaign contains EU political ads",
+                                   "non": "This campaign doesn't contain EU political ads"}.get(eu, "")]]
+    return {"sheet": sheet, "issues": issues}
 
 
 def cm360_import_issues(plan) -> list:

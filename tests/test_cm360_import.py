@@ -22,7 +22,7 @@ def _analyze(tmp_path, instructions=""):
 
 def test_missing_site_is_blocking_for_cm360(tmp_path):
     _, d = _analyze(tmp_path)
-    block = [i for i in d["cm360_issues"] if i["level"] == "bloquant"]
+    block = [i for i in d["cm360_issues"] if i["key"] == "site" and i["level"] == "bloquant"]
     assert block and block[0]["count"] == 16 and "seules les créatives" in block[0]["message"]
     assert any(i["key"] == "package" for i in d["cm360_issues"])
 
@@ -30,7 +30,7 @@ def test_missing_site_is_blocking_for_cm360(tmp_path):
 def test_site_id_exported_and_issue_cleared(tmp_path):
     import openpyxl, io
     web_api, d = _analyze(tmp_path, "Régie : DV360 Open Market")
-    assert [i["key"] for i in d["cm360_issues"] if i["level"] == "bloquant"] == []
+    assert not [i for i in d["cm360_issues"] if i["key"] == "site"]
     assert any(i["key"] == "site_id" for i in d["cm360_issues"])               # nom seul : alerte
     table = d["table"]
     for r in table:
