@@ -160,3 +160,23 @@ def test_parse_export_variants_and_plan_placements(tmp_path):
         q = tmp_path / "autre.csv"
         q.write_text("a,b\n1,2\n", encoding="utf-8")
         reporting.parse_export(str(q))
+
+
+def test_real_cm360_instant_report_xlsx(tmp_path):
+    """Export Excel réel de CM360 (classeur non standard qui fait échouer openpyxl) : lu quand même,
+    bloc d'en-tête exploité, clics sans impression comptés, absence de colonne Campaign signalée."""
+    sys.path.insert(0, os.path.join(ROOT, "tests", "fixtures"))
+    from make_cm360_export import build
+    path = tmp_path / "query.xlsx"
+    build(str(path))
+    r = reporting.parse_export(str(path))
+    assert r["rows"] == 4 and len(r["placements"]) == 3
+    assert r["meta"]["account"] == "3021" and r["meta"]["timezone"] == "Europe/Paris"
+    assert (r["campaign"]["start"], r["campaign"]["end"]) == ("2026-10-01", "2026-10-02")   # période du rapport
+    assert any("Pas de colonne Campaign" in w for w in r["warnings"])
+    assert any("clics sans impression" in w for w in r["warnings"])
+    c = reporting.check(r["campaign"], r["placements"], r["delivery"], "2026-10-03")
+    assert c["kpis"]["placements_live"] == 3                                                # click tracker compté
+    build(str(path))
+    f = reporting.parse_export(str(path), keyword="lemonde")
+    assert [p["id"] for p in f["placements"]] == ["451000001"] and f["rows"] == 2

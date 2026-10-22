@@ -149,14 +149,29 @@
   const list = (a) => a.length <= 1 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
 
   // Spécification -> prompt anglais pour CM360 + réglages manuels + remarques
+  // « NOM (36649579) » : l'ID CM360 entre parenthèses en fin de nom
+  function splitCampaign(text) {
+    const m = String(text || "").match(/^(.*?)\s*\((\d{5,})\)\s*$/);
+    return m ? {name: m[1].trim(), id: m[2]} : {name: String(text || "").trim(), id: ""};
+  }
+
   function build(spec) {
+    const camp = splitCampaign(spec.campaign);
     const dims = spec.dimensions.map((k) => DIMENSIONS[k].cm);
+    // Campagne en colonnes : l'export prouve le filtre (et Umnia peut filtrer si CM360 l'a ignoré)
+    if (camp.name || camp.id) {
+      for (const d of ["Campaign ID", "Campaign"].filter((x) => !dims.includes(x))) dims.unshift(d);
+      if (dims[0] !== "Campaign") { dims.splice(dims.indexOf("Campaign"), 1); dims.unshift("Campaign"); }
+    }
     if (spec.dimensions.includes("placement")) dims.splice(dims.indexOf("Placement") + 1, 0, "Placement ID");
     const mets = spec.metrics.map((k) => METRICS[k].cm);
-    const scope = spec.campaign ? `for the campaign "${spec.campaign}"${spec.advertiser ? ` (advertiser "${spec.advertiser}")` : ""}`
+    const scope = camp.id ? `for the campaign ID ${camp.id} only ("${camp.name}"${spec.advertiser ? `, advertiser "${spec.advertiser}"` : ""})`
+      : camp.name ? `for the campaign "${camp.name}" only${spec.advertiser ? ` (advertiser "${spec.advertiser}")` : ""}`
       : spec.advertiser ? `for all campaigns of the advertiser "${spec.advertiser}"` : "for all my campaigns";
-    const parts = [`Create a flat table report ${scope}, ${spec.range.en}.`,
-                   `Rows (dimensions): ${list(dims)}.`, `Columns (metrics): ${list(mets)}.`];
+    const parts = [`Create a flat table report ${scope}, ${spec.range.en}.`];
+    if (camp.id) parts.push(`Add the filter Campaign ID = ${camp.id}; do not include any other campaign.`);
+    else if (camp.name) parts.push(`Add the filter Campaign = "${camp.name}"; do not include any other campaign.`);
+    parts.push(`Rows (dimensions): ${list(dims)}.`, `Columns (metrics): ${list(mets)}.`);
     if (spec.sites.length) parts.push(`Only include the site${spec.sites.length > 1 ? "s" : ""} ${list(spec.sites.map((s) => `"${s}"`))}.`);
     const time = ["date", "week", "month"].find((k) => spec.dimensions.includes(k));
     parts.push(time ? `Sort by ${DIMENSIONS[time].cm} ascending, then by ${mets[0]} descending.` : `Sort by ${mets[0]} descending.`);
@@ -166,11 +181,15 @@
       ["Date range", spec.range.kind === "CUSTOM" ? `${fr(spec.range.start)} → ${fr(spec.range.end)}` : spec.range.fr],
       ["Dimensions (ROW)", dims.join(", ")],
       ["Metrics (COLUMN)", mets.join(", ")],
-      ["Filter", [spec.campaign && `Campaign = ${spec.campaign}`, spec.advertiser && !spec.campaign && `Advertiser = ${spec.advertiser}`,
+      ["Filter", [camp.id ? `Campaign ID = ${camp.id}` : camp.name && `Campaign = ${camp.name}`, spec.advertiser && !spec.campaign && `Advertiser = ${spec.advertiser}`,
                   spec.sites.length && `Site (CM360) = ${spec.sites.join(" | ")}`].filter(Boolean).join(" ; ") || "—"],
     ];
     // Règles de l'aide CM360 « Instant reporting » (support.google.com/campaignmanager/answer/7674615)
     const notes = [...(spec.defaults || [])];
+    if (camp.name || camp.id)
+      notes.push("Avant « Run report », ouvrez « Filter » et vérifiez que le filtre campagne est présent : sur un premier test réel, "
+        + "Generate report l'a ignoré et a exporté tout le compte. Sans filtre, ajoutez-le à la main (Campaign ID)."
+        + (camp.id ? "" : " Astuce : indiquez l'ID CM360 de la campagne entre parenthèses, ex. « Nom (36649579) »."));
     if (spec.schedule) {
       const rel = {daily: "Yesterday", monthly: "Previous month"}[spec.schedule.en] || (spec.schedule.en.startsWith("weekly") ? "Last 7 days" : "");
       notes.push(`Programmation (à régler à la main, pas par le prompt) : « Save », puis l'icône « Schedule and delivery » → `
@@ -194,7 +213,7 @@
     return {prompt, settings, notes};
   }
 
-  const api = {analyze, answer, build, missing, METRICS, DIMENSIONS};
+  const api = {analyze, answer, build, missing, splitCampaign, METRICS, DIMENSIONS};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CMPrompt = api;
 })(typeof self !== "undefined" ? self : globalThis);

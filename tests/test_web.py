@@ -496,7 +496,7 @@ def test_cm360_prompt_without_api(page):
     page.fill('[data-q="campaign"] input', "Noël 2026")
     page.click("#pp-answer")
     page.wait_for_selector("#pp-prompt")
-    assert "Rows (dimensions): Date" in page.input_value("#pp-prompt")
+    assert "Rows (dimensions): Campaign, Campaign ID, Date" in page.input_value("#pp-prompt")
     assert "Schedule and delivery" in page.text_content("#pp-output")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
@@ -531,5 +531,27 @@ def test_reporting_from_cm360_export_file(page, tmp_path):
     page.click(".task-item:has-text('UPSA export')")             # réouverture : export conservé
     page.wait_for_selector("#rp-fstart")
     assert page.input_value("#rp-fend") == "2026-10-23"
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []
+
+
+def test_real_cm360_xlsx_export_and_keyword_filter(page, tmp_path):
+    """Excel exporté de CM360 (non standard) : import sans erreur, alerte d'export trop large, filtre par mot."""
+    from fixtures.make_cm360_export import build
+    path = tmp_path / "3021_query.xlsx"
+    build(str(path))
+    page.click(".modes [data-mode=reporting]")
+    _create_task(page, "Lotus check")
+    page.set_input_files("#rp-file", str(path))
+    page.wait_for_selector("#rp-fkw")
+    sel = page.text_content("#rp-selected")
+    assert "Import impossible" not in sel and "Compte CM360 3021" in sel and "Pas de colonne Campaign" in sel
+    page.fill("#rp-fkw", "LEMONDE")
+    page.click("#rp-fkw-go")
+    page.wait_for_function("document.getElementById('rp-selected').textContent.includes('Filtre « LEMONDE »')")
+    assert "1 emplacement(s) avec données" in page.text_content("#rp-selected")
+    page.click(".tpl[data-tpl=check]")
+    page.wait_for_selector(".kpis")
+    assert "179 000" in page.text_content("#rp-dash").replace(" ", " ")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []

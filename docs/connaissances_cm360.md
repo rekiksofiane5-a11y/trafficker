@@ -26,3 +26,11 @@ Source de chaque règle entre parenthèses ; « constaté » = vérifié sur un 
 - Rapport trop lourd : réduire la période ou les dimensions, ou « Download ».
 - Programmation : « Schedule and delivery » → Schedule status, fuseau, fréquence, période ; envoi à minuit dans le fuseau ; Delivery : Attachment (≤ 25 Mo) ou Link to report, Email owner, Add people.
 - Désactivation : rapport programmé non téléchargé depuis 60 jours ou en échec depuis 30 jours ; arrêt si le propriétaire devient inactif ou perd ses droits.
+
+## Exports réels (constaté sur un export Instant reporting, compte agence)
+- L'Excel téléchargé n'est pas un .xlsx standard (workbook.xml à la racine, feuille `xl/worksheets/data.xml`, styles incomplets) : Excel l'ouvre, mais openpyxl échoue → Umnia le lit directement par son XML.
+- Bloc d'en-tête : Date/Time Generated, Report Time Zone, Account ID, Date Range, mention « Reporting numbers are finalized after seven days », puis « Report Fields » / « Report Metrics », colonnes, et « Grand Total: ».
+- « Generate report » peut ignorer le filtre campagne donné par son nom et exporter tout le compte : le prompt d'Umnia impose maintenant « Campaign ID = … », ajoute Campaign et Campaign ID en colonnes et rappelle de vérifier « Filter » avant « Run report ».
+- Nombreux emplacements 1x1 avec des clics sans impression (click trackers, diffusion achetée en DSP) : comptés comme « données reçues ».
+- La colonne Site (CM360) contient souvent la plateforme d'achat (The Trade Desk, AMNET, BidManager_DfaSite = DV360) ; l'éditeur est dans le nom d'emplacement (ex. R-NOTORIETE-CPM-LEMONDE--CUSTOM-LeMonde-GRANDANGLE-1x1-Multidevice-NA).
+

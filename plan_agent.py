@@ -84,6 +84,18 @@ def _read_xlsx(path: str):
     key = (os.path.abspath(path), os.path.getmtime(path), os.path.getsize(path))
     if key in _XLSX_CACHE:
         return _XLSX_CACHE[key]
+    try:
+        result = _read_xlsx_openpyxl(path)
+    except Exception:
+        # Classeurs générés par des plateformes (ex. exports CM360) : parties rangées hors de
+        # xl/, styles incomplets... openpyxl échoue ; lecture directe du XML (valeurs seules)
+        result = (_read_xlsx_raw(path), {})
+    _XLSX_CACHE.clear()
+    _XLSX_CACHE[key] = result
+    return result
+
+
+def _read_xlsx_openpyxl(path: str):
     from openpyxl import load_workbook
     wb = load_workbook(path, read_only=True, data_only=True)
     theme = _theme_colors(wb)
@@ -114,9 +126,87 @@ def _read_xlsx(path: str):
         if yellow:
             highlights[ws.title] = yellow
     wb.close()
-    _XLSX_CACHE.clear()
-    _XLSX_CACHE[key] = (grids, highlights)
     return grids, highlights
+
+
+def _read_xlsx_raw(path: str) -> List[Tuple[str, Grid]]:
+    """Lecture tolérante d'un .xlsx par son XML : emplacement des parties lu dans les
+    relations, chaînes partagées ou en ligne, valeurs brutes (sans mise en forme)."""
+    import posixpath
+    import zipfile
+    import xml.etree.ElementTree as ET
+    M = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+    P = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+    z = zipfile.ZipFile(path)
+    names = set(z.namelist())
+
+    def part(base_dir: str, target: str) -> str:
+        t = target.lstrip("/") if target.startswith("/") else posixpath.normpath(posixpath.join(base_dir, target))
+        return t
+
+    def rels(of: str) -> Dict[str, Tuple[str, str]]:
+        d, b = posixpath.split(of)
+        rp = posixpath.join(d, "_rels", b + ".rels")
+        if rp not in names:
+            return {}
+        out = {}
+        for el in ET.fromstring(z.read(rp)).iter(P + "Relationship"):
+            out[el.get("Id")] = (el.get("Type", "").rsplit("/", 1)[-1], part(d, el.get("Target", "")))
+        return out
+
+    root_rels = {}
+    if "_rels/.rels" in names:
+        for el in ET.fromstring(z.read("_rels/.rels")).iter(P + "Relationship"):
+            root_rels[el.get("Type", "").rsplit("/", 1)[-1]] = part("", el.get("Target", ""))
+    wb_path = root_rels.get("officeDocument") or ("xl/workbook.xml" if "xl/workbook.xml" in names else "workbook.xml")
+    wb_rels = rels(wb_path)
+    shared: List[str] = []
+    ss = next((t for k, t in wb_rels.values() if k == "sharedStrings"), None)
+    if ss and ss in names:
+        for si in ET.fromstring(z.read(ss)).iter(M + "si"):
+            shared.append("".join(t.text or "" for t in si.iter(M + "t")))
+    sheets = []
+    for sh in ET.fromstring(z.read(wb_path)).iter(M + "sheet"):
+        target = wb_rels.get(sh.get(R + "id"), ("", ""))[1]
+        if target in names:
+            sheets.append((sh.get("name") or target, target))
+    grids = []
+    for name, target in sheets:
+        grid: Grid = []
+        with z.open(target) as f:
+            for _, row in ET.iterparse(f):
+                if row.tag != M + "row":
+                    continue
+                r = int(row.get("r") or len(grid) + 1) - 1
+                if r >= MAX_ROWS:
+                    break
+                while len(grid) <= r:
+                    grid.append([])
+                vals: List[str] = []
+                for c in row.iter(M + "c"):
+                    ref = re.match(r"([A-Z]+)", c.get("r") or "")
+                    col = 0
+                    for ch in (ref.group(1) if ref else ""):
+                        col = col * 26 + ord(ch) - 64
+                    col = col - 1 if col else len(vals)
+                    t = c.get("t")
+                    if t == "inlineStr":
+                        v = "".join(x.text or "" for x in c.iter(M + "t"))
+                    else:
+                        ve = c.find(M + "v")
+                        v = ve.text if ve is not None and ve.text is not None else ""
+                        if t == "s" and v.isdigit() and int(v) < len(shared):
+                            v = shared[int(v)]
+                    while len(vals) < col:
+                        vals.append("")
+                    vals.append(_cell(v))
+                grid[r] = vals
+                row.clear()
+        width = max((len(x) for x in grid), default=0)
+        grids.append((name, _trim([x + [""] * (width - len(x)) for x in grid])))
+    z.close()
+    return grids
 
 
 def _merged_ranges(wb, ws) -> List[Tuple[int, int, int, int]]:

@@ -47,10 +47,10 @@ const COMMANDS = {
   // Reporting : objets JSON (campagne, emplacements, diffusion) -> templates
   report_demo: async ({campaign, placements, today}) =>
     api.report_demo(JSON.stringify(campaign), JSON.stringify(placements), today),
-  report_parse: async ({name, bytes, campaign}) => {
+  report_parse: async ({name, bytes, campaign, keyword}) => {
     const path = `/tmp/export_${Date.now()}_` + name.replace(/[\/\\]/g, "_");
     py.FS.writeFile(path, new Uint8Array(bytes));
-    return api.report_parse(path, campaign || "");
+    return api.report_parse(path, campaign || "", keyword || "");
   },
   plan_targets: async ({table, nomen, source}) => api.plan_targets(JSON.stringify(table), nomen || "", source || ""),
   report_check: async ({campaign, placements, delivery, today, targets}) =>

@@ -209,7 +209,7 @@ def check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: s
     for p in placements:
         a = by_pl.get(str(p.get("id")), {})
         start = _d(p.get("start") or campaign.get("start"))
-        if a.get("impressions"):
+        if a.get("impressions") or a.get("clicks"):          # clics seuls : click tracker 1x1
             status = LIVE
         elif start and now and start >= now:
             status = NOT_STARTED
@@ -460,7 +460,18 @@ def _int(v) -> int:
         return 0
 
 
-def parse_export(path: str, campaign_name: str = "") -> Dict:
+def _export_meta(grid, h: int) -> Dict[str, str]:
+    """Bloc d'en-tête d'un export CM360 (« Date Range », « Account ID », fuseau…)."""
+    meta = {}
+    for row in grid[:h]:
+        k = _plain(row[0]) if row else ""
+        v = str(row[1]).strip() if len(row) > 1 else ""
+        if k and v:
+            meta[k] = v
+    return meta
+
+
+def parse_export(path: str, campaign_name: str = "", keyword: str = "") -> Dict:
     """Export de rapport CM360 (Report builder ou rapport hors ligne ; CSV, XLSX, XLS) ->
     campagne, emplacements, diffusion jour x emplacement : mêmes données qu'avec l'API."""
     import plan_agent
@@ -484,6 +495,7 @@ def parse_export(path: str, campaign_name: str = "") -> Dict:
             if n in cells and key not in col:
                 col[key] = cells.index(n)
     get = lambda row, k: str(row[col[k]]).strip() if k in col and col[k] < len(row) else ""
+    meta = _export_meta(grid, h)
     rows = []
     for row in grid[h + 1:]:
         first = " ".join(str(c) for c in row[:3]).strip().lower()
@@ -492,13 +504,25 @@ def parse_export(path: str, campaign_name: str = "") -> Dict:
         if not (get(row, "placement") or get(row, "site") or get(row, "date")):
             continue
         rows.append(row)
+    def camp_label(row):
+        n, i = get(row, "campaign"), get(row, "campaign_id")
+        return f"{n} ({i})" if n and i and i not in n else (n or i)
     campaigns: Dict[str, int] = {}
     for row in rows:
-        campaigns[get(row, "campaign")] = campaigns.get(get(row, "campaign"), 0) + _int(get(row, "impressions"))
-    names = [c for c in sorted(campaigns, key=lambda c: -campaigns[c])]
-    chosen = campaign_name if campaign_name in campaigns else (names[0] if names else "")
-    if "campaign" in col:
-        rows = [r for r in rows if get(r, "campaign") == chosen]
+        campaigns[camp_label(row)] = campaigns.get(camp_label(row), 0) + _int(get(row, "impressions"))
+    names = [c for c in sorted(campaigns, key=lambda c: -campaigns[c]) if c]
+    # Campagne demandée : libellé exact, ou ID / nom contenu dans le libellé
+    want = (campaign_name or "").strip()
+    ids = re.findall(r"\d{5,}", want)
+    chosen = next((c for c in names if c == want), "") or \
+        next((c for c in names if ids and any(i in c for i in ids)), "") or \
+        next((c for c in names if want and _plain(want) in _plain(c)), "") or (names[0] if names else "")
+    total_rows = len(rows)
+    if "campaign" in col or "campaign_id" in col:
+        rows = [r for r in rows if camp_label(r) == chosen]
+    kw = _plain(keyword)
+    if kw:
+        rows = [r for r in rows if kw in _plain(get(r, "placement")) or kw in _plain(get(r, "site"))]
     placements: Dict[str, Dict] = {}
     delivery, days, warnings = [], [], []
     starts, ends = [], []
@@ -527,15 +551,37 @@ def parse_export(path: str, campaign_name: str = "") -> Dict:
     if "site" not in col:
         warnings.append("Pas de colonne Site (CM360) : régies inconnues.")
     if len(names) > 1:
-        warnings.append(f"{len(names)} campagnes dans le fichier : « {chosen} » retenue.")
+        warnings.append(f"{len(names)} campagnes dans le fichier : « {chosen} » retenue (choix possible ci-dessous).")
+    n_sites = len({p["site"] for p in placements.values()})
+    account_wide = "campaign" not in col and "campaign_id" not in col and not kw and (n_sites > 25 or len(placements) > 200)
+    if "campaign" not in col and "campaign_id" not in col:
+        warnings.append("Pas de colonne Campaign : impossible de vérifier que l'export ne concerne que la campagne. "
+                        "Ajoutez « Campaign » et « Campaign ID » aux dimensions du rapport.")
+    if account_wide:
+        warnings.append(f"{n_sites} sites et {len(placements)} emplacements : le filtre campagne n'a vraisemblablement pas été "
+                        "appliqué par CM360 (export de tout le compte). Refaites le rapport avec un filtre Campaign ID, "
+                        "ou filtrez ci-dessous par un mot présent dans les noms d'emplacements.")
+    if kw:
+        warnings.append(f"Filtre « {keyword} » : {len(rows)} ligne(s) sur {total_rows}.")
+    clicks_only = sum(1 for d in delivery if not d["impressions"] and d["clicks"])
+    if clicks_only:
+        warnings.append(f"{clicks_only} ligne(s) avec des clics sans impression (click trackers / emplacements 1x1) : "
+                        "comptées comme données reçues.")
     starts, ends = [x for x in starts if x], [x for x in ends if x]
+    report_range = [_any_date(x.strip()) for x in meta.get("date range", "").split(" - ")] if meta.get("date range") else []
+    if not starts and len(report_range) == 2 and all(report_range):
+        starts, ends = [report_range[0]], [report_range[1]]
     campaign = {"id": "file", "name": chosen or os.path.splitext(os.path.basename(path))[0], "from_file": True,
                 "advertiser": next((get(r, "advertiser") for r in rows if get(r, "advertiser")), ""),
                 "start": min(starts) if starts else (min(days) if days else ""),
                 "end": max(ends) if ends else (max(days) if days else ""),
-                "dates_from": "colonnes de dates de campagne" if starts else "premier et dernier jour du fichier"}
+                "dates_from": ("période du rapport" if report_range and starts == [report_range[0]] else
+                               "colonnes de dates de campagne" if starts else "premier et dernier jour du fichier")}
     return {"campaign": campaign, "campaigns": names, "placements": list(placements.values()), "delivery": delivery,
-            "rows": len(rows), "warnings": warnings,
+            "rows": len(rows), "total_rows": total_rows, "warnings": warnings, "account_wide": account_wide,
+            "keyword": keyword, "meta": {"account": meta.get("account id", ""), "range": meta.get("date range", ""),
+                                         "timezone": meta.get("report time zone", ""),
+                                         "generated": meta.get("date/time generated", "")},
             "columns": {k: grid[h][i] for k, i in col.items()}}
 
 

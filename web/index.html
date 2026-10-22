@@ -2302,11 +2302,11 @@ $("rp-file").addEventListener("change", async () => {
   $("rp-selected").hidden = false;
   $("rp-selected").textContent = `Lecture de ${f.name}…`;
   try {
-    const bytes = await f.arrayBuffer();
-    const d = JSON.parse(await call("report_parse", {name: f.name, bytes}));
-    if (d.fatal) throw new Error(d.fatal);
+    RP.fileBytes = await f.arrayBuffer();               // gardé en mémoire : changer de campagne / filtre
+    const d = await rpParseFile(f.name, "", "");
     const data = rpData();
-    data.file = {name: f.name, parsed: d, dates: null};
+    if (!(d.columns || {}).campaign) d.campaign.name = current.campaign || f.name.replace(/\.[^.]+$/, "");   // export sans colonne Campaign
+    data.file = {name: f.name, parsed: packFile(d), dates: null, campaign: "", keyword: ""};
     data.campaign = {id: "file", name: d.campaign.name};
     data.advertiser = d.campaign.advertiser ? {id: "", name: d.campaign.advertiser} : data.advertiser;
     delete data.plan_task;
@@ -2320,13 +2320,35 @@ $("rp-file").addEventListener("change", async () => {
   } finally { $("rp-file").value = ""; }
 });
 
+// Diffusion stockée en tableaux compacts (exports de plusieurs milliers de lignes)
+function packFile(d) {
+  const {delivery, ...rest} = d;
+  return {...rest, d: delivery.map((x) => [x.date, x.placement_id, x.impressions, x.clicks])};
+}
+async function rpParseFile(name, campaign, keyword) {
+  const bytes = RP.fileBytes.slice(0);
+  const d = JSON.parse(await call("report_parse", {name, bytes, campaign, keyword}, [bytes]));
+  if (d.fatal) throw new Error(d.fatal);
+  return d;
+}
+async function rpRefilter(file, campaign, keyword) {
+  if (!RP.fileBytes) { window.alert("Réimportez le fichier pour changer de campagne ou de filtre."); return; }
+  try {
+    const d = await rpParseFile(file.name, campaign, keyword);
+    if (!(d.columns || {}).campaign) d.campaign.name = current.campaign || file.name.replace(/\.[^.]+$/, "");
+    Object.assign(file, {parsed: packFile(d), campaign, keyword});
+    saveSoon(0);
+    rpApplyFile(file);
+  } catch (e) { $("rp-selected").append(el("div", {class: "err"}, "Filtre impossible : " + e.message)); }
+}
+
 function rpApplyFile(file) {
   const p = file.parsed;
   rpReset();
   RP.source = "file";
   RP.campaign = {...p.campaign, ...(file.dates || {})};
   RP.placements = p.placements;
-  RP.fileDelivery = p.delivery;
+  RP.fileDelivery = (p.d || []).map(([date, placement_id, impressions, clicks]) => ({date, placement_id, impressions, clicks}));
   $("rp-adv-q").value = RP.campaign.advertiser || "";
   $("rp-camp-q").value = RP.campaign.name;
   const sites = rpSites();
@@ -2344,13 +2366,43 @@ function rpApplyFile(file) {
   $("rp-selected").replaceChildren(
     el("div", {}, "📄 ", el("strong", {}, file.name), ` — ${p.rows} ligne(s) · campagne `, el("strong", {}, RP.campaign.name),
        RP.campaign.advertiser ? ` (${RP.campaign.advertiser})` : "", ` · ${RP.placements.length} emplacement(s) avec données · ${sites.length} régie(s) : `,
-       ...sites.map((s) => el("span", {class: "chip"}, s.name))),
+       ...sites.slice(0, 12).map((s) => el("span", {class: "chip"}, s.name)),
+       sites.length > 12 ? el("span", {class: "hint"}, ` … et ${sites.length - 12} autres`) : ""),
     el("div", {class: "rp-dates"}, "Dates de la campagne :", start, "→", end,
        el("span", {class: "hint"}, file.dates ? "(saisies)" : `(${p.campaign.dates_from} — à corriger si besoin pour le rythme)`)),
-    ...(p.warnings || []).map((w) => el("div", {class: "hint"}, "⚠️ " + w)),
+    p.meta && (p.meta.account || p.meta.range)
+      ? el("div", {class: "hint"}, [p.meta.account && `Compte CM360 ${p.meta.account}`, p.meta.range && `période du rapport ${p.meta.range}`,
+                                    p.meta.timezone && `fuseau ${p.meta.timezone}`, p.meta.generated && `généré le ${p.meta.generated}`]
+          .filter(Boolean).join(" · ") + ". Les chiffres CM360 sont définitifs après 7 jours.") : "",
+    ...(p.warnings || []).map((w) => el("div", {class: w.includes("tout le compte") ? "err" : "hint"}, "⚠️ " + w)),
+    rpFileFilters(file),
     el("div", {class: "hint"}, "Les emplacements sans diffusion n'apparaissent pas dans un export : liez le plan média dans le check pour les retrouver."));
   rpTplState();
   rpShowTemplate(rpData().template);
+}
+
+// Choix de la campagne (export multi-campagnes) et filtre par mot (export de tout le compte)
+function rpFileFilters(file) {
+  const p = file.parsed;
+  const box = el("div", {class: "rp-dates"});
+  if ((p.campaigns || []).length > 1) {
+    const sel = el("select", {id: "rp-fcamp", "aria-label": "Campagne du fichier"},
+      ...p.campaigns.map((c) => { const o = el("option", {value: c}, c); if (c === p.campaign.name) o.selected = true; return o; }));
+    sel.addEventListener("change", () => rpRefilter(file, sel.value, file.keyword || ""));
+    box.append("Campagne :", sel);
+  }
+  const kw = el("input", {id: "rp-fkw", value: file.keyword || "", placeholder: "ex. LOTUS, 635419, LEMONDE",
+                          "aria-label": "Garder les emplacements dont le nom contient"});
+  const go = el("button", {type: "button", class: "secondary sm", id: "rp-fkw-go"}, "Filtrer");
+  go.addEventListener("click", () => rpRefilter(file, file.campaign || "", kw.value.trim()));
+  kw.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); go.click(); } });
+  box.append("Garder les emplacements / sites contenant :", kw, go);
+  if (file.keyword) {
+    const clear = el("button", {type: "button", class: "secondary sm"}, "Retirer le filtre");
+    clear.addEventListener("click", () => rpRefilter(file, file.campaign || "", ""));
+    box.append(clear);
+  }
+  return box;
 }
 
 // --- Template 3 : prompt de rapport CM360 (sans accès API) ---
