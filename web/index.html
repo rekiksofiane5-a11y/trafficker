@@ -118,6 +118,16 @@ footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
 a { color: var(--accent); }
 .hidden { display: none; }
 [hidden] { display: none !important; }
+.bulk-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding: 8px 10px; margin: 8px 0 0;
+  border: 1px solid var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 7%, var(--card)); font-size: .85rem; }
+.bulk-bar strong { align-self: center; margin-right: 4px; }
+.bulk-field { margin: 0; font-size: .75rem; }
+.bulk-field select, .bulk-field input { display: block; width: auto; min-width: 11rem; padding: 5px 8px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--card); color: var(--text); font: inherit; font-weight: 400; margin-top: 2px; }
+.bulk-bar button { padding: 6px 12px; }
+button.danger { color: var(--err); }
+table.ed td.sel, table.ed th.sel { text-align: center; padding: 2px 0; }
+table.ed tr.picked td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 /* Colonnes redimensionnables (glisser le bord droit de l'en-tête ; double-clic = large / normal) */
 table.rz { table-layout: fixed; }
 table.rz th { position: sticky; top: 0; background: var(--card); z-index: 1; overflow: hidden; text-overflow: ellipsis; }
@@ -336,6 +346,18 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
               <label>Annonceur<input id="cf-advertiser_name" data-cf="advertiser_name" placeholder="à compléter"></label>
               <label>Début<input id="cf-campaign_start" data-cf="campaign_start" placeholder="JJ/MM/AAAA"></label>
               <label>Fin<input id="cf-campaign_end" data-cf="campaign_end" placeholder="JJ/MM/AAAA"></label>
+            </div>
+            <div id="bulk-bar" class="bulk-bar" role="region" aria-label="Modification en masse" hidden>
+              <strong id="bulk-count"></strong>
+              <label class="bulk-field">Champ
+                <select id="bulk-key"></select></label>
+              <label class="bulk-field">Nouvelle valeur
+                <input id="bulk-value" list="bulk-values" autocomplete="off" placeholder="vide = effacer"></label>
+              <datalist id="bulk-values"></datalist>
+              <button type="button" id="bulk-apply">Appliquer</button>
+              <button type="button" id="bulk-dup" class="secondary">Dupliquer</button>
+              <button type="button" id="bulk-delete" class="secondary danger">Supprimer</button>
+              <button type="button" id="bulk-clear" class="secondary">Désélectionner</button>
             </div>
             <div class="table-wrap" id="editor"></div>
             <div class="actions"><button id="add-row" class="secondary">+ Ajouter une ligne</button></div>
@@ -762,18 +784,92 @@ function resizable(tableEl, prefix, keys, fallback = 140) {
   return tableEl;
 }
 
+// Sélection de lignes du plan pour la modification en masse (bulk edit)
+let edSel = new Set(), lastPicked = null;
+
 function renderEditor(d) {
   table = d.table.map((r) => ({...r}));
   columns = d.columns;
-  const head = el("tr", {}, ...columns.map((c) => el("th", {scope: "col"}, c.label)), el("th", {}, ""));
+  for (const i of [...edSel]) if (i >= table.length) edSel.delete(i);
+  const all = el("input", {type: "checkbox", id: "ed-all", "aria-label": "Sélectionner toutes les lignes"});
+  all.checked = table.length > 0 && edSel.size === table.length;
+  all.indeterminate = edSel.size > 0 && edSel.size < table.length;
+  all.addEventListener("change", () => {
+    edSel = all.checked ? new Set(table.map((_, i) => i)) : new Set();
+    renderEditor({table, columns});
+  });
+  const head = el("tr", {}, el("th", {class: "sel"}, all), ...columns.map((c) => el("th", {scope: "col"}, c.label)), el("th", {}, ""));
   const body = el("tbody", {});
   table.forEach((row, i) => body.append(editorRow(row, i)));
   $("editor").replaceChildren(resizable(el("table", {class: "ed"}, el("thead", {}, head), body), "ed",
-                                        [...columns.map((c) => c.key), ""]));
+                                        ["", ...columns.map((c) => c.key), ""]));
+  renderBulkBar();
 }
 
+function renderBulkBar() {
+  const n = edSel.size;
+  $("bulk-bar").hidden = n === 0;
+  if (!n) return;
+  $("bulk-count").textContent = `${n} ligne(s) sélectionnée(s)`;
+  const key = $("bulk-key").value;
+  $("bulk-key").replaceChildren(...columns.map((c) => el("option", {value: c.key}, c.label)));
+  if (columns.some((c) => c.key === key)) $("bulk-key").value = key;
+  fillBulkValues();
+}
+function fillBulkValues() {
+  const k = $("bulk-key").value;
+  const values = [...new Set(table.map((r) => r[k]).filter(Boolean))].slice(0, 50);
+  $("bulk-values").replaceChildren(...values.map((v) => el("option", {value: v})));
+}
+$("bulk-key").addEventListener("change", fillBulkValues);
+function pickedRows() { return [...edSel].sort((a, b) => a - b); }
+$("bulk-apply").addEventListener("click", () => {
+  const k = $("bulk-key").value;
+  if (!k || !edSel.size) return;
+  let v = $("bulk-value").value.trim();
+  setRowsFields(pickedRows(), {[k]: v});
+  $("sync").textContent = ` · ${edSel.size} ligne(s) modifiée(s)`;
+});
+$("bulk-value").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("bulk-apply").click(); } });
+$("bulk-dup").addEventListener("click", () => {
+  const rows = pickedRows();
+  const copies = rows.map((i) => {
+    const r = {...table[i]};
+    for (const k of ["placement_final", "ad_final", "creative_final"]) delete r[k];   // noms imposés : à refaire
+    return r;
+  });
+  table.push(...copies);
+  edSel = new Set(copies.map((_, j) => table.length - copies.length + j));
+  renderEditor({table, columns});
+  scheduleRebuild(0);
+});
+$("bulk-delete").addEventListener("click", () => {
+  const rows = pickedRows();
+  if (!rows.length) return;
+  if (rows.length > 1 && !window.confirm(`Supprimer ${rows.length} lignes du plan ?`)) return;
+  for (const i of rows.reverse()) table.splice(i, 1);
+  edSel.clear();
+  renderEditor({table, columns});
+  scheduleRebuild(0);
+});
+$("bulk-clear").addEventListener("click", () => { edSel.clear(); renderEditor({table, columns}); });
+
 function editorRow(row, i) {
-  const tr = el("tr", {"data-row": String(i)});
+  const tr = el("tr", {"data-row": String(i), class: edSel.has(i) ? "picked" : ""});
+  const cb = el("input", {type: "checkbox", "aria-label": `Sélectionner la ligne ${i + 1}`});
+  cb.checked = edSel.has(i);
+  cb.addEventListener("click", (e) => {
+    // Maj + clic : sélectionne toute la plage depuis la dernière case cochée
+    if (e.shiftKey && lastPicked !== null) {
+      const [a, b] = [Math.min(lastPicked, i), Math.max(lastPicked, i)];
+      for (let j = a; j <= b; j++) cb.checked ? edSel.add(j) : edSel.delete(j);
+    } else {
+      cb.checked ? edSel.add(i) : edSel.delete(i);
+    }
+    lastPicked = i;
+    renderEditor({table, columns});
+  });
+  tr.append(el("td", {class: "sel"}, cb));
   for (const c of columns) {
     const isDate = c.key === "campaign_start" || c.key === "campaign_end";
     const input = el("input", {"aria-label": `${c.label}, ligne ${i + 1}`, "data-key": c.key,
@@ -788,7 +884,7 @@ function editorRow(row, i) {
     tr.append(td);
   }
   const rm = el("button", {class: "rm", title: "Supprimer la ligne", "aria-label": `Supprimer la ligne ${i + 1}`}, "✕");
-  rm.addEventListener("click", () => { table.splice(i, 1); renderEditor({table, columns}); scheduleRebuild(0); });
+  rm.addEventListener("click", () => { table.splice(i, 1); edSel.clear(); renderEditor({table, columns}); scheduleRebuild(0); });
   tr.append(el("td", {}, rm));
   return tr;
 }
@@ -939,7 +1035,7 @@ $("analyze").addEventListener("click", async () => {
     }, [bytes, ...creas.map((c) => c.bytes)]));
     $("result").classList.remove("hidden");
     step = 1;
-    selected.clear();
+    selected.clear(); edSel.clear();
     applyResult(d);
     if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); }
     $("output").classList.add("hidden");
@@ -1205,7 +1301,7 @@ function resetWork() {
   $("result").classList.add("hidden");
   $("output").classList.add("hidden");
   $("summary").replaceChildren(); $("editor").replaceChildren(); $("preview-pane").replaceChildren();
-  lastResult = null; table = []; columns = []; step = 1; selected.clear();
+  lastResult = null; table = []; columns = []; step = 1; selected.clear(); edSel.clear(); lastPicked = null;
 }
 
 function renderTaskHead() {
@@ -1245,7 +1341,7 @@ async function restoreWork(t) {
     if (t !== current) return;
     $("result").classList.remove("hidden");
     step = t.data.step || 1;
-    selected.clear();
+    selected.clear(); edSel.clear();
     applyResult(d);
     if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); collapsePlan(true); }
   } catch (e) {

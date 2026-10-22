@@ -352,3 +352,32 @@ def test_resizable_columns_and_folded_drop_zone(page, tmp_path):
     page.click("#pm-reopen")
     assert page.is_visible("#drop")
     assert page.errors == []
+
+
+def test_bulk_edit_modify_duplicate_delete(page, tmp_path):
+    from fixtures.make_upsa import build
+    path = tmp_path / "upsa.xlsx"
+    build(str(path))
+    _create_task(page, "UPSA bulk")
+    _analyze(page, str(path), validate=False)
+    rows = lambda: page.locator("#editor tbody tr").count()
+    assert rows() == 16 and not page.is_visible("#bulk-bar")
+    page.click('#editor tr[data-row="0"] td.sel input')
+    page.click('#editor tr[data-row="3"] td.sel input', modifiers=["Shift"])         # plage 1 à 4
+    assert page.text_content("#bulk-count") == "4 ligne(s) sélectionnée(s)"
+    page.select_option("#bulk-key", "site_name")
+    page.fill("#bulk-value", "DV360")
+    page.click("#bulk-apply")
+    page.wait_for_function("document.getElementById('preview-pane').innerText.includes('DV360')", timeout=15000)
+    values = [page.input_value(f'#editor tr[data-row="{i}"] input[data-key="site_name"]') for i in range(5)]
+    assert values == ["DV360"] * 4 + [""]
+    page.click("#bulk-dup")
+    assert rows() == 20 and page.text_content("#bulk-count") == "4 ligne(s) sélectionnée(s)"   # copies sélectionnées
+    page.once("dialog", lambda d: d.accept())
+    page.click("#bulk-delete")
+    assert rows() == 16 and not page.is_visible("#bulk-bar")
+    page.check("#ed-all")
+    assert page.text_content("#bulk-count") == "16 ligne(s) sélectionnée(s)"
+    page.click("#bulk-clear")
+    assert not page.is_visible("#bulk-bar")
+    assert page.errors == []
