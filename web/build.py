@@ -33,6 +33,7 @@ def main() -> None:
     shutil.copy(os.path.join(WEB, "_headers"), DIST)
     shutil.copy(os.path.join(WEB, "engine.js"), DIST)
     shutil.copy(os.path.join(WEB, "demo_adserver.json"), DIST)
+    shutil.copy(os.path.join(WEB, "cm_prompt.js"), DIST)
     for m in PY_MODULES:
         shutil.copy(os.path.join(ROOT, m), os.path.join(DIST, "py"))
     shutil.copy(os.path.join(ROOT, "templates", "adform_bulk_template.xlsx"),

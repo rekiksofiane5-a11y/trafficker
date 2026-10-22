@@ -471,3 +471,32 @@ def test_pacing_from_linked_plan_and_manage_scheduled_reports(page, tmp_path):
     assert not page.is_visible("#rp-sched-table") and "supprimé" in page.text_content("#rp-send-msg")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
+
+
+def test_cm360_prompt_without_api(page):
+    """Sans accès API : demande en français -> questions -> prompt complet pour « Generate report »."""
+    page.click(".modes [data-mode=reporting]")
+    _create_task(page, "Prompt visibilité")
+    assert page.is_disabled(".tpl[data-tpl=check]") and not page.is_disabled(".tpl[data-tpl=prompt]")
+    page.click(".tpl[data-tpl=prompt]")
+    page.fill("#pp-input", "visibilité")
+    page.click("#pp-go")
+    page.wait_for_selector("#pp-answer")
+    page.fill('[data-q="campaign"] input', "Noël 2026")
+    page.click("#pp-answer")
+    page.wait_for_selector("#pp-prompt")
+    prompt = page.input_value("#pp-prompt")
+    assert 'campaign "Noël 2026"' in prompt and "for last week" in prompt and "Active View" in prompt
+    assert "Placement ID" in page.text_content("#pp-settings")
+    page.click("#pp-copy")
+    page.click(".task-item:has-text('Prompt visibilité')")                   # réouverture : prompt restauré
+    page.wait_for_selector("#pp-prompt")
+    assert page.input_value("#pp-prompt") == prompt
+    page.click("#pp-presets button:has-text('Report régie')")          # sans campagne choisie : questions
+    page.fill('[data-q="campaign"] input', "Noël 2026")
+    page.click("#pp-answer")
+    page.wait_for_selector("#pp-prompt")
+    assert "Rows (dimensions): Date" in page.input_value("#pp-prompt")
+    assert "Schedule and delivery" in page.text_content("#pp-output")
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []

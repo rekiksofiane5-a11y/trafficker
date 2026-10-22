@@ -118,6 +118,19 @@ footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
 a { color: var(--accent); }
 .hidden { display: none; }
 [hidden] { display: none !important; }
+.sugg-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.sugg-row button { padding: 4px 12px; font-size: .8rem; font-weight: 400; background: var(--chip); color: var(--text); }
+.tpl:disabled { opacity: .5; }
+#pp-questions fieldset { border: 1px solid var(--accent); border-radius: 12px; padding: 10px 14px; margin-top: 12px; }
+#pp-questions .q { margin: 8px 0; }
+#pp-questions .opts { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 4px; }
+#pp-questions .opts label { display: inline-flex; gap: 4px; align-items: center; font-weight: 400; margin: 0; }
+#pp-questions input[type=text], #pp-questions input[type=date], #pp-input { width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
+#pp-output { margin-top: 14px; }
+#pp-prompt { width: 100%; min-height: 7rem; padding: 10px; border: 2px solid var(--accent); border-radius: 10px; background: var(--card);
+  color: var(--text); font: .9rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+#pp-output ol, #pp-output ul { padding-left: 20px; }
 .cm360-issues { border: 1px solid var(--warn); border-radius: 10px; padding: 8px 12px; margin: 8px 0; font-size: .88rem; }
 .cm360-issues ul { margin: 4px 0 0; padding-left: 18px; }
 /* Reporting */
@@ -446,14 +459,29 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
           <div id="rp-selected" class="info" hidden></div>
         </section>
 
-        <section class="card" id="rp-template" aria-labelledby="rp-t2" hidden>
+        <section class="card" id="rp-template" aria-labelledby="rp-t2">
           <h2 id="rp-t2">2. Template</h2>
           <div class="tpl-choices" role="radiogroup" aria-label="Template de reporting">
             <button type="button" class="tpl" data-tpl="check" role="radio" aria-checked="false">
               <strong>✅ Check de mise en ligne</strong><span>Toutes les régies et tous les emplacements : qui remonte des données, qui n'en a pas. Tableau de bord et Excel.</span></button>
             <button type="button" class="tpl" data-tpl="regies" role="radio" aria-checked="false">
               <strong>📨 Report d'envoi aux régies</strong><span>Un report automatique par régie, envoyé par e-mail selon un calendrier.</span></button>
+            <button type="button" class="tpl" data-tpl="prompt" role="radio" aria-checked="false">
+              <strong>🪄 Prompt de rapport CM360</strong><span>Sans accès API : votre demande en français devient un prompt complet à coller dans « Generate report » de CM360.</span></button>
           </div>
+          <p id="rp-tpl-hint" class="hint">Check et report régie : choisissez d'abord la campagne. Le prompt CM360 fonctionne sans.</p>
+        </section>
+
+        <section class="card" id="rp-prompt" aria-labelledby="pp-title" hidden>
+          <h2 id="pp-title">Prompt de rapport CM360</h2>
+          <p class="hint">Décrivez le rapport voulu, même en quelques mots. Umnia demande ce qui manque puis écrit le prompt à coller dans
+            CM360 → Report builder → Instant reporting → New → « Generate report », avec les réglages équivalents.</p>
+          <div id="pp-presets" class="sugg-row" aria-label="Exemples de demandes"></div>
+          <label for="pp-input" class="lbl">Votre demande</label>
+          <textarea id="pp-input" rows="3" placeholder="ex. impressions et clics par régie et par jour depuis le début de la campagne, à envoyer chaque lundi à trafic@regie.fr"></textarea>
+          <div class="actions"><button type="button" id="pp-go">🪄 Préparer le prompt</button></div>
+          <div id="pp-questions"></div>
+          <div id="pp-output" hidden></div>
         </section>
 
         <section class="card" id="rp-check" aria-labelledby="rp-t3" hidden>
@@ -561,6 +589,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
   </form>
 </dialog>
 
+<script src="cm_prompt.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -1718,8 +1747,14 @@ $("rp-camp-q").addEventListener("input", () => { clearTimeout(rpTimer); rpTimer 
 
 function rpReset() {
   RP.campaign = null; RP.placements = []; RP.delivery = null; RP.targets = null;
-  for (const id of ["rp-selected", "rp-template", "rp-check", "rp-send"]) $(id).hidden = true;
+  for (const id of ["rp-selected", "rp-check", "rp-send"]) $(id).hidden = true;
   $("rp-preview").hidden = true;
+  rpTplState();
+}
+// Check et report régie demandent une campagne ; le prompt CM360 fonctionne sans
+function rpTplState() {
+  for (const b of document.querySelectorAll(".tpl[data-tpl=check], .tpl[data-tpl=regies]")) b.disabled = !RP.campaign;
+  $("rp-tpl-hint").hidden = !!RP.campaign;
 }
 
 async function rpPickCamp(c) {
@@ -1754,7 +1789,7 @@ async function rpLoadCampaign() {
     el("strong", {}, RP.campaign.name), ` — ${RP.campaign.advertiser} · du ${fr(RP.campaign.start)} au ${fr(RP.campaign.end)} · `
     + `${RP.placements.length} emplacement(s) · ${sites.length} régie(s) : `,
     ...sites.map((s) => el("span", {class: "chip"}, s.name)));
-  $("rp-template").hidden = false;
+  rpTplState();
   rpShowTemplate(data.template);
 }
 
@@ -1778,6 +1813,8 @@ function rpShowTemplate(tpl) {
   }
   $("rp-check").hidden = tpl !== "check";
   $("rp-send").hidden = tpl !== "regies";
+  $("rp-prompt").hidden = tpl !== "prompt";
+  if (tpl === "prompt") ppOpen();
   if (tpl === "check") rpLoadPlans().then(() => rpRunCheck());
   if (tpl === "regies") rpRenderSend();
 }
@@ -2212,6 +2249,114 @@ async function rpDeleteSchedule(i) {
   renderScheduled();
 }
 
+// --- Template 3 : prompt de rapport CM360 (sans accès API) ---
+const PP_PRESETS = [
+  ["Check de mise en ligne", "impressions et clics par régie et par emplacement par jour depuis le début de la campagne"],
+  ["Report régie", "impressions et clics par jour et par emplacement depuis le début de la campagne, à envoyer chaque lundi"],
+  ["Visibilité par site", "taux de visibilité par site la semaine dernière"],
+  ["Conversions et coût", "conversions et coût par emplacement le mois dernier"],
+  ["Couverture et fréquence", "couverture et fréquence par régie depuis le début de la campagne"],
+  ["Par device", "impressions, clics et CTR par device et par format les 30 derniers jours"],
+];
+let ppState = null;
+function ppCtx() {
+  return {today: isoToday(), sites: RP.campaign ? rpSites().map((s) => s.name) : [],
+          campaign: RP.campaign ? {name: RP.campaign.name, advertiser: RP.campaign.advertiser, start: RP.campaign.start, end: RP.campaign.end}
+            : {name: current.campaign || "", advertiser: current.advertiser || ""}};
+}
+function ppOpen() {
+  $("pp-presets").replaceChildren(...PP_PRESETS.map(([label, text]) => {
+    const b = el("button", {type: "button"}, label);
+    b.addEventListener("click", () => { $("pp-input").value = text; ppGo(); });
+    return b;
+  }));
+  // Chaque tâche garde sa demande et son prompt
+  const saved = rpData().prompt || {};
+  $("pp-input").value = saved.text || "";
+  $("pp-questions").replaceChildren();
+  $("pp-output").hidden = true;
+  if (saved.spec) ppRender(saved.spec);
+}
+function ppGo() {
+  const text = $("pp-input").value.trim();
+  $("pp-output").hidden = true;
+  if (!text) { $("pp-questions").replaceChildren(el("p", {class: "err"}, "Décrivez le rapport souhaité.")); return; }
+  const ctx = ppCtx();
+  const a = CMPrompt.analyze(text, ctx);
+  ppState = {text, ...a};
+  if (!a.questions.length) { ppRender(a.spec); return; }
+  const fields = a.questions.map((q) => {
+    const box = el("div", {class: "q", "data-q": q.id}, el("strong", {}, q.label));
+    if (q.type === "text") {
+      box.append(el("input", {type: "text", "aria-label": q.label}), el("div", {class: "hint"}, q.hint || ""));
+    } else {
+      const multi = q.type === "multi";
+      const opts = el("div", {class: "opts", role: multi ? "group" : "radiogroup", "aria-label": q.label}, ...q.options.map(([v, l]) => {
+        const inp = el("input", {type: multi ? "checkbox" : "radio", name: "pp-" + q.id, value: v});
+        inp.checked = multi ? (q.preset || []).includes(v) : v === "LAST_WEEK";
+        return el("label", {}, inp, l);
+      }));
+      box.append(opts);
+      if (q.id === "range") {
+        const dates = el("div", {class: "grid", hidden: ""}, el("label", {}, "Du", el("input", {type: "date", "data-k": "start"})),
+                         el("label", {}, "Au", el("input", {type: "date", "data-k": "end"})));
+        opts.addEventListener("change", () => { dates.hidden = opts.querySelector("input:checked").value !== "CUSTOM"; });
+        box.append(dates);
+      }
+    }
+    return box;
+  });
+  const go = el("button", {type: "button", id: "pp-answer"}, "Générer le prompt");
+  go.addEventListener("click", ppAnswer);
+  $("pp-questions").replaceChildren(el("fieldset", {}, el("legend", {}, "Il manque quelques informations"), ...fields,
+                                       el("p", {id: "pp-qerr", class: "err", role: "alert"}), el("div", {class: "actions"}, go)));
+}
+function ppAnswer() {
+  const answers = {};
+  for (const box of $("pp-questions").querySelectorAll(".q")) {
+    const id = box.dataset.q;
+    if (id === "campaign") answers.campaign = box.querySelector("input").value;
+    if (id === "range") {
+      answers.range = (box.querySelector("input:checked") || {}).value;
+      answers.start = box.querySelector('[data-k="start"]').value;
+      answers.end = box.querySelector('[data-k="end"]').value;
+    }
+    if (id === "dimensions") answers.dimensions = [...box.querySelectorAll("input:checked")].map((x) => x.value);
+  }
+  const spec = CMPrompt.answer(ppState.spec, answers, ppCtx());
+  const miss = CMPrompt.missing(spec);
+  if (miss.length) { $("pp-qerr").textContent = "À préciser : " + miss.join(", ") + "."; return; }
+  ppRender(spec);
+}
+function ppRender(spec) {
+  const out = CMPrompt.build(spec);
+  $("pp-questions").replaceChildren();
+  const area = el("textarea", {id: "pp-prompt", readonly: "", "aria-label": "Prompt pour CM360"});
+  area.value = out.prompt;
+  const copy = el("button", {type: "button", id: "pp-copy"}, "📋 Copier le prompt");
+  copy.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(out.prompt); } catch (e) { area.select(); document.execCommand("copy"); }
+    copy.textContent = "✅ Copié";
+    setTimeout(() => { copy.textContent = "📋 Copier le prompt"; }, 2000);
+  });
+  $("pp-output").replaceChildren(
+    el("label", {for: "pp-prompt", class: "lbl"}, "Prompt à coller dans « Generate report » (CM360 est en anglais)"), area,
+    el("div", {class: "actions"}, copy),
+    el("h3", {}, "Dans CM360"),
+    el("ol", {}, ...["Report builder → Instant reporting → New.", "Panneau « Generate report » : coller le prompt, puis « Generate report ».",
+      "Vérifier dimensions, métriques et filtres (tableau ci-dessous), puis « Run report ».", "« Download » pour l'Excel, « Save » pour le réutiliser ou le programmer."]
+      .map((t) => el("li", {}, t))),
+    el("h3", {}, "Réglages équivalents (à la main, si besoin)"),
+    el("div", {class: "table-wrap"}, el("table", {class: "pv", id: "pp-settings"},
+      el("tbody", {}, ...out.settings.map(([k, v]) => el("tr", {}, el("th", {scope: "row"}, k), el("td", {}, v)))))),
+    el("h3", {}, "À savoir"), el("ul", {}, ...out.notes.map((n) => el("li", {class: "hint"}, n))));
+  $("pp-output").hidden = false;
+  rpData().prompt = {text: $("pp-input").value.trim(), spec, prompt: out.prompt};
+  if (current.status === "brouillon") current.status = "prompt préparé";
+  saveSoon(0);
+}
+$("pp-go").addEventListener("click", ppGo);
+
 // Ouverture d'une tâche de reporting : on reprend l'annonceur, la campagne et le template choisis
 async function rpOpen() {
   rpReset();
@@ -2233,6 +2378,7 @@ async function rpOpen() {
   if (data.advertiser) await rpSearchCamp();
   if (data.campaign && engineReady) await rpLoadCampaign();
   else if (data.campaign) pendingReporting = true;
+  else rpShowTemplate(data.template === "prompt" ? "prompt" : "");
 }
 let pendingReporting = false;
 
