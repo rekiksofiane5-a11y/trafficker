@@ -526,6 +526,21 @@ def parse_export(path: str, campaign_name: str = "", keyword: str = "") -> Dict:
     kw = _plain(keyword)
     if kw:
         rows = [r for r in rows if kw in _plain(get(r, "placement")) or kw in _plain(get(r, "site"))]
+    # Régies unifiées (variantes d'écriture d'une même régie)
+    site_map, merged = {}, []
+    if "site" in col:
+        weights: Dict[str, float] = {}
+        for r in rows:
+            weights[get(r, "site")] = weights.get(get(r, "site"), 0) + _int(get(r, "impressions")) + 1
+        site_map = unify_sites(weights)
+        merged = sorted({keep for n, keep in site_map.items() if n != keep})
+        if merged:
+            rows = [list(r) for r in rows]
+            for r in rows:
+                if col["site"] < len(r) and site_map.get(str(r[col["site"]]).strip()):
+                    r[col["site"]] = site_map[str(r[col["site"]]).strip()]
+    # Nomenclature d'agence apprise sur les noms d'emplacements
+    nom = learn_nomenclature(sorted({get(r, "placement") for r in rows if get(r, "placement")})) if "placement" in col else None
     placements: Dict[str, Dict] = {}
     delivery, days, warnings = [], [], []
     starts, ends = [], []
@@ -535,8 +550,11 @@ def parse_export(path: str, campaign_name: str = "", keyword: str = "") -> Dict:
         if pid not in placements:
             size = get(row, "size")
             m = re.search(r"(\d{2,4})\s*[x×*]\s*(\d{1,4})", size or name, re.I)
+            parts = split_name(nom, get(row, "placement"))
             placements[pid] = {"id": pid, "name": name, "site": get(row, "site") or "Régie inconnue",
-                               "site_id": get(row, "site_id"), "size": f"{m.group(1)}x{m.group(2)}" if m else "",
+                               "nom": parts, "editor": parts.get("Éditeur", ""), "format": parts.get("Format", ""),
+                               "site_id": get(row, "site_id"),
+                               "size": f"{m.group(1)}x{m.group(2)}" if m and m.group(1) != "1" else (parts.get("Format") or (f"{m.group(1)}x{m.group(2)}" if m else "")),
                                "start": _any_date(get(row, "placement_start")), "end": _any_date(get(row, "placement_end"))}
         d = _any_date(get(row, "date"))
         if d:
@@ -553,6 +571,17 @@ def parse_export(path: str, campaign_name: str = "", keyword: str = "") -> Dict:
         warnings.append("Pas de colonne Placement ID : emplacements identifiés par leur nom.")
     if "site" not in col:
         warnings.append("Pas de colonne Site (CM360) : régies inconnues.")
+    if merged:
+        groups = {}
+        for n, keep in site_map.items():
+            if n != keep:
+                groups.setdefault(keep, []).append(n)
+        warnings.append("Régies unifiées : " + " ; ".join(f"{', '.join(sorted(v))} → {k}" for k, v in sorted(groups.items())[:8])
+                        + (" …" if len(groups) > 8 else "") + ".")
+    if nom:
+        warnings.append("Nomenclature reconnue dans les noms d'emplacements ("
+                        + " · ".join(l for _, l in nom["fields"]) + f", {int(nom['coverage'] * 100)} % des noms) : "
+                        "dimensions ajoutées au tableau croisé.")
     if len(names) > 1:
         warnings.append(f"{len(names)} campagnes dans le fichier : « {chosen} » retenue (choix possible ci-dessous).")
     n_sites = len({p["site"] for p in placements.values()})
@@ -592,12 +621,132 @@ def parse_export(path: str, campaign_name: str = "", keyword: str = "") -> Dict:
                                "période du rapport" if report_range and starts == [report_range[0]] else
                                "colonnes de dates de campagne" if starts else "premier et dernier jour du fichier")}
     return {"campaign": campaign, "campaigns": names, "placements": list(placements.values()), "delivery": delivery,
-            "table": export_table(grid[h], rows),
+            "table": export_table(grid[h], rows, nom, col.get("placement")), "nomenclature": nom,
             "rows": len(rows), "total_rows": total_rows, "warnings": warnings, "account_wide": account_wide,
             "keyword": keyword, "meta": {"account": meta.get("account id", ""), "range": meta.get("date range", ""),
                                          "timezone": meta.get("report time zone", ""),
                                          "generated": meta.get("date/time generated", "")},
             "columns": {k: grid[h][i] for k, i in col.items()}}
+
+
+# --- Nomenclature d'agence : dimensions lues dans le nom d'emplacement ----------------------
+# Découpage appris sur les noms eux-mêmes (aucune nomenclature codée en dur) : la longueur la plus
+# fréquente fixe le gabarit, le vocabulaire de chaque position la nomme.
+
+NOM_VOCAB = [
+    ("Objectif", {"NOTORIETE", "VISIBILITE", "CONVERSION", "TRAFIC", "TRAFFIC", "CONSIDERATION", "REACH", "ENGAGEMENT",
+                  "AWARENESS", "PERFORMANCE", "ACQUISITION", "LEAD", "LEADS", "VENTE", "VENTES", "IMAGE", "COUVERTURE"}),
+    ("Achat", {"CPM", "DCPM", "CPC", "DCPC", "CPA", "CPV", "CPCV", "VCPM", "FLAT", "FORFAIT", "CPL", "CPI", "CPE", "GRATUIT"}),
+    ("Ciblage", {"SOCIODEMO", "SOCIO", "CUSTOM", "COMPORTEMENTAL", "CONTEXTUEL", "RETARGETING", "AFFINITAIRE", "LOOKALIKE",
+                 "THEMATIQUE", "GEO", "GEOLOC", "INTERET", "INTERETS", "DATA", "RON", "ROS", "PREMIUM", "KEYWORDS", "MOTSCLES"}),
+    ("Format", {"PREROLL", "MIDROLL", "POSTROLL", "INSTREAM", "OUTSTREAM", "INREAD", "INTERSTITIEL", "COLLECTIONAD", "GRANDANGLE",
+                "PAVE", "VIDEOAD", "TRUEVIEW", "BUMPER", "NATIVE", "HABILLAGE", "BANNIERE", "MEGABANNIERE", "SKYSCRAPER",
+                "LINKAD", "CAROUSEL", "STORY", "STORIES", "DISPLAY", "VIDEO", "AUDIO", "SPOT", "CLICKTRACKER", "SPONSORING",
+                "INTERSCROLLER", "BILLBOARD", "LEADERBOARD", "RICHMEDIA", "EXPAND"}),
+    ("Device", {"MULTIDEVICE", "MULTIDEVICES", "MOBILE", "DESKTOP", "TV", "CTV", "TABLETTE", "TABLET", "MOBTAB", "MULTISCREEN",
+                "APP", "WEB", "SMARTPHONE"}),
+]
+
+
+def _nom_token(v: str) -> List[str]:
+    t = unicodedata.normalize("NFKD", str(v or "")).encode("ascii", "ignore").decode().upper()
+    return [x for x in re.split(r"[^A-Z0-9]+", t) if x]
+
+
+def _nom_label(values: List[str]) -> str:
+    vals = [v for v in values if v and v.upper() not in ("NA", "N/A")]
+    if not vals:
+        return ""
+    if sum(bool(re.fullmatch(r"\d{1,4}\s*[xX]\s*\d{1,4}", v.strip())) for v in vals) >= 0.6 * len(vals):
+        return "Taille"
+    for label, vocab in NOM_VOCAB:
+        hits = sum(any(t in vocab for t in _nom_token(v)) or "".join(_nom_token(v)) in vocab for v in vals)
+        if hits >= 0.6 * len(vals):
+            return label
+    return ""
+
+
+def learn_nomenclature(names: List[str], sep: str = "-") -> Optional[Dict]:
+    """Gabarit de nommage des emplacements : {length, fields: [(position, libellé)], coverage}."""
+    names = [n for n in names if n]
+    if len(names) < 3:
+        return None
+    from collections import Counter
+    length, count = Counter(len(n.split(sep)) for n in names).most_common(1)[0]
+    if length < 4 or count < 0.3 * len(names):
+        return None
+    parts = [n.split(sep) for n in names if len(n.split(sep)) == length]     # gabarit dominant seulement
+    labels = []
+    for i in range(length):
+        col = [p[i] for p in parts]
+        distinct = {c for c in col if c}
+        prefix = i == 0 and len(distinct) <= 3 and all(len(c) <= 2 for c in distinct)      # « R- » d'agence
+        labels.append("" if (len(distinct) <= 1 and i < length - 1) or prefix else _nom_label(col))
+    known = [l for l in labels if l]
+    if len(set(known)) < 2:
+        return None
+    # Positions sans vocabulaire : éditeur après le mode d'achat, audience après le ciblage, message en dernier
+    for i in range(length):
+        if labels[i]:
+            continue
+        col = [p[i] for p in parts if i < len(p)]
+        distinct = {c for c in col if c}
+        if (len(distinct) <= 1 and i < length - 1) or (i == 0 and len(distinct) <= 3 and all(len(c) <= 2 for c in distinct)):
+            continue
+        prev = labels[i - 1] if i else ""
+        if prev == "Achat" and "Éditeur" not in labels:
+            labels[i] = "Éditeur"
+        elif prev == "Ciblage" and "Audience" not in labels:
+            labels[i] = "Audience"
+        elif i == length - 1 and "Message" not in labels:
+            labels[i] = "Message"
+        elif "Éditeur" in labels and "Ciblage" not in labels[:i] and "Segment" not in labels:
+            labels[i] = "Segment"
+        else:
+            labels[i] = f"Partie {i + 1}"
+    fields = [(i, l) for i, l in enumerate(labels) if l]
+    return {"length": length, "sep": sep, "fields": fields, "coverage": round(len(parts) / len(names), 2)}
+
+
+def split_name(nom: Optional[Dict], name: str) -> Dict[str, str]:
+    if not nom:
+        return {}
+    parts = str(name or "").split(nom["sep"])
+    if len(parts) != nom["length"]:
+        return {}
+    out = {}
+    for i, label in nom["fields"]:
+        out[label] = parts[i]
+    return out
+
+
+# --- Régies : variantes d'un même nom unifiées (Teads FR / TEADS / teads.fr -> une régie) ----
+
+_SITE_DROP = {"fr", "france", "new", "sas", "www"}
+
+
+def site_key(name: str) -> str:
+    t = _plain(name)
+    t = re.sub(r"^www\.", "", t)
+    t = re.sub(r"\.(fr|com|net|org|io|eu)$", "", t)
+    toks = [x for x in re.split(r"[^a-z0-9]+", t) if x and x not in _SITE_DROP]
+    return "".join(toks)
+
+
+def unify_sites(weights: Dict[str, float]) -> Dict[str, str]:
+    """{nom d'origine: nom retenu} : même clé (casse, pays, domaine, « _New ») -> variante la plus lourde."""
+    groups: Dict[str, List[str]] = {}
+    for name in weights:
+        groups.setdefault(site_key(name), []).append(name)
+    for k in list(groups):                                # « ViadeoFR » = « Viadeo »
+        if k.endswith("fr") and k[:-2] in groups and k in groups:
+            groups[k[:-2]] += groups.pop(k)
+    out = {}
+    for names in groups.values():
+        keep = max(names, key=lambda n: (weights[n], -len(n)))
+        for n in names:
+            out[n] = keep
+    return out
 
 
 # --- Tableau croisé : toutes les colonnes de l'export, classées dimensions / métriques -------
@@ -620,9 +769,10 @@ def _num_cell(v) -> Optional[float]:
         return None
 
 
-def export_table(header: List, rows: List[List]) -> Dict:
+def export_table(header: List, rows: List[List], nom: Optional[Dict] = None, placement_col: Optional[int] = None) -> Dict:
     """Export à plat -> colonnes typées (dimension / métrique, taux recalculé ou moyen) + lignes ;
-    Semaine et Mois ajoutés quand une colonne de dates est présente."""
+    Semaine et Mois ajoutés quand une colonne de dates est présente ; dimensions de la nomenclature
+    (Objectif, Éditeur, Format…) quand les noms d'emplacements en suivent une."""
     cols = []
     for i, h in enumerate(header):
         label = str(h or "").strip()
@@ -642,6 +792,8 @@ def export_table(header: List, rows: List[List]) -> Dict:
     if date_col:
         out_cols += [{"label": "Semaine", "kind": "dimension", "rate": False, "derived": True},
                      {"label": "Mois", "kind": "dimension", "rate": False, "derived": True}]
+    nom_labels = [l for _, l in nom["fields"]] if nom and placement_col is not None else []
+    out_cols += [{"label": l, "kind": "dimension", "rate": False, "derived": True, "nomenclature": True} for l in nom_labels]
     out_rows = []
     for row in rows:
         r = []
@@ -661,6 +813,9 @@ def export_table(header: List, rows: List[List]) -> Dict:
                 r += [f"S{d.isocalendar()[1]:02d} · {monday.strftime('%d/%m/%Y')}", d.strftime("%Y-%m")]
             else:
                 r += ["", ""]
+        if nom_labels:
+            parts = split_name(nom, row[placement_col] if placement_col < len(row) else "")
+            r += [parts.get(l, "") or "(hors nomenclature)" for l in nom_labels]
         out_rows.append(r)
     return {"columns": out_cols, "rows": out_rows}
 

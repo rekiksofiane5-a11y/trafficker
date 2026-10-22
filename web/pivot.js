@@ -109,6 +109,14 @@
     if (week >= 0) push("Par semaine", [L(week)]);
     if (week >= 0) push("Régie × semaine", [L(site)], L(week));
     push("Emplacement × jour", [L(pl)], L(date));
+    // Dimensions lues dans la nomenclature des emplacements
+    const nom = (label) => cols.findIndex((c) => c.nomenclature && c.label === label);
+    const ed = nom("Éditeur"), fmt = nom("Format"), obj = nom("Objectif"), tgt = nom("Ciblage");
+    if (ed >= 0) push("Par éditeur", [L(ed)]);
+    if (fmt >= 0) push("Par format", [L(fmt)]);
+    if (obj >= 0 && fmt >= 0) push("Objectif × format", [L(obj), L(fmt)]);
+    if (tgt >= 0) push("Par ciblage", [L(tgt)]);
+    if (ed >= 0 && week >= 0) push("Éditeur × semaine", [L(ed)], L(week));
     if (creative >= 0) push("Par créative", [L(creative)]);
     if (device >= 0) push("Par device", [L(device)]);
     return out;

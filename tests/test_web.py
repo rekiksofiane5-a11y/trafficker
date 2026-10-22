@@ -617,3 +617,25 @@ def test_pivot_table_after_export_import(page):
     assert page.input_value("#pv-r1") == "Date"
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
+
+
+def test_nomenclature_dimensions_chart_and_editor_grouping(page):
+    """Export à la nomenclature d'agence : dimensions Éditeur / Format, graphique, check regroupé par éditeur."""
+    page.click(".modes [data-mode=reporting]")
+    _create_task(page, "Lotus nomenclature")
+    page.set_input_files("#rp-file", os.path.join(ROOT, "web", "exemple_export_cm360_une_campagne.xlsx"))
+    page.wait_for_selector("#pv-table")
+    assert "Nomenclature reconnue" in page.text_content("#rp-selected")
+    page.click("#pv-presets button:has-text('Par éditeur')")
+    assert page.input_value("#pv-r1") == "Éditeur"
+    assert page.is_visible("#pv-chart svg") and "Impressions par Éditeur" in page.text_content("#pv-chart")
+    assert page.locator("#pv-chart .bar").count() == 8
+    page.click("#pv-presets button:has-text('Par jour')")
+    assert page.locator("#pv-chart path.line").count() == 1                 # courbe pour une dimension temporelle
+    page.click(".tpl[data-tpl=check]")
+    page.wait_for_selector(".kpis")
+    page.select_option("#rp-group", "editor")
+    page.wait_for_function("document.getElementById('rp-dash').textContent.includes('LEMONDE')")
+    assert "GRANDANGLE" in page.text_content("#rp-check-table")                # format lu dans la nomenclature
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []

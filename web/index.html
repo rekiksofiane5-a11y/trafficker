@@ -141,6 +141,17 @@ a { color: var(--accent); }
 .pv-values .opts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; }
 .pv-values label { display: inline-flex; gap: 4px; align-items: center; font-weight: 400; margin: 0; }
 .pv-scroll { max-height: 70vh; overflow: auto; }
+.pv-chart { margin: 6px 0 14px; padding: 12px 14px 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.pv-chart figcaption { font-weight: 600; font-size: .9rem; margin-bottom: 4px; }
+.pv-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+.pv-chart .grid line { stroke: var(--border); stroke-width: 1; }
+.pv-chart text { fill: var(--muted); font: 11px system-ui, sans-serif; }
+.pv-chart text.lbl { fill: var(--text); }
+.pv-chart .mark { fill: var(--accent); }
+.pv-chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.pv-chart .dot { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
+.pv-chart .hit { fill: transparent; }
+.pv-chart .hit:hover + .dot, .pv-chart .bar:hover .mark { opacity: .75; }
 table.pivot th { cursor: pointer; white-space: nowrap; }
 table.pivot th[aria-sort="ascending"]::after { content: " ▲"; } table.pivot th[aria-sort="descending"]::after { content: " ▼"; }
 table.pivot td.num, table.pivot th.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -566,6 +577,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             <div class="pv-values"><span class="lbl">Valeurs</span><div id="pv-values" class="opts" role="group" aria-label="Valeurs"></div></div>
           </div>
           <p id="pv-info" class="hint" role="status"></p>
+          <figure id="pv-chart" class="pv-chart" hidden></figure>
           <div id="pv-out" class="table-wrap pv-scroll"></div>
         </section>
 
@@ -593,6 +605,11 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             <label for="rp-plan">Plan média lié <span class="hint">(rythme de diffusion : prévu au plan vs livré, budget)</span></label>
             <select id="rp-plan"><option value="">— Aucun —</option></select>
             <span id="rp-plan-info" class="hint"></span>
+          </div>
+          <div class="rp-link" id="rp-group-box" hidden>
+            <label for="rp-group">Regrouper par</label>
+            <select id="rp-group"><option value="site">Site CM360 (plateforme d'achat ou régie)</option>
+              <option value="editor">Éditeur (lu dans le nom d'emplacement)</option></select>
           </div>
           <p id="rp-check-status" class="status" role="status"></p>
           <div id="rp-dash"></div>
@@ -2062,7 +2079,13 @@ async function rpRunCheck(force = false) {
   try {
     const delivery = await rpEnsureDelivery(force);
     const targets = await rpTargets();
-    const c = JSON.parse(await call("report_check", {campaign: RP.campaign, placements: RP.placements, delivery, today: isoToday(), targets}));
+    // Regroupement par éditeur : la régie devient l'éditeur lu dans la nomenclature de l'emplacement
+    const hasEditor = RP.placements.some((p) => p.editor);
+    $("rp-group-box").hidden = !hasEditor;
+    $("rp-group").value = hasEditor && rpData().group === "editor" ? "editor" : "site";
+    const placements = $("rp-group").value === "editor"
+      ? RP.placements.map((p) => ({...p, site: p.editor || `${p.site} (hors nomenclature)`})) : RP.placements;
+    const c = JSON.parse(await call("report_check", {campaign: RP.campaign, placements, delivery, today: isoToday(), targets}));
     $("rp-check-status").textContent = RP.source === "file"
       ? `Données de l'export ${(rpData().file || {}).name || ""} (jusqu'au ${(c.kpis.last || "").split("-").reverse().join("/") || "—"}).`
       : `Données au ${new Date().toLocaleDateString("fr-FR")}` + (RP.live ? "" : " (démonstration)") + ".";
@@ -2077,6 +2100,7 @@ async function rpRunCheck(force = false) {
   }
 }
 $("rp-refresh").addEventListener("click", () => rpRunCheck(true));
+$("rp-group").addEventListener("change", () => { rpData().group = $("rp-group").value; saveSoon(); rpRunCheck(); });
 
 const STATUS_UI = {"Données reçues": ["st-live", "✅"], "Aucune donnée": ["st-none", "⛔"],
                    "Pas encore démarré": ["st-wait", "⏳"], "Partiel": ["st-part", "⚠️"],
@@ -2647,11 +2671,70 @@ function pvRender() {
     el("td", {class: k >= r.rowDims ? "num" : ""}, pvFmt(v, r.rateCols[k], label(k))))));
   const tot = el("tr", {class: "total"}, ...r.total.map((v, k) => el("td", {class: k >= r.rowDims ? "num" : ""}, k < r.rowDims ? v : pvFmt(v, r.rateCols[k], label(k)))));
   $("pv-out").replaceChildren(el("table", {class: "pv pivot", id: "pv-table"}, el("thead", {}, head), el("tbody", {}, ...body, tot)));
+  pvChart(r, sp);
   $("pv-info").textContent = `${r.groups.toLocaleString("fr-FR")} ligne(s) croisée(s) à partir de ${r.sourceRows.toLocaleString("fr-FR")} ligne(s) de l'export`
     + (sp.col ? ` · valeur affichée : ${valLabel} (une seule valeur quand des colonnes sont choisies)` : "")
     + (r.truncatedCols ? " · 40 dernières colonnes affichées" : "")
     + (r.rows.length > MAX ? ` · ${MAX} premières lignes affichées (toutes dans l'Excel)` : "") + ".";
 }
+// Graphique du croisé : courbe si les lignes sont temporelles, barres (12 premières) sinon.
+// Une seule série (la première valeur, ou le total quand des colonnes sont choisies).
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+// « 2026-09-22 » -> « 22/09 » ; « S39 · 21/09/2026 » -> « S39 »
+const shortX = (x) => /^\d{4}-\d{2}-\d{2}$/.test(x) ? x.slice(8, 10) + "/" + x.slice(5, 7) : /^S\d+ · /.test(x) ? x.split(" · ")[0]
+  : /^\d{4}-\d{2}$/.test(x) ? x.slice(5, 7) + "/" + x.slice(0, 4) : x.slice(0, 12);
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+}
+function pvChart(r, sp) {
+  const fig = $("pv-chart");
+  const vi = sp.col ? r.header.length - 1 : r.rowDims;              // colonne de valeur tracée
+  if (!r.rows.length || !r.rowDims || vi >= r.header.length) { fig.hidden = true; return; }
+  const metric = sp.col ? r.values[0] : r.header[vi];
+  const isRate = r.rateCols[vi];
+  const fmt = (v) => pvFmt(v, isRate, metric);
+  const dimLabel = r.header.slice(0, r.rowDims).join(" · ");
+  const temporal = r.rowDims === 1 && /^(date|jour|day|semaine|week|mois|month)$/i.test(r.header[0]);
+  const W = 800;
+  let svg;
+  if (temporal) {
+    const pts = [...r.rows].sort((a, b) => String(a[0]).localeCompare(String(b[0]), "fr", {numeric: true}))
+      .map((row) => ({x: String(row[0]), y: Number(row[vi]) || 0}));
+    const H = 240, L = 64, R = 12, T = 10, B = 34, max = niceMax(Math.max(...pts.map((p) => p.y)));
+    const X = (i) => L + (pts.length > 1 ? i * (W - L - R) / (pts.length - 1) : (W - L - R) / 2);
+    const Y = (v) => T + (H - T - B) * (1 - v / max);
+    const ticks = [0, .25, .5, .75, 1].map((f) => f * max);
+    const every = Math.max(1, Math.ceil(pts.length / 8));
+    svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(metric)} par ${esc(dimLabel)}">`
+      + `<g class="grid">${ticks.map((t) => `<line x1="${L}" x2="${W - R}" y1="${Y(t)}" y2="${Y(t)}"/>`).join("")}</g>`
+      + ticks.map((t) => `<text x="${L - 8}" y="${Y(t) + 4}" text-anchor="end">${esc(fmt(t))}</text>`).join("")
+      + pts.map((p, i) => (i % every === 0 && (i === pts.length - 1 || pts.length - 1 - i >= every / 2)) || (i === pts.length - 1 && i % every >= every / 2)
+          ? `<text x="${X(i)}" y="${H - 12}" text-anchor="middle">${esc(shortX(p.x))}</text>` : "").join("")
+      + `<path class="line" d="${pts.map((p, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(p.y).toFixed(1)).join(" ")}"/>`
+      + pts.map((p, i) => `<g><circle class="hit" cx="${X(i)}" cy="${Y(p.y)}" r="10"><title>${esc(p.x)} : ${esc(fmt(p.y))}</title></circle>`
+        + (pts.length <= 45 ? `<circle class="dot" cx="${X(i)}" cy="${Y(p.y)}" r="4" pointer-events="none"/>` : "") + "</g>").join("")
+      + "</svg>";
+  } else {
+    const rows = [...r.rows].sort((a, b) => (Number(b[vi]) || 0) - (Number(a[vi]) || 0)).slice(0, 12);
+    const rowH = 26, T = 6, L = 230, R = 90, H = T + rows.length * rowH + 4;
+    const max = Math.max(...rows.map((row) => Number(row[vi]) || 0), 0) || 1;
+    const name = (row) => row.slice(0, r.rowDims).filter((v) => v !== "").join(" · ");
+    svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(metric)} par ${esc(dimLabel)}, 12 premiers">`
+      + rows.map((row, i) => {
+        const v = Number(row[vi]) || 0, y = T + i * rowH, w = Math.max(2, (W - L - R) * v / max), n = name(row);
+        return `<g class="bar"><title>${esc(n)} : ${esc(fmt(v))}</title>`
+          + `<text class="lbl" x="${L - 10}" y="${y + 16}" text-anchor="end">${esc(n.length > 34 ? n.slice(0, 33) + "…" : n)}</text>`
+          + (w >= 8 ? `<path class="mark" d="M${L} ${y + 4}h${w - 4}a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4h${-(w - 4)}z"/>`
+                    : `<rect class="mark" x="${L}" y="${y + 4}" width="${w}" height="18"/>`)
+          + `<text x="${L + w + 8}" y="${y + 16}">${esc(fmt(v))}</text></g>`;
+      }).join("") + "</svg>";
+  }
+  fig.innerHTML = `<figcaption>${esc(metric)} par ${esc(dimLabel)}${temporal ? "" : r.rows.length > 12 ? " — 12 premiers" : ""}</figcaption>` + svg;
+  fig.hidden = false;
+}
+
 $("pv-dl").addEventListener("click", async () => {
   if (!pvLast) return;
   const sp = pvSpec();

@@ -134,7 +134,8 @@ def test_parse_cm360_export_file(tmp_path):
     r = reporting.parse_export(str(path))
     assert r["campaign"]["name"] == "Citrate programmatique 2025" and r["campaign"]["advertiser"] == "UPSA"
     assert (r["campaign"]["start"], r["campaign"]["end"]) == ("2026-10-16", "2026-10-21")
-    assert len(r["placements"]) == 12 and r["rows"] == 72 and r["warnings"] == []
+    assert len(r["placements"]) == 12 and r["rows"] == 72
+    assert not [w for w in r["warnings"] if "Nomenclature" not in w]           # seule remarque : nomenclature lue
     assert all(p["site"] == "DV360 Open Market" and p["size"] for p in r["placements"])
     c = reporting.check({**r["campaign"], "end": "2026-10-23"}, r["placements"], r["delivery"], "2026-10-22")
     assert c["kpis"]["impressions"] == 1747655 and c["kpis"]["placements_live"] == 12
@@ -194,7 +195,9 @@ def test_export_table_types_and_pivot_excel(tmp_path):
     assert kinds["Placement ID"] == ("dimension", False) and kinds["Date"] == ("dimension", False)
     assert kinds["Impressions"] == ("metric", False) and kinds["Click Rate"] == ("metric", True)
     assert kinds["Semaine"][0] == "dimension" and kinds["Mois"][0] == "dimension"
-    assert t["rows"][0][-2:] == ["S40 · 28/09/2026", "2026-10"] and len(t["rows"]) == 4
+    labels = [c["label"] for c in t["columns"]]
+    row = t["rows"][0]
+    assert (row[labels.index("Semaine")], row[labels.index("Mois")]) == ("S40 · 28/09/2026", "2026-10") and len(t["rows"]) == 4
     wb = openpyxl.load_workbook(io.BytesIO(reporting.export_pivot(
         "Test", ["Site (CM360)", "Impressions"], [["Teads FR", 50000], ["Total", 229000]], t)))
     assert wb.sheetnames == ["Tableau croisé", "Données"]
@@ -210,3 +213,27 @@ def test_single_campaign_example_export(tmp_path):
     assert r["campaign"]["name"].endswith("635419 (36649579)") and not r["account_wide"]
     assert r["campaign"]["start"] == "2026-09-14" and r["campaign"]["dates_from"] == "date en tête du nom de campagne"
     assert len(r["placements"]) == 9 and not any("Campaign" in w for w in r["warnings"])
+
+
+
+def test_agency_nomenclature_and_site_unification():
+    """Nomenclature apprise sur les noms d'emplacements (sans gabarit codé) ; variantes de régies fusionnées."""
+    names = ["R-NOTORIETE-CPM-LEMONDE--CUSTOM-LeMonde-GRANDANGLE-1x1-Multidevice-NA",
+             "R-NOTORIETE-dCPM-YOUTUBE--SOCIODEMO-HF2554-BUMPER-1x1-Multidevice-NA",
+             "R-TRAFIC-CPM-AMNET--COMPORTEMENTAL-Gourmands-NATIVE-1x1-Mobile-GAUFFRE",
+             "R-CONVERSION-CPC-META--RETARGETING-Visiteurs-CAROUSEL-1x1-Mobile-PROMO",
+             "Mon Espace Santé", "DBM TrueView tracker 521012525"]
+    nom = reporting.learn_nomenclature(names)
+    labels = dict((l, i) for i, l in nom["fields"])
+    assert {"Objectif", "Achat", "Éditeur", "Ciblage", "Audience", "Format", "Device", "Message"} <= set(labels)
+    assert "Taille" not in labels                                            # 1x1 partout : colonne constante ignorée
+    assert "Partie 1" not in labels                                          # préfixe « R- » ignoré
+    parts = reporting.split_name(nom, names[0])
+    assert (parts["Éditeur"], parts["Format"], parts["Objectif"], parts["Device"]) == ("LEMONDE", "GRANDANGLE", "NOTORIETE", "Multidevice")
+    assert reporting.split_name(nom, "Mon Espace Santé") == {}
+    m = reporting.unify_sites({"Teads FR": 50, "TEADS": 5, "teads.fr": 1, "AMNET": 90, "AMNET FR": 10, "amnet.fr": 1,
+                               "Viadeo": 3, "ViadeoFR": 9, "Amplifi Programmatic_New": 40, "Amplifi Programmatic": 2,
+                               "Meta FR": 7, "Facebook FR": 8})
+    assert m["TEADS"] == m["teads.fr"] == "Teads FR" and m["amnet.fr"] == m["AMNET FR"] == "AMNET"
+    assert m["Viadeo"] == "ViadeoFR" and m["Amplifi Programmatic"] == "Amplifi Programmatic_New"
+    assert m["Meta FR"] == "Meta FR" and m["Facebook FR"] == "Facebook FR"           # pas de fusion abusive
