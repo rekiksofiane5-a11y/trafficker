@@ -54,11 +54,13 @@ def page(site):
         browser.close()
 
 
-def _analyze(page, path):
+def _analyze(page, path, validate=True):
     page.set_input_files("#file", path)
     page.click("#analyze")
     page.wait_for_selector("#result:not(.hidden)", timeout=30000)
     page.wait_for_function("!document.getElementById('analyze').disabled", timeout=30000)
+    if validate and page.is_visible("#validate-step"):      # étape 1 validée : annonces et créas
+        page.click("#validate-step")
 
 
 def test_template_plan_end_to_end(page):
@@ -243,3 +245,47 @@ def test_adform_preview_with_views(page, tmp_path):
     assert "Tag type" in page.inner_text("#preview-pane")
     page.select_option("#adserver", "cm360")                    # retour CM360 : arborescence
     assert "Aperçu dans CM360" in page.inner_text("#preview-pane")
+
+
+def test_step_by_step_and_direct_edit_in_preview(page, tmp_path):
+    p = tmp_path / "etapes.csv"
+    p.write_text("Campagne,Objectif,Régie,Emplacement,Format,Message,Début,Fin,URL\n"
+                 "Hiver,Notoriété,Le Monde,Home,Pavé,Soldes,02/11/2026,15/12/2026,https://x.fr\n"
+                 "Hiver,Notoriété,Le Monde,Home,Pavé,Noël,02/11/2026,15/12/2026,https://x.fr\n"
+                 "Hiver,Trafic,L'Équipe,Article,Méga-bannière,Soldes,02/11/2026,15/12/2026,https://x.fr\n",
+                 encoding="utf-8")
+    page.select_option("#adserver", "cm360")
+    _analyze(page, str(p), validate=False)
+    pane = lambda: page.inner_text("#preview-pane")
+    # Étape 1 : emplacements sous la régie, pas encore d'annonces ni de créas
+    assert "1. Emplacements" in pane() and "Placement" in pane() and "Tracking" not in pane()
+    assert page.is_disabled("#dl-cm360")                               # export après validation
+    # Grouper en package : la colonne Package du plan est remplie
+    page.check('#preview-pane tr.pv-placement input[type=checkbox] >> nth=0')
+    page.once("dialog", lambda d: d.accept("Package-Test"))
+    page.click("#group-package")
+    page.wait_for_function("document.getElementById('preview-pane').innerText.includes('Package-Test')", timeout=15000)
+    assert page.locator('#editor input[data-key="package"]').first.input_value() == "Package-Test"
+    # Renommer un emplacement par double-clic : reporté dans le plan (colonne imposée)
+    page.locator("#preview-pane tr.pv-placement .pv-link").first.dblclick()
+    page.fill("input.pv-rename", "MON-EMPLACEMENT")
+    page.keyboard.press("Enter")
+    page.wait_for_function("document.getElementById('preview-pane').innerText.includes('MON-EMPLACEMENT')", timeout=15000)
+    assert page.locator('#editor input[data-key="placement_final"]').count() >= 1
+    assert page.locator("#editor tr.hl").count() >= 1                  # lignes du plan surlignées
+    # Glisser l'autre emplacement sur le site « Le Monde »
+    src = page.locator("#preview-pane tr.pv-placement").nth(1)
+    dst = page.locator("#preview-pane tr.pv-site", has_text="Le Monde")
+    src.drag_to(dst)
+    page.wait_for_function("document.querySelectorAll('#preview-pane tr.pv-site').length === 1", timeout=15000)
+    # Étape 2 : annonces = emplacement × créative, nom par défaut « emplacement-créative »
+    page.click("#validate-step")
+    text = pane()
+    assert "2. Annonces & créatives" in text and "MON-EMPLACEMENT-" in text
+    assert not page.is_disabled("#dl-cm360")
+    ad = page.locator("#preview-pane tr.pv-ad .pv-link").first
+    ad.dblclick()
+    page.fill("input.pv-rename", "ANNONCE-PERSO")
+    page.keyboard.press("Enter")
+    page.wait_for_function("document.getElementById('preview-pane').innerText.includes('ANNONCE-PERSO')", timeout=15000)
+    assert page.locator('#editor input[data-key="ad_final"]').count() >= 1

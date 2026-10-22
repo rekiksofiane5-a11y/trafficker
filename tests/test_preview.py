@@ -108,3 +108,24 @@ def test_short_sheet_name_not_used_as_campaign(tmp_path):
     wb.save(tmp_path / "Plan_Hiver_2026.xlsx")
     rows = load_rows_from_path(str(tmp_path / "Plan_Hiver_2026.xlsx"))
     assert rows[0]["campaign_name"] == "Plan Hiver 2026"
+
+
+def test_ads_are_placement_x_creative_with_override():
+    import json
+    rows = [dict(ROWS[2], placement_name="Home", creative_name="Soldes"),
+            dict(ROWS[2], placement_name="Home", creative_name="Noel", ad_name="A-Home"),
+            dict(ROWS[2], placement_name="Art", creative_name="Soldes", ad_name="A-Art", ad_final="PERSO")]
+    web_api._STATE.clear()
+    d = json.loads(web_api._build(rows, "", "", []))
+    ads = [r["name"] for r in d["preview"] if r["kind"] == "ad"]
+    assert ads == ["Home-Soldes", "Home-Noel", "PERSO"]
+    pl = [r for r in d["preview"] if r["kind"] == "placement"]
+    assert pl[0]["rows"] == [0, 1] and pl[0]["edit"] == "placement_final"
+
+
+def test_forced_placement_name_wins():
+    import json
+    rows = [dict(ROWS[2], objective="Notoriété", placement_final="MON-NOM")]
+    web_api._STATE.clear()
+    d = json.loads(web_api._build(rows, "", "", []))
+    assert [r["name"] for r in d["preview"] if r["kind"] == "placement"] == ["MON-NOM"]

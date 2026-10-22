@@ -48,13 +48,35 @@ COMPAT = {"display": "Display", "video": "In-stream video", "audio": "In-stream 
           "tracking": "Display"}
 
 
+def split_ads(plan, rows: list) -> None:
+    """1 annonce = 1 emplacement × 1 créative. Nom par défaut : « emplacement-créative »,
+    remplaçable par un nom saisi (colonne ad_final, ou double-clic dans l'aperçu)."""
+    from cm360_trafficker import _unique
+    for camp in plan.values():
+        new_ads, used = {}, set()
+        for ad in camp.ads.values():
+            for pn in ad["placements"]:
+                p = camp.placements[pn]
+                for c in ad["creatives"]:
+                    shared = [i for i in c.rows if i in p.rows] or list(c.rows)
+                    override = next((rows[i].get("ad_final") for i in shared
+                                     if i < len(rows) and rows[i].get("ad_final")), "")
+                    name = _unique(override or f"{pn}-{c.name}", used)
+                    new_ads[name] = {"placements": [pn], "creatives": [c], "rows": shared,
+                                     "landing_page_url": ad.get("landing_page_url", "")}
+        camp.ads = new_ads
+
+
 def preview(plan) -> list:
     """Arborescence telle qu'elle apparaîtra dans CM360 : Site > Package > Emplacement >
-    Annonce > Créative, avec les colonnes de la plateforme. ID vide = objet à créer."""
+    Annonce > Créative, avec les colonnes de la plateforme. ID vide = objet à créer.
+    Chaque ligne porte les lignes du plan concernées (rows) et le champ qu'un renommage
+    modifie (edit), pour l'édition directe dans l'aperçu."""
     rows = []
     for camp in plan.values():
+        all_rows = sorted({i for p in camp.placements.values() for i in p.rows})
         rows.append({"level": 0, "kind": "campaign", "name": camp.name, "start": _fr(camp.start),
-                     "end": _fr(camp.end), "type": "Campagne"})
+                     "end": _fr(camp.end), "type": "Campagne", "rows": all_rows, "edit": "campaign_name"})
         ads_by_pl: dict = {}
         for an, ad in camp.ads.items():
             for pn in ad["placements"]:
@@ -64,32 +86,40 @@ def preview(plan) -> list:
             site = p.site_name or (str(p.site_id) if p.site_id else "")
             sites.setdefault(site, {}).setdefault(p.package, []).append(p)
         for site, packages in sites.items():
+            site_rows = sorted({i for pls in packages.values() for p in pls for i in p.rows})
             rows.append({"level": 1, "kind": "site", "name": site or "Site à compléter",
-                         "id": "", "type": "Site", "missing": not site})
+                         "id": "", "type": "Site", "missing": not site, "rows": site_rows,
+                         "edit": "site_name", "site": site})
             for package, pls in packages.items():
                 base = 2
                 if package:
                     rows.append({"level": 2, "kind": "package", "name": package,
-                                 "start": _fr(camp.start), "end": _fr(camp.end), "type": "Package"})
+                                 "start": _fr(camp.start), "end": _fr(camp.end), "type": "Package",
+                                 "rows": sorted({i for p in pls for i in p.rows}), "edit": "package",
+                                 "site": site, "package": package})
                     base = 3
                 for p in pls:
                     rows.append({"level": base, "kind": "placement", "name": p.name,
                                  "start": _fr(camp.start), "end": _fr(camp.end), "type": "Placement",
                                  "compatibility": COMPAT.get(p.category, "Display"),
-                                 "dimensions": f"{p.width} × {p.height}"})
+                                 "dimensions": f"{p.width} × {p.height}", "rows": list(p.rows),
+                                 "edit": "placement_final", "site": site, "package": package})
                     for an, ad in ads_by_pl.get(p.name, []):
                         tracking = all(c.ctype == "TRACKING" for c in ad["creatives"])
+                        ad_rows = ad.get("rows") or list(p.rows)
                         rows.append({"level": base + 1, "kind": "ad", "name": an,
                                      "start": _fr(camp.start, "00:00"), "end": _fr(camp.end, "23:59"),
                                      "type": "Tracking" if tracking else "Standard",
-                                     "url": ad.get("landing_page_url", "")})
+                                     "url": ad.get("landing_page_url", ""), "rows": ad_rows,
+                                     "edit": "ad_final"})
                         for c in ad["creatives"]:
                             rows.append({"level": base + 2, "kind": "creative", "name": c.name,
                                          "start": _fr(camp.start, "00:00"), "end": _fr(camp.end, "23:59"),
                                          "type": CREATIVE_TYPE.get(c.ctype, c.ctype),
                                          "asset_type": ASSET_TYPE.get(c.ctype, ""),
                                          "dimensions": "" if c.ctype in ("TRACKING", "VIDEO", "AUDIO")
-                                         else f"{p.width} × {p.height}"})
+                                         else f"{p.width} × {p.height}",
+                                         "rows": ad_rows, "edit": "creative_final"})
     return rows
 
 
@@ -104,6 +134,8 @@ TABLE_COLUMNS = [
     ("placement_category", "Catégorie"), ("pricing_type", "Achat"), ("ad_name", "Annonce"),
     ("creative_name", "Créative"), ("message", "Message"), ("creative_path", "Fichier créatif"),
     ("snippet", "Tag"), ("landing_page_url", "URL de destination"), ("budget_eur", "Budget €"),
+    ("placement_final", "Nom emplacement (imposé)"), ("ad_final", "Nom annonce (imposé)"),
+    ("creative_final", "Nom créa (imposé)"),
     ("objective_impressions", "Volume"),
 ]
 ALWAYS = {"site_name", "objective", "audience", "targeting", "placement_name", "format_label", "size",
@@ -164,6 +196,7 @@ def _build(rows: list, nomenclature_json: str, creatives_dir: str, report: list)
                 os.remove(tmp)
         # Nomenclature de base (OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT) si aucun fichier
         plan, renames = apply_nomenclature(plan, naming_or_base(naming), log=lambda m: None)
+        split_ads(plan, rows)
     from creative_specs import check_plan, spec_summary
     specs = check_plan(plan, creatives_dir) if not errors else []
     ctypes = sorted({c.ctype for camp in plan.values() for ad in camp.ads.values()
@@ -214,6 +247,7 @@ def preview_adform(plan) -> dict:
         for p in camp.placements.values():
             media = p.site_name or (str(p.site_id) if p.site_id else "")
             camp_rows.append({"level": 1, "kind": "lineitem", "name": p.name, "sub": "Direct Line Item",
+                              "rows": list(p.rows), "edit": "placement_final",
                               "media": media, "type": "Direct", "status": "Nouveau",
                               "start": _fr(camp.start), "end": _fr(camp.end),
                               "budget": _num_fr(p.budget, "€") if p.budget else "",
@@ -228,6 +262,7 @@ def preview_adform(plan) -> dict:
             for an, ad in ads:
                 for c in ad["creatives"]:
                     banners.append({"name": c.name, "type": ADFORM_BANNER_TYPE.get(c.ctype, c.ctype),
+                                    "rows": ad.get("rows") or list(p.rows), "edit": "creative_final",
                                     "size": "" if c.ctype in ("VIDEO", "AUDIO") else f"{p.width}x{p.height}",
                                     "line_item": p.name, "click_url": ad.get("landing_page_url", ""),
                                     "status": "Nouveau"})

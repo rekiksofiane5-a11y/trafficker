@@ -47,6 +47,17 @@ tr.af-campaign td { background: color-mix(in srgb, var(--accent) 7%, transparent
 .af-sub { font-size: .72rem; color: var(--muted); }
 details.report { margin-top: 6px; }
 details.report summary { cursor: pointer; font-size: .9rem; color: var(--muted); }
+.steps { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 8px; font-size: .85rem; }
+.steps .st { padding: 3px 10px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+.steps .st.on { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.steps .st.done { color: var(--ok); }
+.steps button { margin-left: auto; padding: 6px 12px; }
+.pv-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.pv-tools button { padding: 5px 10px; font-size: .82rem; }
+tr.pv-drag { cursor: grab; }
+tr.pv-over td { outline: 2px dashed var(--accent); outline-offset: -2px; }
+input.pv-rename { font: inherit; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 6px; min-width: 18rem; }
+table.ed tr.hl td { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 .sync { font-size: .8rem; color: var(--muted); margin-left: 8px; }
 header h1 { margin: 0; font-size: 1.6rem; }
 header p { margin: 4px 0 0; color: var(--muted); }
@@ -321,43 +332,169 @@ function renderSummary(d) {
 }
 
 // Aperçu « comme dans CM360 » : Campagne > Site > Package > Emplacement > Annonce > Créative
-const ICON = {campaign: "📣", site: "🌐", package: "📦", placement: "▭", ad: "🎞️", creative: "🖼️"};
-function renderPreview(rows) {
-  const head = ["Name", "ID", "Start date", "End date", "Type", "Asset type", "Compatibility", "Dimensions"];
+// Étape 1 : emplacements (sous le site/régie, packages) ; étape 2 : annonces et créatives.
+// Édition directe : double-clic = renommer ; glisser une ligne = la déplacer ; chaque
+// modification est reportée sur les lignes du plan (volet gauche, surlignées).
+const ICON = {campaign: "📣", site: "🌐", package: "📦", placement: "▭", ad: "🎞️", creative: "🖼️",
+              lineitem: "▭", banner: "🖼️"};
+const EDIT_LABELS = {placement_final: "Nom emplacement (imposé)", ad_final: "Nom annonce (imposé)",
+                     creative_final: "Nom créa (imposé)", site_name: "Régie / site", package: "Package"};
+// Champs qui définissent un emplacement : copiés quand on glisse une annonce/créa sur un autre
+const PLACEMENT_KEYS = ["site_name", "package", "objective", "audience", "targeting", "device", "placement_name",
+                        "format_label", "size", "placement_category", "placement_final", "pricing_type"];
+let step = 1, selected = new Set(), dragged = null;
+
+function setRowsFields(rowIdx, values) {
+  for (const [k, v] of Object.entries(values)) {
+    if (k === "campaign_name") {
+      for (const r of table) r[k] = v;
+      $("cf-campaign_name").value = v;
+      continue;
+    }
+    for (const i of rowIdx) if (table[i]) table[i][k] = v;
+    if (!columns.some((c) => c.key === k)) columns.push({key: k, label: EDIT_LABELS[k] || k});
+  }
+  renderEditor({table, columns});
+  highlightRows(rowIdx);
+  scheduleRebuild(0);
+}
+
+function highlightRows(rowIdx) {
+  for (const tr of $("editor").querySelectorAll("tbody tr")) tr.classList.remove("hl");
+  let first = null;
+  for (const i of rowIdx || []) {
+    const tr = $("editor").querySelector(`tr[data-row="${i}"]`);
+    if (tr) { tr.classList.add("hl"); first = first || tr; }
+  }
+  if (first) first.scrollIntoView({block: "nearest", behavior: "smooth"});
+}
+
+function startRename(span, r) {
+  const input = el("input", {class: "pv-rename", value: r.name, "aria-label": "Nouveau nom de " + r.name});
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = (save) => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim();
+    if (save && v && v !== r.name) setRowsFields(r.rows, {[r.edit]: v});
+    else renderPreviewPane();
+  };
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); commit(true); }
+    if (e.key === "Escape") commit(false);
+  });
+  input.addEventListener("blur", () => commit(true));
+}
+
+// Déplacer : emplacement -> site ou package ; annonce/créative -> autre emplacement
+function dropOn(target) {
+  if (!dragged || dragged === target) return;
+  if (dragged.kind === "placement" && (target.kind === "site" || target.kind === "package")) {
+    setRowsFields(dragged.rows, {site_name: target.site || "", package: target.kind === "package" ? target.package : ""});
+  } else if ((dragged.kind === "ad" || dragged.kind === "creative") && target.kind === "placement") {
+    const src = table[target.rows[0]] || {};
+    const values = {};
+    for (const k of PLACEMENT_KEYS) values[k] = src[k] || "";
+    values.ad_final = "";                       // nom d'annonce recalculé (emplacement-créa)
+    setRowsFields(dragged.rows, values);
+  }
+  dragged = null;
+}
+
+function canDrop(target) {
+  if (!dragged) return false;
+  if (dragged.kind === "placement") return target.kind === "site" || target.kind === "package";
+  return (dragged.kind === "ad" || dragged.kind === "creative") && target.kind === "placement";
+}
+
+function stepBar(onValidate) {
+  const bar = el("div", {class: "steps"},
+    el("span", {class: step === 1 ? "st on" : "st done"}, "1. Emplacements"),
+    el("span", {class: "st-sep"}, "→"),
+    el("span", {class: step === 2 ? "st on" : "st"}, "2. Annonces & créatives"));
+  if (step === 1) {
+    const v = el("button", {id: "validate-step"}, "✅ Valider les emplacements");
+    v.addEventListener("click", onValidate);
+    bar.append(v);
+  } else {
+    const b = el("button", {id: "back-step", class: "secondary"}, "← Revenir aux emplacements");
+    b.addEventListener("click", () => { step = 1; applyResult(lastResult); });
+    bar.append(b);
+  }
+  return bar;
+}
+
+function renderPreview(all) {
+  const rows = step === 1 ? all.filter((r) => r.kind !== "ad" && r.kind !== "creative") : all;
+  const head = ["", "Name", "ID", "Start date", "End date", "Type", "Asset type", "Compatibility", "Dimensions"];
   const trs = rows.map((r, i) => {
     const hasKids = i + 1 < rows.length && rows[i + 1].level > r.level;
+    const label = el("span", {class: r.missing ? "pv-missing" : "pv-link", title: "Double-clic pour renommer"}, r.name);
+    label.addEventListener("dblclick", (e) => { e.stopPropagation(); startRename(label, r); });
+    const toggle = el("span", {class: "pv-toggle", role: hasKids ? "button" : "presentation"}, hasKids ? "▾ " : "  ");
     const name = el("td", {class: "pv-name", style: `padding-left:${8 + r.level * 18}px`},
-      el("span", {class: "pv-toggle"}, hasKids ? "▾ " : "  "),
-      el("span", {class: "pv-icon", "aria-hidden": "true"}, ICON[r.kind] || ""), " ",
-      el("span", {class: r.missing ? "pv-missing" : "pv-link", title: r.url || ""}, r.name));
+      toggle, el("span", {class: "pv-icon", "aria-hidden": "true"}, ICON[r.kind] || ""), " ", label);
+    let sel = el("td", {});
+    if (step === 1 && r.kind === "placement") {
+      const key = r.rows.join(",");
+      const cb = el("input", {type: "checkbox", "aria-label": "Sélectionner " + r.name});
+      cb.checked = selected.has(key);
+      cb.addEventListener("click", (e) => e.stopPropagation());
+      cb.addEventListener("change", () => { cb.checked ? selected.add(key) : selected.delete(key); updateGroupBtn(); });
+      sel = el("td", {}, cb);
+    }
     const date = (v) => v ? el("td", {}, v) : el("td", {class: "pv-missing"}, r.kind === "site" ? "" : "à compléter");
     const tr = el("tr", {class: "pv-" + r.kind, "data-level": String(r.level)},
-      name, el("td", {class: "pv-id"}, r.kind === "campaign" ? "" : "nouveau"),
+      sel, name, el("td", {class: "pv-id"}, r.kind === "campaign" ? "" : "nouveau"),
       date(r.start), date(r.end), el("td", {}, r.type || ""), el("td", {}, r.asset_type || ""),
       el("td", {}, r.compatibility || ""), el("td", {}, r.dimensions || ""));
     if (r.kind === "ad" && !r.url) tr.title = "URL de destination à compléter";
-    if (hasKids) tr.addEventListener("click", () => {
+    tr.addEventListener("click", () => highlightRows(r.rows));
+    // Glisser-déposer
+    const movable = (step === 1 && r.kind === "placement") || (step === 2 && (r.kind === "ad" || r.kind === "creative"));
+    if (movable) {
+      tr.draggable = true;
+      tr.classList.add("pv-drag");
+      tr.addEventListener("dragstart", (e) => { dragged = r; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", r.name); });
+      tr.addEventListener("dragend", () => { dragged = null; });
+    }
+    tr.addEventListener("dragover", (e) => { if (canDrop(r)) { e.preventDefault(); tr.classList.add("pv-over"); } });
+    tr.addEventListener("dragleave", () => tr.classList.remove("pv-over"));
+    tr.addEventListener("drop", (e) => { e.preventDefault(); tr.classList.remove("pv-over"); if (canDrop(r)) dropOn(r); });
+    if (hasKids) toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
       const open = tr.dataset.closed !== "1";
       tr.dataset.closed = open ? "1" : "0";
-      tr.querySelector(".pv-toggle").textContent = open ? "▸ " : "▾ ";
-      for (let n = tr.nextElementSibling; n && Number(n.dataset.level) > r.level; n = n.nextElementSibling) {
-        n.hidden = open;
-        if (!open && n.dataset.closed === "1") {           // garder fermé ce qui l'était
-          const lvl = Number(n.dataset.level);
-          n.hidden = false;
-          for (n = n.nextElementSibling; n && Number(n.dataset.level) > lvl; n = n.nextElementSibling) n.hidden = true;
-          if (!n) break;
-          n = n.previousElementSibling;
-        }
-      }
+      toggle.textContent = open ? "▸ " : "▾ ";
+      for (let n = tr.nextElementSibling; n && Number(n.dataset.level) > r.level; n = n.nextElementSibling) n.hidden = open;
     });
     return tr;
   });
+  const group = el("button", {id: "group-package", class: "secondary"}, "📦 Créer un package avec la sélection");
+  group.addEventListener("click", () => {
+    const name = (window.prompt("Nom du package :", "Package-") || "").trim();
+    if (!name) return;
+    const idx = [...selected].flatMap((k) => k.split(",").map(Number));
+    selected.clear();
+    setRowsFields(idx, {package: name});
+  });
+  const tools = step === 1 ? el("div", {class: "pv-tools"}, group,
+    el("span", {class: "hint"}, "Cochez des emplacements pour les grouper ; glissez un emplacement sur un site ou un package pour le déplacer ; double-clic pour renommer."))
+    : el("div", {class: "pv-tools"}, el("span", {class: "hint"},
+      "Annonce = emplacement × créative (nom par défaut « emplacement-créative ») ; double-clic pour renommer ; glissez une annonce ou une créative sur un emplacement pour la déplacer."));
   return el("div", {class: "preview"},
     el("h3", {}, "Aperçu dans CM360 (avant envoi)"),
-    el("p", {class: "hint"}, "Ce qui sera créé dans la plateforme. « nouveau » : objet créé à l'envoi (l'ID sera attribué par CM360). Cliquez sur une ligne pour replier."),
+    stepBar(() => { step = 2; applyResult(lastResult); }),
+    tools,
     el("div", {class: "table-wrap"}, el("table", {class: "pv"},
       el("thead", {}, el("tr", {}, ...head.map((h) => el("th", {}, h)))), el("tbody", {}, ...trs))));
+}
+function updateGroupBtn() {
+  const b = $("group-package");
+  if (b) { b.disabled = selected.size === 0; b.textContent = `📦 Créer un package avec la sélection (${selected.size})`; }
 }
 
 // --- Volet gauche : plan média modifiable -------------------------------------------------
@@ -367,7 +504,8 @@ const isoToFr = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v.split("-").revers
 
 function applyResult(d) {
   const ok = renderSummary(d);
-  for (const id of ["demo", "delivery", "dl-cm360", "dl-adform"]) $(id).disabled = !ok;
+  for (const id of ["demo", "delivery", "dl-cm360", "dl-adform"]) $(id).disabled = !ok || step !== 2;
+  updateGroupBtn();
   return ok;
 }
 
@@ -495,16 +633,29 @@ function renderAdform(pa) {
         el("td", {}, g.size), el("td", {}, g.tag_type), el("td", {}, String(g.banners)),
         el("td", {}, g.status), el("td", {class: "pv-id"}, "nouveau")))},
   };
+  if (step === 1) adformView = "campaign";       // étape 1 : line items seulement
   const select = el("select", {id: "adform-view", "aria-label": "Vue Adform"},
     ...Object.entries(views).map(([k, v]) => {
       const o = el("option", {value: k}, v.label);
       if (k === adformView) o.selected = true;
+      if (step === 1 && k !== "campaign") o.disabled = true;
       return o;
     }));
   select.addEventListener("change", () => { adformView = select.value; renderPreviewPane(); });
   const v = views[adformView];
+  // Double-clic pour renommer un line item ou une bannière
+  const src = adformView === "campaign" ? pa.campaign : adformView === "banners" ? pa.banners : pa.tags;
+  v.rows.forEach((tr, i) => {
+    const r = src[i];
+    if (!r || !r.edit || !tr.querySelector) return;
+    const span = tr.querySelector(".pv-link") || tr.querySelector("td");
+    span.title = "Double-clic pour renommer";
+    span.addEventListener("dblclick", (e) => { e.stopPropagation(); startRename(span, r); });
+    tr.addEventListener("click", () => highlightRows(r.rows));
+  });
   return el("div", {class: "preview"},
     el("h3", {}, "Aperçu dans Adform (avant envoi)"),
+    stepBar(() => { step = 2; applyResult(lastResult); }),
     el("div", {class: "af-bar"}, el("label", {for: "adform-view"}, "Vue de la campagne : "), select,
       el("span", {class: "hint"}, ` Total : ${v.rows.length - (adformView === "campaign" ? pa.campaign.filter((r) => r.kind === "campaign").length : 0)}`)),
     el("div", {class: "table-wrap"}, el("table", {class: "pv"},
@@ -528,6 +679,8 @@ $("analyze").addEventListener("click", async () => {
     }, [bytes, ...creas.map((c) => c.bytes)]));
     $("result").classList.remove("hidden");
     document.querySelector("main").classList.add("wide");
+    step = 1;
+    selected.clear();
     applyResult(d);
     if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); }
     $("output").classList.add("hidden");
