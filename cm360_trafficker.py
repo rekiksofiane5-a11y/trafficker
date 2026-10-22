@@ -303,6 +303,8 @@ class PlacementSpec:
     format_label: str = ""   # format tel qu'écrit dans le plan (« Pavé »...), sinon la taille
     package: str = ""        # package CM360 (groupe d'emplacements), colonne optionnelle
     device: str = ""         # devices (desktop, mobile, multidevice...) — granularité
+    budget: str = ""         # budget de la ligne du plan (line item Adform)
+    volume: str = ""         # volume d'impressions de la ligne
 
 @dataclass
 class CampaignSpec:
@@ -534,6 +536,7 @@ def plan_from_rows(rows: List[Dict[str, str]], allow_incomplete: bool = False
                 objective=get("objective"), audience=get("audience"),
                 targeting=get("targeting"), format_label=get("format_label"),
                 package=get("package"), device=get("device"),
+                budget=get("line_budget_eur"), volume=get("line_volume"),
             )
 
         # Créative

@@ -40,6 +40,13 @@ table.ed .rm { background: none; color: var(--muted); padding: 2px 6px; font-wei
 .camp-form input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
                    background: var(--card); color: var(--text); font: inherit; margin-top: 2px; }
 .camp-form input.cell-missing { border-color: var(--warn); }
+.af-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; font-size: .85rem; }
+.af-bar select { width: auto; padding: 5px 8px; }
+.af-campaign { font-weight: 700; }
+tr.af-campaign td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.af-sub { font-size: .72rem; color: var(--muted); }
+details.report { margin-top: 6px; }
+details.report summary { cursor: pointer; font-size: .9rem; color: var(--muted); }
 .sync { font-size: .8rem; color: var(--muted); margin-left: 8px; }
 header h1 { margin: 0; font-size: 1.6rem; }
 header p { margin: 4px 0 0; color: var(--muted); }
@@ -92,6 +99,7 @@ table.pv tr.pv-site, table.pv tr.pv-package, table.pv tr.pv-placement, table.pv 
 footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
 a { color: var(--accent); }
 .hidden { display: none; }
+[hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -113,6 +121,14 @@ a { color: var(--accent); }
     </div>
     <input id="file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
     <div class="grid">
+      <div>
+        <label for="adserver">Ad server</label>
+        <select id="adserver">
+          <option value="cm360">Campaign Manager 360</option>
+          <option value="adform">Adform</option>
+        </select>
+        <div class="hint">L'aperçu et l'export s'adaptent à la plateforme.</div>
+      </div>
       <div>
         <label for="camp">Campagne (si absente du fichier)</label>
         <input id="camp" type="text" autocomplete="off">
@@ -162,7 +178,7 @@ a { color: var(--accent); }
       <button id="demo" class="secondary">▶ Simuler le trafficking (démo)</button>
       <button id="delivery" class="secondary">📊 Rapport de diffusion (démo)</button>
       <button id="dl-cm360">⬇ Campaign spreadsheet CM360</button>
-      <span>
+      <span id="adform-export">
         <button id="dl-adform">⬇ Classeur bulk Adform</button>
         <select id="adform-type" aria-label="Type de campagne Adform">
           <option>Non-programmatic</option><option>Programmatic</option><option>Hybrid</option>
@@ -266,18 +282,23 @@ function renderSummary(d) {
   const box = $("summary"); box.replaceChildren();
   if (d.fatal) { box.append(el("p", {class: "err"}, d.fatal)); return false; }
   box.append(el("p", {}, `${d.rows} ligne(s) lue(s), ${d.campaigns.length} campagne(s), ${d.errors.length} erreur(s).`));
-  for (const line of d.ingest) box.append(el("div", {class: "info"}, "🔎 " + line));
-  for (const line of d.renames) box.append(el("div", {class: "info"}, "🏷️ " + line));
+  // Détail de la lecture et des renommages : replié (ouvrir pour vérifier la provenance)
+  const yellow = d.ingest.find((l) => l.startsWith("Mode cases jaunes"));
+  if (yellow) box.append(el("div", {class: "info"}, "🟨 " + yellow));
+  const det = (title, lines, icon) => {
+    if (!lines.length) return;
+    box.append(el("details", {class: "report"}, el("summary", {}, `${title} (${lines.length})`),
+      ...lines.map((l) => el("div", {class: "info"}, icon + " " + l))));
+  };
+  det("🔎 Ce que l'agent a lu dans le plan", d.ingest.filter((l) => l !== yellow), "🔎");
+  det("🏷️ Noms appliqués (nomenclature)", d.renames, "🏷️");
   if (d.errors.length) {
     box.append(el("p", {class: "err"}, "À corriger avant tout envoi :"));
     box.append(el("ul", {class: "errors"}, ...d.errors.map((e) => el("li", {}, e))));
   }
-  if (d.to_complete && d.to_complete.length) {
-    box.append(el("h3", {}, "✏️ À compléter (laissé vide)"));
-    box.append(el("p", {class: "hint"}, "Non trouvé dans le plan : les exports contiennent ces cases vides, "
-      + "à remplir avant l'import. L'envoi réel vers l'ad server reste bloqué tant qu'elles manquent."));
-    box.append(el("ul", {class: "gaps"}, ...d.to_complete.map((g) => el("li", {}, g))));
-  }
+  if (d.to_complete && d.to_complete.length)
+    box.append(el("p", {class: "hint"}, `✏️ ${d.to_complete.length} information(s) à compléter — cases orange du plan `
+      + "(laissées vides dans les exports ; l'envoi réel reste bloqué tant qu'elles manquent)."));
   if (d.specs && d.specs.length) {
     const ICON = {erreur: "⛔", alerte: "⚠️", ok: "✅"};
     box.append(el("h3", {}, "Contrôle des créatives (specs CM360)"));
@@ -294,14 +315,8 @@ function renderSummary(d) {
     }
     box.append(det);
   }
-  for (const c of d.campaigns) {
-    const budget = c.budget_eur ? ` · budget ${Number(c.budget_eur).toLocaleString("fr-FR")} €` : "";
-    box.append(el("div", {class: "meta"},
-      `Annonceur : ${c.advertiser || "à compléter"} · ${c.placements.length} emplacement(s) · `
-      + `${c.ads.length} annonce(s)${budget}`));
-  }
-  $("preview-pane").replaceChildren(d.preview && d.preview.length ? renderPreview(d.preview)
-    : el("p", {class: "hint"}, "Aucun objet à créer pour l'instant."));
+  lastResult = d;
+  renderPreviewPane();
   return d.errors.length === 0 && !(d.specs || []).some((s) => s.level === "erreur");
 }
 
@@ -435,6 +450,66 @@ function scheduleRebuild(delay = 400) {
       $("sync").textContent = " · erreur : " + e.message;
     }
   }, delay);
+}
+
+// --- Volet droit : aperçu selon l'ad server choisi ---------------------------------------
+let lastResult = null, adformView = "campaign";
+function renderPreviewPane() {
+  const d = lastResult;
+  if (!d) return;
+  const adform = $("adserver").value === "adform";
+  $("dl-cm360").hidden = adform;
+  $("adform-export").hidden = !adform;
+  if (adform) {
+    $("preview-pane").replaceChildren(renderAdform(d.preview_adform || {campaign: [], banners: [], tags: []}));
+  } else {
+    $("preview-pane").replaceChildren(d.preview && d.preview.length ? renderPreview(d.preview)
+      : el("p", {class: "hint"}, "Aucun objet à créer pour l'instant."));
+  }
+}
+$("adserver").addEventListener("change", renderPreviewPane);
+
+// Aperçu Adform : menu de la campagne (Campagne / Bannières / Tags), colonnes de la plateforme
+function renderAdform(pa) {
+  const views = {
+    campaign: {label: "Campagne", head: ["Name", "Media", "Type", "Status", "ID", "Start Date", "End Date",
+                                         "Non-Programmatic Budget", "Volume"],
+      rows: pa.campaign.map((r) => {
+        const name = el("td", {class: "pv-name", style: `padding-left:${8 + r.level * 22}px`},
+          el("span", {class: r.kind === "campaign" ? "af-campaign" : "pv-link"}, r.name),
+          r.sub ? el("div", {class: "af-sub"}, r.sub) : "");
+        const miss = (v, k) => v ? el("td", {}, v) : el("td", {class: "pv-missing"}, k === "date" ? "à compléter" : "—");
+        return el("tr", {class: "af-" + r.kind}, name,
+          r.missing_media ? el("td", {class: "pv-missing"}, "à compléter") : el("td", {}, r.media || ""),
+          el("td", {}, r.type || ""), el("td", {}, r.status), el("td", {class: "pv-id"}, "nouveau"),
+          miss(r.start, "date"), miss(r.end, "date"), miss(r.budget), miss(r.volume));
+      })},
+    banners: {label: "Bannières", head: ["Name", "Type", "Size", "Line item", "Click URL", "Status", "ID"],
+      rows: pa.banners.map((b) => el("tr", {}, el("td", {class: "pv-link"}, b.name), el("td", {}, b.type),
+        el("td", {}, b.size), el("td", {}, b.line_item),
+        b.click_url ? el("td", {}, b.click_url) : el("td", {class: "pv-missing"}, "à compléter"),
+        el("td", {}, b.status), el("td", {class: "pv-id"}, "nouveau")))},
+    tags: {label: "Tags", head: ["Name", "Media", "Size", "Tag type", "Banners", "Status", "ID"],
+      rows: pa.tags.map((g) => el("tr", {}, el("td", {class: "pv-link"}, g.name),
+        g.media ? el("td", {}, g.media) : el("td", {class: "pv-missing"}, "à compléter"),
+        el("td", {}, g.size), el("td", {}, g.tag_type), el("td", {}, String(g.banners)),
+        el("td", {}, g.status), el("td", {class: "pv-id"}, "nouveau")))},
+  };
+  const select = el("select", {id: "adform-view", "aria-label": "Vue Adform"},
+    ...Object.entries(views).map(([k, v]) => {
+      const o = el("option", {value: k}, v.label);
+      if (k === adformView) o.selected = true;
+      return o;
+    }));
+  select.addEventListener("change", () => { adformView = select.value; renderPreviewPane(); });
+  const v = views[adformView];
+  return el("div", {class: "preview"},
+    el("h3", {}, "Aperçu dans Adform (avant envoi)"),
+    el("div", {class: "af-bar"}, el("label", {for: "adform-view"}, "Vue de la campagne : "), select,
+      el("span", {class: "hint"}, ` Total : ${v.rows.length - (adformView === "campaign" ? pa.campaign.filter((r) => r.kind === "campaign").length : 0)}`)),
+    el("div", {class: "table-wrap"}, el("table", {class: "pv"},
+      el("thead", {}, el("tr", {}, ...v.head.map((h) => el("th", {}, h)))),
+      el("tbody", {}, ...(v.rows.length ? v.rows : [el("tr", {}, el("td", {colspan: String(v.head.length), class: "hint"}, "Aucun élément."))])))));
 }
 
 $("analyze").addEventListener("click", async () => {

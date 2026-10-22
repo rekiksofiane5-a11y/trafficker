@@ -288,6 +288,7 @@ RE_MONEY = re.compile(r"(€|\beur\b|\beuros?\b|k€)", re.I)
 RE_DATE_TOKEN = re.compile(
     r"\d{4}-\d{2}-\d{2}|\d{1,2}[/.\-]\d{1,2}(?:[/.\-]\d{2,4})?")
 VIDEO_HINT = re.compile(r"pre[\s_-]?roll|in[\s_-]?stream|vid[eé]o|outstream|mid[\s_-]?roll", re.I)
+AUDIO_HINT = re.compile(r"\baudio\b|podcast|web[\s_-]?radio|\bradio\b|spot[\s_-]*(audio|radio)|streaming[\s_-]*audio", re.I)
 
 
 def parse_date(s: str, default_year: Optional[int] = None) -> str:
@@ -370,6 +371,7 @@ FORMAT_NAMES = [
     (r"large[\s_-]*mobile|mobile[\s_-]*large|banni[eè]re[\s_-]*mobile[\s_-]*large", "320x100"),
     (r"banni[eè]re[\s_-]*mobile|mobile[\s_-]*banner|\bbanner[\s_-]*mobile|smartphone[\s_-]*banni", "320x50"),
     (r"pav[eé]|\bmpu\b|medium[\s_-]*rectangle|rectangle|carr[eé]", "300x250"),
+    (AUDIO_HINT.pattern, "1x1"),                     # audio in-stream : 1x1 (comme dans Adform/CM360)
     (r"pre[\s_-]?roll|mid[\s_-]?roll|in[\s_-]?stream|vid[eé]o|spot", "640x360"),
 ]
 TRACKING_SIZE = "1x1"
@@ -377,7 +379,9 @@ VIDEO_SIZE = "640x360"
 
 
 def category_from_name(text: str) -> str:
-    """Catégorie d'emplacement déduite d'un nom de format : vidéo ou display (IAB)."""
+    """Catégorie d'emplacement déduite d'un nom de format : audio, vidéo ou display (IAB)."""
+    if AUDIO_HINT.search(text or ""):
+        return "audio"
     return "video" if VIDEO_HINT.search(text or "") else ("display" if size_from_name(text) else "")
 
 
@@ -708,13 +712,18 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
                         derived.add("size ← nom de format IAB converti en dimensions, emplacement "
                                     "display (Pavé → 300x250, Méga-bannière → 728x90…)"
                                     if cat == "display" else
+                                    "size ← format audio : emplacement audio in-stream 1x1"
+                                    if cat == "audio" else
                                     "size ← format vidéo (preroll, in-stream…) : emplacement vidéo in-stream")
                         break
             if not r["size"]:
                 r["size"], category = TRACKING_SIZE, "tracking"
                 derived.add(f"size ← aucun format reconnaissable : {TRACKING_SIZE}, "
                             "emplacement de tracking")
-        if VIDEO_HINT.search(" ".join(names + [r.get("size", "")])) or \
+        hints = " ".join(names + [r.get("size", ""), written_label])
+        if AUDIO_HINT.search(hints) or re.search(r"\.(mp3|ogg|oga)\s*$", r.get("creative_path", ""), re.I):
+            category = "audio"
+        elif VIDEO_HINT.search(hints) or \
                 re.search(r"\.(mp4|mov|m4v|webm)\s*$", r.get("creative_path", ""), re.I):
             category = "video"
         if not r.get("placement_category"):
@@ -799,7 +808,7 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
     # s'il est parlant, sinon nom du fichier — signalé « à vérifier »
     if rows and not campaign_name and any(not r.get("campaign_name") for r in rows):
         fallback, origin = "", ""
-        if not GENERIC_SHEET.match(sheet or ""):
+        if not GENERIC_SHEET.match(sheet or "") and len(_clean_label(sheet)) >= 5:   # « OBJ » : trop court
             fallback, origin = _clean_label(sheet), f"nom de la feuille « {sheet} »"
         if not fallback and source_name:
             fallback, origin = _clean_label(source_name), f"nom du fichier « {os.path.basename(source_name)} »"
@@ -875,6 +884,10 @@ def _aggregate_campaign_totals(rows: List[Dict[str, str]], cols: Dict[int, str],
     for f in ("budget_eur", "objective_impressions"):
         if f not in cols.values():
             continue
+        line_key = "line_budget_eur" if f == "budget_eur" else "line_volume"
+        for line in rows:                     # valeur propre à la ligne (budget du line item)
+            if line.get(f):
+                line[line_key] = line[f]
         totals: Dict[str, float] = {}
         for line in rows:
             try:

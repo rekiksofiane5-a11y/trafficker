@@ -176,10 +176,62 @@ def _build(rows: list, nomenclature_json: str, creatives_dir: str, report: list)
     return json.dumps({
         "rows": len(rows), "errors": errors, "renames": renames, "ingest": report,
         "campaigns": _summary(plan), "specs": specs, "to_complete": plan_gaps(plan),
-        "preview": preview(plan), "table": [dict(r) for r in rows], "columns": columns,
+        "preview": preview(plan), "preview_adform": preview_adform(plan),
+        "table": [dict(r) for r in rows], "columns": columns,
         "campaign": campaign,
         "spec_refs": [s for s in (spec_summary(t) for t in ctypes) if s],
     }, ensure_ascii=False, default=str)
+
+
+def _num_fr(v: str, unit: str = "") -> str:
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return ""
+    s = f"{n:,.2f}" if unit == "€" else f"{n:,.0f}"
+    s = s.replace(",", "\u202f").replace(".", ",")
+    return f"{s} {unit}".strip()
+
+
+ADFORM_BANNER_TYPE = {"TRACKING": "Tracking (1x1)", "IMAGE": "Image", "HTML5": "HTML5",
+                      "VIDEO": "Vidéo (VAST)", "AUDIO": "Audio (VAST)", "REDIRECT": "Tag tiers"}
+
+
+def preview_adform(plan) -> dict:
+    """Aperçu tel qu'il apparaîtra dans Adform, en trois vues (comme le menu de la
+    campagne) : campagne (line items directs), bannières, tags."""
+    camp_rows, banners, tags = [], [], []
+    for camp in plan.values():
+        budget = camp.budget_eur
+        camp_rows.append({"level": 0, "kind": "campaign", "name": camp.name, "media": "",
+                          "type": "", "status": "Nouveau", "start": _fr(camp.start),
+                          "end": _fr(camp.end), "budget": _num_fr(budget, "€") if budget else "",
+                          "volume": ""})
+        ads_by_pl: dict = {}
+        for an, ad in camp.ads.items():
+            for pn in ad["placements"]:
+                ads_by_pl.setdefault(pn, []).append((an, ad))
+        for p in camp.placements.values():
+            media = p.site_name or (str(p.site_id) if p.site_id else "")
+            camp_rows.append({"level": 1, "kind": "lineitem", "name": p.name, "sub": "Direct Line Item",
+                              "media": media, "type": "Direct", "status": "Nouveau",
+                              "start": _fr(camp.start), "end": _fr(camp.end),
+                              "budget": _num_fr(p.budget, "€") if p.budget else "",
+                              "volume": (_num_fr(p.volume) + " Imps") if p.volume else "",
+                              "missing_media": not media})
+            ads = ads_by_pl.get(p.name, [])
+            n_banners = sum(len(ad["creatives"]) for _, ad in ads)
+            tracking = all(c.ctype == "TRACKING" for _, ad in ads for c in ad["creatives"])
+            tags.append({"name": p.name, "media": media, "size": f"{p.width}x{p.height}",
+                         "tag_type": "Tracking (1x1)" if tracking else "Adform tag",
+                         "banners": n_banners, "status": "Nouveau"})
+            for an, ad in ads:
+                for c in ad["creatives"]:
+                    banners.append({"name": c.name, "type": ADFORM_BANNER_TYPE.get(c.ctype, c.ctype),
+                                    "size": "" if c.ctype in ("VIDEO", "AUDIO") else f"{p.width}x{p.height}",
+                                    "line_item": p.name, "click_url": ad.get("landing_page_url", ""),
+                                    "status": "Nouveau"})
+    return {"campaign": camp_rows, "banners": banners, "tags": tags}
 
 
 def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",

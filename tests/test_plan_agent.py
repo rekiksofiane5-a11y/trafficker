@@ -291,3 +291,15 @@ def test_typed_campaign_wins_for_the_whole_plan(tmp_path):
         ["B", "Article", "Pavé", "2026-11-02", "2026-12-15", "https://x.fr"]])])
     rows, plan, errors, report = _plan(p, campaign_name="Saisie")
     assert [c.name for c in plan.values()] == ["Saisie"]
+
+
+def test_audio_format_is_audio_1x1(tmp_path):
+    p = _xlsx(tmp_path / "audio.xlsx", [("Plan", [
+        ["Campagne", "Régie", "Emplacement", "Format", "Début", "Fin", "URL"],
+        ["SPF", "Amnet", "Contextuel", "Audio", "2026-10-21", "2027-11-22", "https://x.fr"],
+        ["SPF", "Deezer", "Podcast", "Spot audio 30s", "2026-10-21", "2027-11-22", "https://x.fr"]])])
+    rows, plan, errors, report = _plan(p)
+    assert errors == []
+    ps = next(iter(plan.values())).placements
+    assert {(p.width, p.height, p.category) for p in ps.values()} == {(1, 1, "audio")}
+    assert "format audio" in report

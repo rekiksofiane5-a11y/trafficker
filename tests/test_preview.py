@@ -81,3 +81,30 @@ def test_package_per_regie_and_objective_and_devices():
     assert {c["key"] for c in d["columns"]} >= {"device", "objective"}
     assert "campaign_name" not in {c["key"] for c in d["columns"]}           # saisi en en-tête
     assert d["campaign"]["campaign_name"] == "Hiver"
+
+
+def test_adform_preview_line_items_banners_tags():
+    import ingest
+    rows = [dict(ROWS[2], site_name="Amnet", line_budget_eur="151619", line_volume="11544211"),
+            dict(ROWS[0])]
+    plan, errors = plan_from_rows(rows)
+    pa = web_api.preview_adform(plan)
+    kinds = [r["kind"] for r in pa["campaign"]]
+    assert kinds == ["campaign", "lineitem", "lineitem"]
+    li = pa["campaign"][1]
+    assert (li["media"], li["type"], li["sub"], li["budget"], li["volume"]) == \
+        ("Amnet", "Direct", "Direct Line Item", "151 619,00 €", "11 544 211 Imps")
+    assert {b["type"] for b in pa["banners"]} == {"Image", "Tracking (1x1)"}
+    assert {t["tag_type"] for t in pa["tags"]} == {"Adform tag", "Tracking (1x1)"}
+
+
+def test_short_sheet_name_not_used_as_campaign(tmp_path):
+    import openpyxl
+    from cm360_trafficker import load_rows_from_path
+    wb = openpyxl.Workbook()
+    wb.active.title = "OBJ"
+    for r in [["Emplacement", "Format", "URL"], ["Home", "Pavé", "https://x.fr"]]:
+        wb.active.append(r)
+    wb.save(tmp_path / "Plan_Hiver_2026.xlsx")
+    rows = load_rows_from_path(str(tmp_path / "Plan_Hiver_2026.xlsx"))
+    assert rows[0]["campaign_name"] == "Plan Hiver 2026"

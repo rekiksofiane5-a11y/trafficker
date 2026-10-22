@@ -63,7 +63,7 @@ def _analyze(page, path):
 
 def test_template_plan_end_to_end(page):
     _analyze(page, os.path.join(ROOT, "plan_media_template.csv"))
-    text = page.inner_text("#result")
+    text = page.text_content("#result")
     assert "0 erreur(s)" in text and "Printemps_2026_FR" in text
     assert "Aperçu dans CM360" in text
     assert "Tracking" in text and "In-stream video" in text and "Display" in text
@@ -81,9 +81,11 @@ def test_template_plan_end_to_end(page):
                                             ("#dl-adform", "adform_bulk.xlsx", "Campaigns")])
 def test_exports_download_valid_xlsx(page, tmp_path, btn, name, sheet):
     openpyxl = pytest.importorskip("openpyxl")
+    page.select_option("#adserver", "adform" if "adform" in btn else "cm360")
     _analyze(page, os.path.join(ROOT, "plan_media_template.csv"))
     with page.expect_download() as dl:
         page.click(btn)
+    page.select_option("#adserver", "cm360")
     assert dl.value.suggested_filename == name
     out = tmp_path / name
     dl.value.save_as(out)
@@ -95,9 +97,9 @@ def test_free_form_plan_and_errors(page, tmp_path):
     p.write_text("Campagne,Emplacement,Format,Début,Fin,Annonce,Créatif,URL\n"
                  "C1,P1,300 x 250,02/11/2026,01/11/2026,A1,K1,https://x.fr\n", encoding="utf-8")
     _analyze(page, str(p))
-    text = page.inner_text("#result")
+    text = page.text_content("#result")
     assert "campaign_name ← colonne « Campagne »" in text
-    assert "avant début" in text and "À compléter" in text     # fin avant début : à corriger
+    assert "à compléter" in text                               # fin avant début : vidée, à compléter
     assert not page.is_disabled("#dl-cm360")                   # ça avance : export possible
 
 
@@ -121,7 +123,7 @@ def test_creative_files_checked_against_cm360_specs(page, tmp_path):
                     "C,2026-11-02,2026-12-15,P2,300x250,A2,K2,anim.zip,https://x.fr\n", encoding="utf-8")
     page.set_input_files("#creas", [str(tmp_path / "ban.png"), str(tmp_path / "anim.zip")])
     _analyze(page, str(plan))
-    text = page.inner_text("#result")
+    text = page.text_content("#result")
     assert "Contrôle des créatives (specs CM360)" in text
     assert "ban.png : conforme" in text and "aucun click tag" in text
     assert "HTML5" in text
@@ -142,8 +144,9 @@ def test_yellow_cells_mode_in_browser(page, tmp_path):
         ws.cell(row=3, column=c).fill = PatternFill("solid", fgColor="FFFF00")
     wb.save(tmp_path / "jaune.xlsx")
     _analyze(page, str(tmp_path / "jaune.xlsx"))
-    text = page.inner_text("#result")
-    assert "Mode cases jaunes" in text and "Article" in text and "\tHome\t" not in text and " Home\t" not in text
+    text = page.text_content("#result")
+    assert "Mode cases jaunes" in text and "Article" in text
+    assert "Home" not in page.inner_text("#preview-pane")
 
 
 def test_page_stays_responsive_on_a_heavy_workbook(page, tmp_path):
@@ -167,16 +170,17 @@ def test_page_stays_responsive_on_a_heavy_workbook(page, tmp_path):
     assert page.evaluate("1 + 1") == 2                       # le fil principal répond
     assert time.time() - t0 < 2
     page.wait_for_function("!document.getElementById('analyze').disabled", timeout=120000)
-    assert "3000 ligne(s)" in page.inner_text("#result")
+    assert "3000 ligne(s)" in page.text_content("#result")
 
 
 def test_missing_info_left_empty_and_listed(page, tmp_path):
     p = tmp_path / "incomplet.csv"
     p.write_text("Campagne,Emplacement,Format\nHiver,Home,Pavé\nHiver,Article,Méga-bannière\n", encoding="utf-8")
     _analyze(page, str(p))
-    text = page.inner_text("#result")
-    assert "À compléter (laissé vide)" in text
-    assert "Date de début — à compléter" in text and "URL de destination — à compléter" in text
+    text = page.text_content("#result")
+    assert "information(s) à compléter" in text                 # un seul rappel, pas de liste
+    assert "Date de début — à compléter" not in text
+    assert page.locator("#cf-campaign_start.cell-missing").count() == 1
     assert "erreur(s)" in text and "0 erreur(s)" in text
     assert not page.is_disabled("#dl-cm360")                     # export possible, cases vides
     page.click("#delivery")
@@ -196,7 +200,7 @@ def test_split_screen_edit_updates_preview(page, tmp_path):
                            timeout=15000)
     # vider l'URL : case orange + « à compléter »
     page.fill('#editor input[data-key="landing_page_url"]', "")
-    page.wait_for_selector("text=URL de destination — à compléter", timeout=15000)
+    page.wait_for_selector("text=information(s) à compléter", timeout=15000)
     assert page.locator("#editor td.cell-missing").count() >= 1
     # ajouter une ligne : nouvel emplacement dans l'aperçu
     page.click("#add-row")
@@ -219,3 +223,23 @@ def test_campaign_header_applies_to_all_rows(page, tmp_path):
     pane = page.inner_text("#preview-pane")
     assert "01/03/2027" in pane and pane.count("Printemps 2027") == 1        # une seule campagne
     assert "PACKAGE-LE_MONDE-NOTORIETE" in pane and "PACKAGE-LE_MONDE-TRAFIC" in pane
+
+
+def test_adform_preview_with_views(page, tmp_path):
+    p = tmp_path / "adform.csv"
+    p.write_text("Campagne,Objectif,Régie,Emplacement,Format,Début,Fin,Budget net,Volume (imp.),URL\n"
+                 "SPF Fertilité,Notoriété,Amnet,Contextuel Santé,Audio,21/10/2026,22/11/2027,151619,11544211,https://x.fr\n"
+                 "SPF Fertilité,Notoriété,Amnet,Comportemental,Audio,21/10/2026,22/11/2027,151619,11544211,https://x.fr\n",
+                 encoding="utf-8")
+    page.select_option("#adserver", "adform")
+    _analyze(page, str(p))
+    pane = page.inner_text("#preview-pane")
+    assert "Aperçu dans Adform" in pane and "Direct Line Item" in pane and "Amnet" in pane
+    assert "151\u202f619,00 €" in pane and "Imps" in pane and "21/10/2026" in pane
+    assert page.is_visible("#dl-adform") and not page.is_visible("#dl-cm360")
+    page.select_option("#adform-view", "banners")
+    assert "Line item" in page.inner_text("#preview-pane")
+    page.select_option("#adform-view", "tags")
+    assert "Tag type" in page.inner_text("#preview-pane")
+    page.select_option("#adserver", "cm360")                    # retour CM360 : arborescence
+    assert "Aperçu dans CM360" in page.inner_text("#preview-pane")
