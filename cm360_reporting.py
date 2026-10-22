@@ -127,7 +127,7 @@ class CM360ReportingAdapter(ReportingAdapter):
     def pull(self, campaign_names: List[str], start: str, end: str
              ) -> List[CampaignDelivery]:
         body = {
-            "displayName": "Trafficker - rapport de diffusion",
+            "displayName": "Umnia - rapport de diffusion",
             "type": "STANDARD",
             "format": "CSV",
             "criteria": {

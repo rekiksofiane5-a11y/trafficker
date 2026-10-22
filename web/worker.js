@@ -1,4 +1,4 @@
-// Worker Trafficker : sert l'application (fichiers statiques) et l'API /api/*
+// Worker Umnia : sert l'application (fichiers statiques) et l'API /api/*
 // (connexion, tâches partagées par agence, administration). Données : base D1 « DB ».
 // Le moteur d'analyse reste dans le navigateur ; ne sont stockés ici que les comptes
 // et les tâches (paramètres + plan classé par l'agent).

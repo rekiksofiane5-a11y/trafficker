@@ -97,13 +97,13 @@ def _password_ok(given: str) -> bool:
 
 
 LOGIN_PAGE = """<!doctype html><html lang="fr"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Trafficker — connexion</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Umnia — connexion</title>
 <style>body{font-family:system-ui,sans-serif;background:#f4f4f4;display:flex;min-height:100vh;
 align-items:center;justify-content:center;margin:0}form{background:#fff;padding:28px;border-radius:16px;
 width:300px;box-shadow:0 2px 12px #0002}input{width:100%;box-sizing:border-box;padding:9px;margin:6px 0 14px;
 border:1px solid #ccc;border-radius:8px}button{width:100%;padding:10px;border:0;border-radius:8px;
 background:#1a73e8;color:#fff;font-weight:600;cursor:pointer}.err{color:#b00020}</style></head><body>
-<form method="post" action="/login"><h2>Trafficker</h2>__ERR__
+<form method="post" action="/login"><h2>Umnia</h2>__ERR__
 <label>Utilisateur<input name="user" autocomplete="username" required></label>
 <label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
 <button>Se connecter</button></form></body></html>"""
@@ -169,7 +169,7 @@ PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trafficker</title>
+<title>Umnia</title>
 <style>
 :root { --bg:#ffffff; --sidebar:#f9f9f9; --border:#e5e5e5; --text:#1a1a1a;
         --muted:#8f8f8f; --accent:#10a37f; --user:#f4f4f4; }

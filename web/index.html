@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trafficker</title>
+<title>Umnia</title>
 <style>
 :root {
   --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6675; --border: #dde1e7;
@@ -172,7 +172,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 <body>
 <div id="login-screen" class="login" hidden>
   <form id="login-form" class="login-card" autocomplete="on">
-    <div class="brand-lg">Trafficker</div>
+    <div class="brand-lg">Umnia</div>
     <p class="hint">Trafficking et reporting CM360 / Adform</p>
     <label>E-mail<input id="login-email" type="email" autocomplete="username" required></label>
     <label>Mot de passe<input id="login-password" type="password" autocomplete="current-password" required></label>
@@ -180,7 +180,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
     <button type="submit" id="login-submit">Se connecter</button>
   </form>
   <form id="setup-form" class="login-card" hidden>
-    <div class="brand-lg">Trafficker</div>
+    <div class="brand-lg">Umnia</div>
     <p class="hint">Première connexion : créez le compte administrateur de l'agence.</p>
     <label>Nom<input id="setup-name" required></label>
     <label>E-mail<input id="setup-email" type="email" autocomplete="username" required></label>
@@ -196,7 +196,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 <div id="app" class="app" hidden>
   <aside class="sidebar" aria-label="Navigation">
     <div class="side-top">
-      <div class="brand">Trafficker</div>
+      <div class="brand">Umnia</div>
       <div class="modes" role="tablist" aria-label="Mode">
         <button role="tab" data-mode="trafficking" class="on" aria-selected="true">Trafficking</button>
         <button role="tab" data-mode="reporting" aria-selected="false">Reporting</button>
@@ -259,11 +259,11 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
         <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
           <strong>Déposez le plan média ici</strong> ou cliquez pour choisir un fichier
           <div id="drop-hint" class="hint">CSV, XLSX, XLS. Surlignez en <mark>jaune fluo</mark> les cellules à lire :
-            elles guident l'agent, le reste est ignoré.</div>
+            elles guident Umnia, le reste est ignoré.</div>
           <div id="file-name" class="hint"></div>
         </div>
         <input id="file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
-        <label for="instructions" class="lbl">Instructions supplémentaires pour l'agent <span class="hint">(facultatif)</span></label>
+        <label for="instructions" class="lbl">Instructions supplémentaires pour Umnia <span class="hint">(facultatif)</span></label>
         <textarea id="instructions" rows="3" placeholder="Une par ligne, par exemple :&#10;Période : du 02/11 au 15/12/2026&#10;URL : https://www.annonceur.fr&#10;Régie : Teads"></textarea>
         <details class="more">
           <summary>Options : nomenclature client, fichiers créatifs</summary>
@@ -292,7 +292,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
         <div id="summary"></div>
         <div class="split" id="workspace">
           <div class="pane" aria-labelledby="t-pm">
-            <h3 id="t-pm">Plan média classé par l'agent <span class="hint">— modifiable</span><span id="sync" class="sync" role="status"></span></h3>
+            <h3 id="t-pm">Plan média classé par Umnia <span class="hint">— modifiable</span><span id="sync" class="sync" role="status"></span></h3>
             <p class="hint">Chaque modification met à jour l'aperçu. Cases orange : à compléter.</p>
             <div class="camp-form" id="camp-form">
               <label>Campagne<input id="cf-campaign_name" data-cf="campaign_name" placeholder="à compléter"></label>
@@ -465,7 +465,7 @@ function renderSummary(d) {
     box.append(el("details", {class: "report"}, el("summary", {}, `${title} (${lines.length})`),
       ...lines.map((l) => el("div", {class: "info"}, icon + " " + l))));
   };
-  det("🔎 Ce que l'agent a lu dans le plan", d.ingest.filter((l) => l !== yellow), "🔎");
+  det("🔎 Ce qu'Umnia a lu dans le plan", d.ingest.filter((l) => l !== yellow), "🔎");
   det("🏷️ Noms appliqués (nomenclature)", d.renames, "🏷️");
   if (d.errors.length) {
     box.append(el("p", {class: "err"}, "À corriger avant tout envoi :"));

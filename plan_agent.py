@@ -163,7 +163,7 @@ def read_grids(path: str) -> List[Tuple[str, Grid]]:
 
 
 # --- 1bis. Cases surlignées en jaune ---------------------------------------------------
-# Si le classeur contient des cases jaunes, l'agent ne lit QUE ces cases (plus les
+# Si le classeur contient des cases jaunes, Umnia ne lit QUE ces cases (plus les
 # libellés : ligne d'en-tête du tableau et étiquettes du bloc d'informations).
 
 Highlights = Dict[str, set]
@@ -797,7 +797,7 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
         seen_creas.add((line["ad_name"], line["creative_name"]))
         if not line.get("creative_category") and not line.get("creative_path") and not line.get("snippet") \
                 and VIDEO_HINT.search(line.get("placement_name", "")):
-            pass   # sans fichier : créative de tracking (règle Trafficker), même sur un emplacement vidéo
+            pass   # sans fichier : créative de tracking (règle Umnia), même sur un emplacement vidéo
         for f, fn in ingest.NORMALIZERS.items():
             if line.get(f):
                 line[f] = fn(str(line[f]))
@@ -879,7 +879,7 @@ def _campaign_period(rows: List[Dict[str, str]], report: List[str]) -> None:
 
 def _aggregate_campaign_totals(rows: List[Dict[str, str]], cols: Dict[int, str],
                                report: List[str]) -> None:
-    """Budget et impressions lus par ligne → total de la campagne (le plan Trafficker
+    """Budget et impressions lus par ligne → total de la campagne (le plan Umnia
     porte un budget et un objectif par campagne)."""
     for f in ("budget_eur", "objective_impressions"):
         if f not in cols.values():
@@ -904,7 +904,7 @@ def _aggregate_campaign_totals(rows: List[Dict[str, str]], cols: Dict[int, str],
 
 
 def is_canonical(grids: List[Tuple[str, Grid]]) -> bool:
-    """Plan déjà au format Trafficker (en-tête canonique complet en ligne 1)."""
+    """Plan déjà au format Umnia (en-tête canonique complet en ligne 1)."""
     if not grids or not grids[0][1]:
         return False
     head = [ingest._norm(c) for c in grids[0][1][0]]

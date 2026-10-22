@@ -1,5 +1,5 @@
 
-# Conformité RGPD — CM360 Trafficker
+# Conformité RGPD — Umnia (CM360 / Adform)
 
 Document de conformité de l'outil de génération de trafficking à partir d'un plan média (CSV/XLSX/Google Sheets). À conserver à jour et à compléter avec les informations de l'entité éditrice dès la mise en production.
 

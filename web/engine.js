@@ -1,4 +1,4 @@
-// Moteur Trafficker exécuté dans un Web Worker : Pyodide et l'analyse tournent hors du
+// Moteur Umnia exécuté dans un Web Worker : Pyodide et l'analyse tournent hors du
 // fil principal, la page reste réactive même sur un gros classeur.
 "use strict";
 importScripts("pyodide/pyodide.js");

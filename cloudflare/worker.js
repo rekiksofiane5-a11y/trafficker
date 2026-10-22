@@ -1,5 +1,5 @@
 // Point d'entrée Cloudflare : toutes les requêtes du navigateur sont transmises au
-// conteneur Python (UI Trafficker). HTTPS est assuré par Cloudflare.
+// conteneur Python (UI Umnia). HTTPS est assuré par Cloudflare.
 import { Container } from "@cloudflare/containers";
 
 export class TraffickerContainer extends Container {
@@ -28,7 +28,7 @@ export default {
     // Refus explicite si le mot de passe n'est pas configuré : jamais d'UI ouverte en ligne
     if (!env.TRAFFICKER_PASSWORD && !env.TRAFFICKER_PASSWORD_HASH) {
       return new Response(
-        "Trafficker : ajoutez le secret TRAFFICKER_PASSWORD (Cloudflare > Worker > Settings > " +
+        "Umnia : ajoutez le secret TRAFFICKER_PASSWORD (Cloudflare > Worker > Settings > " +
           "Variables and Secrets, type Secret), puis redéployez.",
         { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } });
     }

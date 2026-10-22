@@ -1,4 +1,6 @@
-# Trafficker
+# Umnia
+
+Umnia est l'agent de trafficking et de reporting de l'agence (anciennement « Trafficker ») : il lit n'importe quel plan média, le classe, applique la nomenclature et prépare la mise en ligne CM360 / Adform. Les identifiants techniques (Worker `trafficker`, secret `TRAFFICKER_PASSWORD`, modules `cm360_trafficker*.py`) gardent leur nom.
 
 Couche adops côté agence, au-dessus de deux ad servers : CM360 et Adform (périmètre volontairement limité à ces deux plateformes) : ingestion de plans médias, nomenclatures, validation avant envoi, trafficking multi-plateformes, reporting réconcilié (livraison + pacing impressions et dépense), UI conversationnelle et serveur MCP. RGPD intégré (voir `conformite_rgpd.md`).
 
@@ -70,7 +72,7 @@ Pacing = livré / (objectif × fraction du vol écoulée) : OK entre 80 % et 120
 
 ## Agent de lecture des plans médias (`plan_agent.py`)
 
-Le plan est lu « tel qu'il arrive » ; l'agent retrouve chaque information même hors de sa colonne :
+Le plan est lu « tel qu'il arrive » ; Umnia retrouve chaque information même hors de sa colonne :
 
 - **Cases surlignées en jaune** : si le classeur (XLSX/XLS) contient des cases jaunes (jaune vif, jaune clair, or — couleurs directes ou de thème), l'agent ne lit **que** ces cases ; seuls les libellés (ligne d'en-tête du tableau, étiquettes « Annonceur », « Période »… à côté d'une case jaune) sont gardés pour comprendre les colonnes. Une case fusionnée jaune couvre toute sa plage. Sans case jaune, tout le fichier est lu. Un CSV n'a pas de couleurs : lecture complète.
 - **Fichier** : CSV (`;` `,` tabulation `|`, UTF-8 ou Windows-1252), XLSX, XLS, toutes les feuilles ; la feuille et la ligne d'en-tête sont repérées automatiquement (titres, logos, lignes vides au-dessus).
@@ -98,7 +100,7 @@ Base de référence : `specs/cm360_specs_creatives.xlsx` (12 specs officielles, 
 
 ## Informations introuvables : laissées vides, « à compléter »
 
-Ce que l'agent ne trouve pas (date de début, date de fin, URL de destination) n'est plus une erreur à la préparation : la case reste **vide** et l'aperçu liste « ✏️ À compléter » avec les objets concernés (campagne, annonces). Les exports CM360 et Adform sont produits avec ces cases vides, à remplir avant l'import ; la simulation l'indique. Une valeur illisible (date impossible, fin avant début) est traitée de même : vidée et listée avec la valeur d'origine. **L'envoi réel vers CM360/Adform reste bloqué** tant qu'une information manque. Le rapport de diffusion demande les dates.
+Ce qu'Umnia ne trouve pas (date de début, date de fin, URL de destination) n'est plus une erreur à la préparation : la case reste **vide** et l'aperçu liste « ✏️ À compléter » avec les objets concernés (campagne, annonces). Les exports CM360 et Adform sont produits avec ces cases vides, à remplir avant l'import ; la simulation l'indique. Une valeur illisible (date impossible, fin avant début) est traitée de même : vidée et listée avec la valeur d'origine. **L'envoi réel vers CM360/Adform reste bloqué** tant qu'une information manque. Le rapport de diffusion demande les dates.
 
 ## Validation avant envoi
 
@@ -121,7 +123,7 @@ Le dry-run (et l'UI) signalent : champs manquants, tailles invalides, dates inex
 
 - Fonctions : analyse et validation du plan (CSV, XLSX, XLS, export CM360, colonnes libres), typage des créatives (display, vidéo in-stream, tracking auto), nomenclatures, exports **Campaign spreadsheet CM360** et **classeur bulk Adform**, trafficking et rapport de diffusion **simulés**.
 - **Structure** : 1 plan média = 1 annonceur = 1 campagne → 1 ou plusieurs objectifs → 1 ou plusieurs régies → 1 ou plusieurs emplacements (granularité format / ciblage / devices) → 1 ou plusieurs créatives. Campagne et annonceur sont uniques (valeurs divergentes fusionnées et signalées) et se saisissent une fois en tête du volet ; un package CM360 est créé par régie et objectif (`PACKAGE-RÉGIE-OBJECTIF`) quand le plan n'en donne pas ; colonne Devices lue.
-- **Écran de contrôle en deux volets** : à gauche, le plan média classé par l'agent dans un **tableau modifiable** (cases orange = à compléter, ajout/suppression de lignes, dates JJ/MM/AAAA, formats « Pavé » convertis) ; à droite, l'**aperçu tel qu'il apparaîtra dans CM360** (Campagne > Site > Package > Emplacement > Annonce > Créative ; colonnes Name, ID « nouveau », Start/End date, Type, Asset type, Compatibility, Dimensions ; lignes repliables). Chaque modification recalcule la nomenclature, les contrôles et l'aperçu ; les exports et la simulation partent du tableau modifié. Colonne optionnelle `package` (groupe d'emplacements).
+- **Écran de contrôle en deux volets** : à gauche, le plan média classé par Umnia dans un **tableau modifiable** (cases orange = à compléter, ajout/suppression de lignes, dates JJ/MM/AAAA, formats « Pavé » convertis) ; à droite, l'**aperçu tel qu'il apparaîtra dans CM360** (Campagne > Site > Package > Emplacement > Annonce > Créative ; colonnes Name, ID « nouveau », Start/End date, Type, Asset type, Compatibility, Dimensions ; lignes repliables). Chaque modification recalcule la nomenclature, les contrôles et l'aperçu ; les exports et la simulation partent du tableau modifié. Colonne optionnelle `package` (groupe d'emplacements).
 - **Validation par étapes** : (1) **emplacements** sous leur site (régie), regroupables en package (cocher puis « Créer un package ») ; « Valider les emplacements » → (2) **annonces et créatives** ajoutées : 1 annonce = 1 emplacement × 1 créative, nommée par défaut « emplacement-créative ». Les exports et la simulation s'activent après la validation. **Édition directe dans l'aperçu** : double-clic pour renommer (site, package, emplacement, annonce, créative, campagne), glisser un emplacement sur un site ou un package, une annonce/créative sur un autre emplacement ; un clic surligne les lignes du plan concernées. Les noms imposés sont reportés dans le plan (colonnes « Nom … (imposé) ») et priment sur la nomenclature.
 - **Choix de l'ad server** au départ (CM360 ou Adform) : l'aperçu et l'export s'adaptent. Aperçu **Adform** fidèle à la plateforme, avec le menu de la campagne en liste déroulante : **Campagne** (campagne puis « Direct Line Item » : Media = régie, Type Direct, Status, ID, Start/End Date, Non-Programmatic Budget, Volume en Imps), **Bannières** (type, taille, line item, URL de clic) et **Tags** (taille, type de tag, nombre de bannières). Les informations manquantes ne sont plus listées : elles apparaissent en orange dans le plan et dans l'aperçu ; le détail de lecture et de nomenclature est replié.
 - **Interface type Claude** : page de connexion, puis barre latérale à gauche avec deux modes **Trafficking / Reporting**, recherche, **＋ Créer**, **Récents** (« Mes tâches » / « Agence » pour voir les demandes des collègues de la même agence) et, en bas, le compte (Paramètres : mot de passe ; Administration : utilisateurs, pour les admins ; Déconnexion).

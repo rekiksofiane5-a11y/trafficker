@@ -1,5 +1,5 @@
 
-# CM360 Trafficker — Guide de mise en place
+# Umnia — Guide de mise en place
 
 Outil qui génère le trafficking d'une campagne **Campaign Manager 360** (API v5) à partir d'un plan média CSV/XLSX : annonceur → landing page → campagne → emplacements → créatives → annonces (rotation + affectation des placements).
 

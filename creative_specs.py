@@ -38,7 +38,7 @@ RULES: Dict[str, dict] = {
     "Audio in-stream – desktop/mobile – Audio": {
         "ext": {"mp3", "oga", "ogg", "ogv"}, "max_bytes": 1024 * MB},
 }
-# Type de créative Trafficker -> spec CM360
+# Type de créative Umnia -> spec CM360
 CTYPE_SPEC = {
     "IMAGE": "Display – multidevice – Image",
     "HTML5": "Display – multidevice – HTML5",
