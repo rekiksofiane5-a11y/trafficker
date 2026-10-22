@@ -21,7 +21,7 @@ CANONICAL = [
     "advertiser_name", "campaign_name", "campaign_start", "campaign_end",
     "placement_name", "site_id", "site_name", "size", "pricing_type", "ad_name",
     "creative_name", "creative_type", "creative_category", "placement_category",
-    "objective", "audience", "targeting", "format_label", "message", "package", "device", "snippet", "creative_path",
+    "objective", "audience", "targeting", "targeting_detail", "format_label", "message", "package", "device", "snippet", "creative_path",
     "landing_page_url", "active", "objective_impressions", "budget_eur",
 ]
 REQUIRED = ["campaign_name", "campaign_start", "campaign_end", "placement_name",

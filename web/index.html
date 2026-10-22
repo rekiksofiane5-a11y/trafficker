@@ -35,7 +35,7 @@ body { margin: 0; background: var(--bg); color: var(--text);
 table.ed { font-size: .8rem; }
 table.ed th { position: sticky; top: 0; background: var(--card); z-index: 1; white-space: nowrap; }
 table.ed td { padding: 2px; }
-table.ed input { width: 100%; min-width: 7rem; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px;
+table.ed input { width: 100%; min-width: 0; padding: 4px 6px; border: 1px solid transparent; border-radius: 6px;
                  background: transparent; color: var(--text); font: inherit; }
 table.ed input:hover { border-color: var(--border); }
 table.ed input:focus { border-color: var(--accent); outline: none; background: var(--card); }
@@ -118,6 +118,20 @@ footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
 a { color: var(--accent); }
 .hidden { display: none; }
 [hidden] { display: none !important; }
+/* Colonnes redimensionnables (glisser le bord droit de l'en-tête ; double-clic = large / normal) */
+table.rz { table-layout: fixed; }
+table.rz th { position: sticky; top: 0; background: var(--card); z-index: 1; overflow: hidden; text-overflow: ellipsis; }
+table.rz td { overflow: hidden; text-overflow: ellipsis; }
+table.pv.rz .pv-name { max-width: none; }
+.col-grip { position: absolute; top: 0; right: 0; width: 8px; height: 100%; cursor: col-resize; touch-action: none; }
+.col-grip::after { content: ""; position: absolute; top: 20%; bottom: 20%; right: 3px; width: 2px; border-radius: 2px; background: var(--border); }
+.col-grip:hover::after, .col-grip.on::after { background: var(--accent); }
+/* Plan déposé : la zone de dépôt se replie en une ligne après la production */
+#pm-step.collapsed { padding: 10px 18px; }
+#pm-step.collapsed > :not(#pm-compact) { display: none; }
+#pm-compact { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+#pm-compact .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pm-compact button { padding: 6px 12px; }
 /* Coquille : connexion, barre latérale, tâches */
 body { overflow: hidden; }
 .login { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; overflow: auto; }
@@ -274,6 +288,10 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
       </div>
 
       <section class="card" id="pm-step" aria-labelledby="t-plan">
+        <div id="pm-compact" hidden>
+          <span class="t" id="pm-compact-text"></span>
+          <button type="button" id="pm-reopen" class="secondary">Modifier le plan ou relancer</button>
+        </div>
         <h2 id="t-plan">Plan média</h2>
         <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
           <strong>Déposez le plan média ici</strong> ou cliquez pour choisir un fichier
@@ -460,6 +478,7 @@ async function boot() {
 
 function pickFile(f) {
   planFile = f || null;
+  if (f) collapsePlan(false);
   $("file-name").textContent = f ? "Fichier : " + f.name : "";
   $("analyze").disabled = !(planFile && engineReady);
 }
@@ -672,8 +691,8 @@ function renderPreview(all) {
     el("h3", {}, "Aperçu dans CM360 (avant envoi)"),
     stepBar(() => { step = 2; applyResult(lastResult); }),
     tools,
-    el("div", {class: "table-wrap"}, el("table", {class: "pv"},
-      el("thead", {}, el("tr", {}, ...head.map((h) => el("th", {}, h)))), el("tbody", {}, ...trs))));
+    el("div", {class: "table-wrap"}, resizable(el("table", {class: "pv"},
+      el("thead", {}, el("tr", {}, ...head.map((h) => el("th", {}, h)))), el("tbody", {}, ...trs)), "cm360", head, 110)));
 }
 function updateGroupBtn() {
   const b = $("group-package");
@@ -693,13 +712,64 @@ function applyResult(d) {
   return ok;
 }
 
+// Largeurs de colonnes mémorisées par tableau (préférence du poste)
+const COL_WIDTHS = (() => { try { return JSON.parse(localStorage.getItem("umnia_cols") || "{}"); } catch (e) { return {}; } })();
+const WIDE_COLS = {targeting: 220, targeting_detail: 320, placement_name: 240, placement_final: 240, ad_final: 240,
+                   creative_final: 220, ad_name: 220, creative_name: 220, landing_page_url: 220, Name: 380};
+function resizable(tableEl, prefix, keys, fallback = 140) {
+  const ths = [...tableEl.querySelectorAll("thead th")];
+  const cols = ths.map(() => el("col"));
+  const widths = ths.map((th, i) => COL_WIDTHS[`${prefix}:${keys[i]}`] || WIDE_COLS[keys[i]] || (keys[i] ? fallback : 44));
+  const apply = () => {
+    widths.forEach((w, i) => { cols[i].style.width = w + "px"; });
+    tableEl.style.width = widths.reduce((a, b) => a + b, 0) + "px";
+  };
+  tableEl.prepend(el("colgroup", {}, ...cols));
+  tableEl.classList.add("rz");
+  ths.forEach((th, i) => {
+    if (!keys[i]) return;
+    th.title = th.textContent;
+    const grip = el("span", {class: "col-grip", role: "separator", "aria-orientation": "vertical",
+                             "aria-label": "Largeur de la colonne " + th.textContent, tabindex: "0"});
+    const save = () => {
+      COL_WIDTHS[`${prefix}:${keys[i]}`] = widths[i];
+      try { localStorage.setItem("umnia_cols", JSON.stringify(COL_WIDTHS)); } catch (e) { /* stockage indisponible */ }
+    };
+    grip.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const x0 = e.clientX, w0 = widths[i];
+      grip.classList.add("on");
+      grip.setPointerCapture(e.pointerId);
+      const move = (ev) => { widths[i] = Math.max(50, Math.round(w0 + ev.clientX - x0)); apply(); };
+      const up = () => { grip.classList.remove("on"); grip.removeEventListener("pointermove", move); save(); };
+      grip.addEventListener("pointermove", move);
+      grip.addEventListener("pointerup", up, {once: true});
+    });
+    grip.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      widths[i] = widths[i] < 360 ? 480 : (WIDE_COLS[keys[i]] || fallback);
+      apply(); save();
+    });
+    grip.addEventListener("keydown", (e) => {          // clavier : flèches gauche / droite
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      widths[i] = Math.max(50, widths[i] + (e.key === "ArrowRight" ? 20 : -20));
+      apply(); save();
+    });
+    th.append(grip);
+  });
+  apply();
+  return tableEl;
+}
+
 function renderEditor(d) {
   table = d.table.map((r) => ({...r}));
   columns = d.columns;
   const head = el("tr", {}, ...columns.map((c) => el("th", {scope: "col"}, c.label)), el("th", {}, ""));
   const body = el("tbody", {});
   table.forEach((row, i) => body.append(editorRow(row, i)));
-  $("editor").replaceChildren(el("table", {class: "ed"}, el("thead", {}, head), body));
+  $("editor").replaceChildren(resizable(el("table", {class: "ed"}, el("thead", {}, head), body), "ed",
+                                        [...columns.map((c) => c.key), ""]));
 }
 
 function editorRow(row, i) {
@@ -708,6 +778,7 @@ function editorRow(row, i) {
     const isDate = c.key === "campaign_start" || c.key === "campaign_end";
     const input = el("input", {"aria-label": `${c.label}, ligne ${i + 1}`, "data-key": c.key,
                                value: isDate ? isoToFr(row[c.key]) : (row[c.key] || "")});
+    input.title = input.value;
     if (REQUIRED_CELLS.has(c.key)) input.placeholder = "à compléter";
     if (isDate) input.placeholder = "JJ/MM/AAAA";
     const td = el("td", {}, input);
@@ -845,9 +916,10 @@ function renderAdform(pa) {
     stepBar(() => { step = 2; applyResult(lastResult); }),
     el("div", {class: "af-bar"}, el("label", {for: "adform-view"}, "Vue de la campagne : "), select,
       el("span", {class: "hint"}, ` Total : ${v.rows.length - (adformView === "campaign" ? pa.campaign.filter((r) => r.kind === "campaign").length : 0)}`)),
-    el("div", {class: "table-wrap"}, el("table", {class: "pv"},
+    el("div", {class: "table-wrap"}, resizable(el("table", {class: "pv"},
       el("thead", {}, el("tr", {}, ...v.head.map((h) => el("th", {}, h)))),
-      el("tbody", {}, ...(v.rows.length ? v.rows : [el("tr", {}, el("td", {colspan: String(v.head.length), class: "hint"}, "Aucun élément."))])))));
+      el("tbody", {}, ...(v.rows.length ? v.rows : [el("tr", {}, el("td", {colspan: String(v.head.length), class: "hint"}, "Aucun élément."))]))),
+      "adform-" + adformView, v.head, 120)));
 }
 
 $("analyze").addEventListener("click", async () => {
@@ -871,6 +943,7 @@ $("analyze").addEventListener("click", async () => {
     applyResult(d);
     if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); }
     $("output").classList.add("hidden");
+    if (!d.fatal) collapsePlan(true);
     if (!d.fatal && current) {
       // Le nom de campagne et l'annonceur saisis à la création de la tâche font foi
       const force = {};
@@ -1112,7 +1185,19 @@ $("create-form").addEventListener("submit", async (e) => {
   } catch (err) { $("cd-error").textContent = err.message; handleAuth(err); }
 });
 
+// Après la production, la zone de dépôt se replie en une ligne (rouvrable pour relancer)
+function collapsePlan(on) {
+  $("pm-step").classList.toggle("collapsed", on);
+  $("pm-compact").hidden = !on;
+  if (!on) return;
+  const name = (planFile && planFile.name) || (current && current.data.file_name) || "plan média";
+  const n = $("instructions").value.split("\n").filter((l) => l.trim()).length;
+  $("pm-compact-text").textContent = `📄 ${name}` + (n ? ` · ${n} instruction(s)` : "");
+}
+$("pm-reopen").addEventListener("click", () => { collapsePlan(false); $("drop").focus(); });
+
 function resetWork() {
+  collapsePlan(false);
   planFile = null;
   $("file").value = ""; $("nomen").value = ""; $("creas").value = "";
   $("file-name").textContent = "";
@@ -1162,7 +1247,7 @@ async function restoreWork(t) {
     step = t.data.step || 1;
     selected.clear();
     applyResult(d);
-    if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); }
+    if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); collapsePlan(true); }
   } catch (e) {
     $("result").classList.remove("hidden");
     $("summary").replaceChildren(el("p", {class: "err"}, "Restauration impossible : " + e.message));

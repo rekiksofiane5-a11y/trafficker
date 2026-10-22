@@ -129,7 +129,7 @@ def preview(plan) -> list:
 CAMPAIGN_FIELDS = ["campaign_name", "advertiser_name", "campaign_start", "campaign_end"]
 TABLE_COLUMNS = [
     ("objective", "Objectif"), ("site_name", "Régie / site"), ("package", "Package"),
-    ("audience", "Audience"), ("targeting", "Ciblage"), ("device", "Devices"),
+    ("audience", "Audience"), ("targeting", "Ciblage"), ("targeting_detail", "Détail du ciblage"), ("device", "Devices"),
     ("placement_name", "Emplacement"), ("format_label", "Format"), ("size", "Dimensions"),
     ("placement_category", "Catégorie"), ("pricing_type", "Achat"), ("ad_name", "Annonce"),
     ("creative_name", "Créative"), ("message", "Message"), ("creative_path", "Fichier créatif"),

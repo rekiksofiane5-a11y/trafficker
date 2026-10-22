@@ -65,6 +65,8 @@ def _create_task(page, name, **fields):
 
 
 def _analyze(page, path, validate=True):
+    if page.is_visible("#pm-reopen"):                     # zone de dépôt repliée après une production
+        page.click("#pm-reopen")
     page.set_input_files("#file", path)
     page.click("#analyze")
     page.wait_for_selector("#result:not(.hidden)", timeout=30000)
@@ -325,4 +327,28 @@ def test_tasks_are_saved_restored_and_reporting_mode(page):
     _analyze(page, os.path.join(ROOT, "plan_media_template.csv"), validate=False)
     page.wait_for_selector("text=Rapport de diffusion simulé")
     page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []
+
+
+def test_resizable_columns_and_folded_drop_zone(page, tmp_path):
+    from fixtures.make_upsa import build
+    path = tmp_path / "upsa.xlsx"
+    build(str(path))
+    _create_task(page, "UPSA Citrate")
+    _analyze(page, str(path), validate=False)
+    assert page.is_visible("#pm-compact") and not page.is_visible("#drop")      # dépôt replié
+    assert "upsa.xlsx" in page.text_content("#pm-compact-text")
+    th = page.locator("#editor th", has_text="Détail du ciblage")
+    w0 = th.bounding_box()["width"]
+    grip = th.locator(".col-grip")
+    grip.scroll_into_view_if_needed()
+    box = grip.bounding_box()
+    page.mouse.move(box["x"] + 4, box["y"] + 5)
+    page.mouse.down()
+    page.mouse.move(box["x"] + 154, box["y"] + 5, steps=5)
+    page.mouse.up()
+    assert th.bounding_box()["width"] > w0 + 100                                # colonne agrandie
+    assert "CONTEXTUEL" in page.text_content("#preview-pane")                # un package par ciblage
+    page.click("#pm-reopen")
+    assert page.is_visible("#drop")
     assert page.errors == []

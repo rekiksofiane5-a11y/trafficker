@@ -764,8 +764,9 @@ BASE_NOMENCLATURE = {
     "defaults": {
         "placement": "{objective}-{audience}-{regie}-{targeting}-{format}",
         "ad": "{placement_name}",
-        # Package CM360 = régie + objectif (créé si le plan n'en donne pas)
-        "package": "Package-{regie}-{objective}",
+        # Package CM360 = régie + objectif + ciblage (créé si le plan n'en donne pas) :
+        # un package par ciblage quand une ligne du plan en décrit plusieurs
+        "package": "Package-{regie}-{objective}-{targeting}",
         "creative": "{regie}-{format}-{message}",
         "options": {"separator": "_", "case": "upper", "strip_accents": True,
                     "max_length": 255, "forbidden": []},

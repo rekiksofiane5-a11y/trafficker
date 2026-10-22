@@ -26,6 +26,7 @@ import csv
 import io
 import os
 import re
+import unicodedata
 from datetime import date, datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
@@ -316,8 +317,51 @@ def parse_date(s: str, default_year: Optional[int] = None) -> str:
     return ""
 
 
+MONTHS = {"janvier": 1, "janv": 1, "jan": 1, "fevrier": 2, "fevr": 2, "fev": 2, "mars": 3, "avril": 4, "avr": 4,
+          "mai": 5, "juin": 6, "juillet": 7, "juil": 7, "aout": 8, "septembre": 9, "sept": 9, "sep": 9,
+          "octobre": 10, "oct": 10, "novembre": 11, "nov": 11, "decembre": 12, "dec": 12,
+          "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7,
+          "august": 8, "september": 9, "october": 10, "november": 11, "december": 12}
+_MONTH = r"(janv(?:ier)?|f[eé]v(?:r(?:ier)?)?|mars|avr(?:il)?|mai|juin|juil(?:let)?|ao[uû]t|sept?(?:embre)?|oct(?:obre)?" \
+         r"|nov(?:embre)?|d[eé]c(?:embre)?|january|february|march|april|may|june|july|august|september|october" \
+         r"|november|december)\.?"
+RE_TEXT_PERIOD = re.compile(
+    r"(\d{1,2})(?:er)?\s*(?:" + _MONTH + r")?\s*(\d{4})?\s*(?:au|à|a|-|–|→|>|to|jusqu'au)\s*"
+    r"(\d{1,2})(?:er)?\s*" + _MONTH + r"\s*(\d{4})?", re.I)
+
+
+def _month(word: str) -> int:
+    w = unicodedata.normalize("NFKD", word or "").encode("ascii", "ignore").decode().lower().rstrip(".")
+    return MONTHS.get(w, 0)
+
+
+def _text_period(s: str) -> Tuple[str, str]:
+    """« 16 au 23 avril 2025 », « du 28 mars au 4 avril 2025 », « 1er - 15 mai »."""
+    m = RE_TEXT_PERIOD.search(s or "")
+    if not m:
+        return "", ""
+    d1, m1, y1, d2, m2, y2 = m.groups()
+    year = int(y2 or y1 or 0) or None
+    if not year:
+        return "", ""
+    mo2 = _month(m2)
+    mo1 = _month(m1) if m1 else mo2
+    try:
+        a = date(int(y1) if y1 else year, mo1, int(d1))
+        b = date(year, mo2, int(d2))
+        if a > b and not y1:
+            a = date(year - 1, mo1, int(d1))
+        return a.isoformat(), b.isoformat()
+    except ValueError:
+        return "", ""
+
+
 def parse_period(s: str) -> Tuple[str, str]:
-    """« du 02/11/2026 au 15/12/2026 », « 02/11 - 15/12/2026 », « 2026-11-02 → 2026-12-15 »."""
+    """« du 02/11/2026 au 15/12/2026 », « 02/11 - 15/12/2026 », « 2026-11-02 → 2026-12-15 »,
+    « 16 au 23 avril 2025 »."""
+    a, b = _text_period(s)
+    if a:
+        return a, b
     toks = RE_DATE_TOKEN.findall(s or "")
     if len(toks) < 2:
         return "", ""
@@ -331,6 +375,57 @@ def parse_period(s: str) -> Tuple[str, str]:
     if a and b and a > b and re.fullmatch(r"\d{1,2}[/.\-]\d{1,2}", toks[0]) and year:
         a = parse_date(toks[0], year - 1)                         # « 15/12 au 10/01/2027 »
     return a, b
+
+
+# Ciblages : une cellule peut en décrire plusieurs (« Socio-démo : ... Ciblage contextuel : ... »)
+TARGETING_TYPES = [
+    (re.compile(r"concurren", re.I), "Concurrents"),
+    (re.compile(r"socio[\s_-]*d[eé]mo|d[eé]mographi|\b[aâ]ge\b|\bsexe\b|\bgenre\b", re.I), "Socio-démo"),
+    (re.compile(r"contextuel|s[eé]mantique|mots?[\s-]cl[eé]s|keywords?|th[eé]matique", re.I), "Contextuel"),
+    (re.compile(r"comportement|behavio", re.I), "Comportemental"),
+    (re.compile(r"retargeting|reciblage|remarketing", re.I), "Retargeting"),
+    (re.compile(r"g[eé]o(graphique|loc|ciblage)?\b|r[eé]gion|ville", re.I), "Géo"),
+    (re.compile(r"look[\s-]?alike|similaire", re.I), "Lookalike"),
+    (re.compile(r"1st[\s-]party|first[\s-]party|data client|crm", re.I), "Data 1st party"),
+    (re.compile(r"affinit|centres? d.int[eé]r[eê]t|int[eé]r[eê]ts?\b", re.I), "Affinité"),
+]
+
+
+def split_targeting(text: str) -> List[Tuple[str, str]]:
+    """Cellule de ciblage -> [(type, détail)]. Un segment commence par un libellé suivi de « : »
+    (« Socio-demo : H/F 18-49 ans », « + ciblage sur les contenus mentionnant les concurrents : ... »).
+    Moins de deux segments reconnus : la cellule reste un seul ciblage."""
+    segs: List[List[str]] = []
+    for line in re.split(r"\n+", (text or "").strip()):
+        line = line.strip()
+        if not line:
+            continue
+        head, sep, rest = line.partition(":")
+        label = ""
+        if sep and len(head) <= 90:
+            for rx, name in TARGETING_TYPES:
+                if rx.search(head):
+                    label = name
+                    break
+        if label:
+            segs.append([label, rest.strip()])
+        elif segs:
+            segs[-1][1] = (segs[-1][1] + " " + line).strip()
+        else:
+            segs.append(["", line])
+    named = [x for x in segs if x[0]]
+    if len(named) < 2:
+        return [(text or "", "")] if text else []
+    out: List[Tuple[str, str]] = []
+    for label, detail in segs:
+        detail = re.sub(r"^\(.*?\)\s*:\s*", "", detail).strip(" .…:")   # « (ciblage des mots clés...) : »
+        if not label:
+            label = "Ciblage"
+        n, base = 2, label
+        while any(l == label for l, _ in out):
+            label, n = f"{base} {n}", n + 1
+        out.append((label, detail))
+    return out
 
 
 def _kind(v: str) -> str:
@@ -349,7 +444,7 @@ def _kind(v: str) -> str:
         return "sizes" if len(sizes) > 1 else "size"
     if RE_PRICING.fullmatch(v.strip()) or (RE_PRICING.search(v) and len(v) <= 20):
         return "pricing"
-    if len(RE_DATE_TOKEN.findall(v)) >= 2 and parse_period(v)[0]:
+    if (len(RE_DATE_TOKEN.findall(v)) >= 2 or RE_TEXT_PERIOD.search(v)) and parse_period(v)[0]:
         return "period"
     if parse_date(v):
         return "date"
@@ -775,7 +870,18 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
                 if sz not in base:
                     line["placement_name"] = f"{base}_{sz}"
                 derived.add("plusieurs formats dans une cellule → une ligne par format")
-            rows.append(line)
+            targets = split_targeting(line.get("targeting", ""))
+            if len(targets) < 2:
+                rows.append(line)
+                continue
+            # Plusieurs ciblages dans la cellule -> un emplacement par ciblage (et un package par ciblage)
+            derived.add("plusieurs ciblages dans une cellule → un emplacement par ciblage : "
+                        + ", ".join(t for t, _ in targets))
+            for label, detail in targets:
+                tl = dict(line, targeting=label, targeting_detail=detail)
+                base = tl.get("placement_name") or "Emplacement"
+                tl["placement_name"] = f"{base}_{label}"
+                rows.append(tl)
 
     # Noms générés et normalisation
     gen = set()
