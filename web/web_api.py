@@ -568,3 +568,15 @@ def export_report_regie(campaign_json: str, placements_json: str, delivery_json:
     return reporting.export_regie(json.loads(campaign_json), json.loads(placements_json),
                                   json.loads(delivery_json), site, today)
 
+
+def report_parse(path: str, campaign_name: str = "") -> str:
+    """Mode fichier (sans API) : export de rapport CM360 -> campagne, emplacements, diffusion."""
+    import reporting
+    try:
+        return json.dumps(reporting.parse_export(path, campaign_name), ensure_ascii=False)
+    except Exception as e:                                            # message lisible dans la page
+        return json.dumps({"fatal": str(e)}, ensure_ascii=False)
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+

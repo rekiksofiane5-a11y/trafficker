@@ -123,3 +123,40 @@ def test_split_line_shares_budget_and_volume(tmp_path):
     assert len(t["placements"]) == 16
     assert all(p["impressions"] == "100000" and p["budget"] == "500.00" for p in t["placements"])
     assert float(t["campaign"]["budget"]) == 8000 and t["campaign"]["impressions"] == "1600000"
+
+
+def test_parse_cm360_export_file(tmp_path):
+    """Mode fichier : export CM360 (en-têtes de rapport, « Report Fields », Grand Total) -> données du check."""
+    import shutil
+    src = os.path.join(ROOT, "web", "exemple_export_cm360.csv")
+    path = tmp_path / "export.csv"
+    shutil.copy(src, path)
+    r = reporting.parse_export(str(path))
+    assert r["campaign"]["name"] == "Citrate programmatique 2025" and r["campaign"]["advertiser"] == "UPSA"
+    assert (r["campaign"]["start"], r["campaign"]["end"]) == ("2026-10-16", "2026-10-21")
+    assert len(r["placements"]) == 12 and r["rows"] == 72 and r["warnings"] == []
+    assert all(p["site"] == "DV360 Open Market" and p["size"] for p in r["placements"])
+    c = reporting.check({**r["campaign"], "end": "2026-10-23"}, r["placements"], r["delivery"], "2026-10-22")
+    assert c["kpis"]["impressions"] == 1747655 and c["kpis"]["placements_live"] == 12
+
+
+def test_parse_export_variants_and_plan_placements(tmp_path):
+    p = tmp_path / "instant.csv"
+    p.write_text("Campaign,Site (CM360),Placement,Impressions,Clicks\n"
+                 "Noël,Le Monde,LM-PAVE,\"1,200\",3\nNoël,Teads,TEADS-VIDEO,800,1\nAutre,Le Monde,X,5,0\n"
+                 "Grand Total:,,,2005,4\n", encoding="utf-8")
+    r = reporting.parse_export(str(p))
+    assert r["campaign"]["name"] == "Noël" and r["campaigns"] == ["Noël", "Autre"]
+    assert [d["impressions"] for d in r["delivery"]] == [1200, 800]
+    assert any("Date" in w for w in r["warnings"]) and any("2 campagnes" in w for w in r["warnings"])
+    # Plan lié : les emplacements absents de l'export (aucune diffusion) sont signalés
+    targets = {"campaign": {}, "placements": [{"name": "LM-PAVE", "impressions": "1000"},
+                                              {"name": "LM-GRAND-ANGLE", "site": "Le Monde", "impressions": "500"}]}
+    camp = {**r["campaign"], "start": "2026-10-01", "end": "2026-10-31"}
+    c = reporting.check(camp, r["placements"], r["delivery"], "2026-10-10", targets)
+    missing = [x for x in c["placements"] if x["status"] == reporting.NO_DATA]
+    assert [x["name"] for x in missing] == ["LM-GRAND-ANGLE"]
+    with pytest.raises(ValueError):
+        q = tmp_path / "autre.csv"
+        q.write_text("a,b\n1,2\n", encoding="utf-8")
+        reporting.parse_export(str(q))

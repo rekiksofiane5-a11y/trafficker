@@ -14,6 +14,7 @@ Données en entrée (JSON, mêmes formats pour CM360, Adform et la démo) :
 """
 import hashlib
 import io
+import os
 import re
 import unicodedata
 from datetime import date, timedelta
@@ -189,6 +190,8 @@ def check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: s
     """Synthèse : par emplacement (statut, volumes, 1re / dernière impression) et par régie ;
     avec le plan média lié (targets), rythme de diffusion prévu vs livré et budget."""
     now = _d(today)
+    if targets and campaign.get("from_file"):
+        placements = with_plan_placements(placements, targets)
     by_pl: Dict[str, Dict] = {}
     days = set()
     for r in delivery:
@@ -404,3 +407,145 @@ def export_regie(campaign: Dict, placements: List[Dict], delivery: List[Dict], s
            rep["columns"], [[_fr(r[0])] + r[1:] for r in rep["rows"]], [12, 60, 14, 10, 14, 10, 9],
            total=rep["total"])
     return _save(wb)
+
+
+# --- Mode fichier : export de rapport CM360 (sans API) -------------------------------------
+
+EXPORT_COLUMNS = {
+    "date": ["date", "jour", "day"],
+    "campaign": ["campaign", "campagne"],
+    "campaign_id": ["campaign id", "id campagne"],
+    "advertiser": ["advertiser", "annonceur"],
+    "site": ["site (cm360)", "site (dcm)", "site", "regie", "site name"],
+    "site_id": ["site id (cm360)", "site id (dcm)", "site id"],
+    "placement": ["placement", "emplacement", "placement name"],
+    "placement_id": ["placement id", "id emplacement", "id de l'emplacement"],
+    "size": ["placement size", "placement dimensions", "creative size", "taille", "format"],
+    "impressions": ["impressions", "impr.", "imp."],
+    "clicks": ["clicks", "clics"],
+    "placement_start": ["placement start date", "date de debut de l'emplacement"],
+    "placement_end": ["placement end date", "date de fin de l'emplacement"],
+    "campaign_start": ["campaign start date", "date de debut de la campagne"],
+    "campaign_end": ["campaign end date", "date de fin de la campagne"],
+}
+_EN_MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+
+
+def _plain(s: str) -> str:
+    s = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _any_date(v: str) -> str:
+    """2026-10-15, 15/10/2026, 15/10/26, « Oct 15, 2026 », numéro de série Excel."""
+    import plan_agent
+    v = str(v or "").strip()
+    d = plan_agent.parse_date(v)
+    if d:
+        return d
+    m = re.match(r"^([A-Za-z]{3})[a-z]*\.? (\d{1,2}),? (\d{4})$", v)
+    if m and m.group(1).lower() in _EN_MONTHS:
+        try:
+            return date(int(m.group(3)), _EN_MONTHS[m.group(1).lower()], int(m.group(2))).isoformat()
+        except ValueError:
+            return ""
+    return ""
+
+
+def _int(v) -> int:
+    t = re.sub(r"[\s\u202f\xa0,]", "", str(v or "")).replace("%", "")
+    try:
+        return int(round(float(t)))
+    except ValueError:
+        return 0
+
+
+def parse_export(path: str, campaign_name: str = "") -> Dict:
+    """Export de rapport CM360 (Report builder ou rapport hors ligne ; CSV, XLSX, XLS) ->
+    campagne, emplacements, diffusion jour x emplacement : mêmes données qu'avec l'API."""
+    import plan_agent
+    grids = plan_agent.read_grids(path)
+    best = None
+    for sheet, grid in grids:
+        for i, row in enumerate(grid[:60]):
+            cells = [_plain(c) for c in row]
+            if "impressions" in cells and any(c in cells for c in ("placement", "emplacement", "site (cm360)", "site", "date")):
+                best = (sheet, grid, i, cells)
+                break
+        if best:
+            break
+    if not best:
+        raise ValueError("Export non reconnu : il faut au moins les colonnes Impressions et Placement (ou Site / Date). "
+                         "Utilisez le prompt « Check de mise en ligne » pour générer l'export dans CM360.")
+    _, grid, h, cells = best
+    col = {}
+    for key, names in EXPORT_COLUMNS.items():
+        for n in names:
+            if n in cells and key not in col:
+                col[key] = cells.index(n)
+    get = lambda row, k: str(row[col[k]]).strip() if k in col and col[k] < len(row) else ""
+    rows = []
+    for row in grid[h + 1:]:
+        first = " ".join(str(c) for c in row[:3]).strip().lower()
+        if not first or first.startswith("grand total") or first.startswith("total"):
+            continue
+        if not (get(row, "placement") or get(row, "site") or get(row, "date")):
+            continue
+        rows.append(row)
+    campaigns: Dict[str, int] = {}
+    for row in rows:
+        campaigns[get(row, "campaign")] = campaigns.get(get(row, "campaign"), 0) + _int(get(row, "impressions"))
+    names = [c for c in sorted(campaigns, key=lambda c: -campaigns[c])]
+    chosen = campaign_name if campaign_name in campaigns else (names[0] if names else "")
+    if "campaign" in col:
+        rows = [r for r in rows if get(r, "campaign") == chosen]
+    placements: Dict[str, Dict] = {}
+    delivery, days, warnings = [], [], []
+    starts, ends = [], []
+    for row in rows:
+        name = get(row, "placement") or get(row, "site") or "Campagne"
+        pid = get(row, "placement_id") or name
+        if pid not in placements:
+            size = get(row, "size")
+            m = re.search(r"(\d{2,4})\s*[x×*]\s*(\d{1,4})", size or name, re.I)
+            placements[pid] = {"id": pid, "name": name, "site": get(row, "site") or "Régie inconnue",
+                               "site_id": get(row, "site_id"), "size": f"{m.group(1)}x{m.group(2)}" if m else "",
+                               "start": _any_date(get(row, "placement_start")), "end": _any_date(get(row, "placement_end"))}
+        d = _any_date(get(row, "date"))
+        if d:
+            days.append(d)
+        delivery.append({"date": d, "placement_id": pid, "impressions": _int(get(row, "impressions")),
+                         "clicks": _int(get(row, "clicks"))})
+        if get(row, "campaign_start"):
+            starts.append(_any_date(get(row, "campaign_start")))
+        if get(row, "campaign_end"):
+            ends.append(_any_date(get(row, "campaign_end")))
+    if "date" not in col:
+        warnings.append("Pas de colonne Date : totaux sans détail par jour (ajoutez « Date » au rapport pour le rythme jour par jour).")
+    if "placement_id" not in col:
+        warnings.append("Pas de colonne Placement ID : emplacements identifiés par leur nom.")
+    if "site" not in col:
+        warnings.append("Pas de colonne Site (CM360) : régies inconnues.")
+    if len(names) > 1:
+        warnings.append(f"{len(names)} campagnes dans le fichier : « {chosen} » retenue.")
+    starts, ends = [x for x in starts if x], [x for x in ends if x]
+    campaign = {"id": "file", "name": chosen or os.path.splitext(os.path.basename(path))[0], "from_file": True,
+                "advertiser": next((get(r, "advertiser") for r in rows if get(r, "advertiser")), ""),
+                "start": min(starts) if starts else (min(days) if days else ""),
+                "end": max(ends) if ends else (max(days) if days else ""),
+                "dates_from": "colonnes de dates de campagne" if starts else "premier et dernier jour du fichier"}
+    return {"campaign": campaign, "campaigns": names, "placements": list(placements.values()), "delivery": delivery,
+            "rows": len(rows), "warnings": warnings,
+            "columns": {k: grid[h][i] for k, i in col.items()}}
+
+
+def with_plan_placements(placements: List[Dict], targets: Dict) -> List[Dict]:
+    """Un export CM360 ne contient que les emplacements qui ont diffusé : ceux du plan absents du
+    fichier sont ajoutés (sans données) pour que le check les signale."""
+    matched = match_targets(placements, targets.get("placements") or [])
+    used = {id(t) for t in matched.values()}
+    extra = [{"id": f"plan:{i}", "name": t.get("name", ""), "site": t.get("site") or "Régie du plan",
+              "site_id": "", "size": t.get("size", ""), "from_plan": True}
+             for i, t in enumerate(targets.get("placements") or []) if id(t) not in used and t.get("name")]
+    return placements + extra
+

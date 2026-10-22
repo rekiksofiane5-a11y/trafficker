@@ -500,3 +500,36 @@ def test_cm360_prompt_without_api(page):
     assert "Schedule and delivery" in page.text_content("#pp-output")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
+
+
+def test_reporting_from_cm360_export_file(page, tmp_path):
+    """Sans API : export de rapport CM360 déposé -> check (avec plan lié : emplacements muets) et report régie."""
+    from fixtures.make_upsa import build
+    plan = tmp_path / "upsa.xlsx"
+    build(str(plan), 1600000, "8 000 €")
+    _create_task(page, "UPSA plan (fichier)", advertiser="UPSA")
+    page.fill("#instructions", "Régie : DV360 Open Market")
+    _analyze(page, str(plan), validate=False)
+    page.wait_for_function("document.getElementById('task-chips').textContent.includes('produit')")
+    page.click(".modes [data-mode=reporting]")
+    _create_task(page, "UPSA export")
+    page.set_input_files("#rp-file", os.path.join(ROOT, "web", "exemple_export_cm360.csv"))
+    page.wait_for_selector("#rp-fstart")
+    assert "72 ligne(s)" in page.text_content("#rp-selected") and not page.is_disabled(".tpl[data-tpl=check]")
+    page.fill("#rp-fend", "2026-10-23")
+    page.dispatch_event("#rp-fend", "change")
+    page.click(".tpl[data-tpl=check]")
+    page.wait_for_selector("#rp-pace-table")
+    dash = page.text_content("#rp-dash")
+    assert "12 / 16" in dash                                    # 4 emplacements du plan absents de l'export
+    assert "Données de l'export" in page.text_content("#rp-check-status")
+    page.click(".tpl[data-tpl=regies]")
+    page.fill(".rp-regie input", "trafic@regie.fr")
+    page.click("#rp-launch")
+    page.wait_for_selector("#rp-sched-table")
+    assert "à programmer dans CM360" in page.text_content("#rp-sched-table")
+    page.click(".task-item:has-text('UPSA export')")             # réouverture : export conservé
+    page.wait_for_selector("#rp-fstart")
+    assert page.input_value("#rp-fend") == "2026-10-23"
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []

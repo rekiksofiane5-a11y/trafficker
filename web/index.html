@@ -132,6 +132,10 @@ a { color: var(--accent); }
 #pp-prompt { width: 100%; min-height: 7rem; padding: 10px; border: 2px solid var(--accent); border-radius: 10px; background: var(--card);
   color: var(--text); font: .9rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 #pp-output ol, #pp-output ul { padding-left: 20px; }
+.rp-file { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--border); }
+.rp-file .hint { flex-basis: 100%; }
+.rp-dates { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.rp-dates input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
 .cm360-issues { border: 1px solid var(--warn); border-radius: 10px; padding: 8px 12px; margin: 8px 0; font-size: .88rem; }
 .cm360-issues ul { margin: 4px 0 0; padding-left: 18px; }
 /* Reporting */
@@ -466,6 +470,14 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
               <input id="rp-camp-q" type="search" autocomplete="off" placeholder="Choisissez d'abord l'annonceur" disabled>
               <div id="rp-camp-list" class="pick-list" role="listbox" aria-label="Campagnes"></div>
             </div>
+          </div>
+          <div class="rp-file">
+            <strong>Pas d'accès API ?</strong>
+            <button type="button" id="rp-file-btn" class="secondary">📄 Importer un export de rapport CM360</button>
+            <input id="rp-file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
+            <a href="exemples/exemple_export_cm360.csv" download>Exemple d'export</a>
+            <div class="hint">CSV ou Excel téléchargé depuis CM360 (Report builder → « Download »). Colonnes utiles : Date, Site (CM360),
+              Placement, Placement ID, Impressions, Clicks — le template « Prompt de rapport CM360 » → « Check de mise en ligne » les demande.</div>
           </div>
           <div id="rp-selected" class="info" hidden></div>
         </section>
@@ -1685,7 +1697,7 @@ async function rpSource() {
   }
   $("rp-source").textContent = RP.live
     ? `Données en direct : ${ADSERVER_LABEL[$("adserver").value]} (API).`
-    : `Données de démonstration : ${ADSERVER_LABEL[$("adserver").value]} n'est pas encore connecté (clés API à ajouter dans les secrets du Worker).`;
+    : `Données de démonstration : ${ADSERVER_LABEL[$("adserver").value]} n'est pas connecté par API. Pour vos vraies données, importez un export de rapport CM360 ci-dessous.`;
 }
 
 function demoCampaign(c) {
@@ -1711,6 +1723,7 @@ async function rpPlacements(campId) {
   return {campaign: demoCampaign(c), placements: c.placements};
 }
 async function rpDelivery() {
+  if (RP.source === "file") return RP.fileDelivery;                // mode fichier : données de l'export
   const args = {campaign: RP.campaign, placements: RP.placements, today: isoToday()};
   if (!RP.live) return JSON.parse(await call("report_demo", args));
   let d = await Store.api("POST", "adserver/delivery", {adserver: $("adserver").value, campaign_id: RP.campaign.id});
@@ -1743,6 +1756,7 @@ async function rpSearchAdv() {
 }
 async function rpPickAdv(a) {
   const data = rpData();
+  if (data.file) { delete data.file; RP.source = ""; data.campaign = null; }
   if ((data.advertiser || {}).id !== a.id) { data.campaign = null; rpReset(); }
   data.advertiser = {id: a.id, name: a.name};
   current.advertiser = a.name;
@@ -1782,6 +1796,7 @@ function rpTplState() {
 
 async function rpPickCamp(c) {
   const data = rpData();
+  if (data.file) { delete data.file; RP.source = ""; }
   if ((data.campaign || {}).id !== c.id) { data.regies = []; data.template = data.template || ""; delete data.plan_task; }
   data.campaign = {id: c.id, name: c.name};
   current.campaign = c.name;
@@ -1794,7 +1809,9 @@ async function rpPickCamp(c) {
 
 async function rpLoadCampaign() {
   const data = rpData();
+  if (data.file) { rpApplyFile(data.file); return; }
   rpReset();
+  RP.source = RP.live ? "api" : "demo";
   $("rp-selected").hidden = false;
   $("rp-selected").textContent = "Lecture de la campagne dans l'ad server…";
   try {
@@ -1898,7 +1915,9 @@ async function rpRunCheck(force = false) {
     const delivery = await rpEnsureDelivery(force);
     const targets = await rpTargets();
     const c = JSON.parse(await call("report_check", {campaign: RP.campaign, placements: RP.placements, delivery, today: isoToday(), targets}));
-    $("rp-check-status").textContent = `Données au ${new Date().toLocaleDateString("fr-FR")}` + (RP.live ? "" : " (démonstration)") + ".";
+    $("rp-check-status").textContent = RP.source === "file"
+      ? `Données de l'export ${(rpData().file || {}).name || ""} (jusqu'au ${(c.kpis.last || "").split("-").reverse().join("/") || "—"}).`
+      : `Données au ${new Date().toLocaleDateString("fr-FR")}` + (RP.live ? "" : " (démonstration)") + ".";
     $("rp-dash").replaceChildren(...renderDashboard(c));
     rpData().checked = new Date().toISOString();
     if (current.status === "brouillon") current.status = "check réalisé";
@@ -1967,7 +1986,7 @@ function renderDashboard(c) {
   const head = ["Régie", "Emplacement", "ID", "Format", "Début", "Fin", "Impressions", "Clics", "CTR", "1re impr.", "Dernière impr.", "Statut",
                 ...(withPace ? ["Prévu à date", "Rythme"] : [])];
   const rows = c.placements.map((p) => el("tr", {},
-    el("td", {}, p.site), el("td", {}, p.name), el("td", {class: "pv-id"}, p.id), el("td", {}, p.size), el("td", {}, fr(p.start)),
+    el("td", {}, p.site), el("td", {}, p.name), el("td", {class: "pv-id"}, p.id.startsWith("plan:") ? "au plan, absent de l'export" : p.id), el("td", {}, p.size), el("td", {}, fr(p.start)),
     el("td", {}, fr(p.end)), el("td", {class: "num"}, fmtN(p.impressions)), el("td", {class: "num"}, fmtN(p.clicks)),
     el("td", {class: "num"}, p.ctr.toFixed(2) + " %"), el("td", {}, fr(p.first)), el("td", {}, fr(p.last)),
     el("td", {}, statusChip(p.status)),
@@ -2141,7 +2160,7 @@ $("rp-launch").addEventListener("click", async () => {
       const res = RP.live
         ? await Store.api("POST", "adserver/schedule", {adserver: $("adserver").value, campaign_id: RP.campaign.id,
                                                         site: {id: site.id, name: site.name}, emails, schedule: sc})
-        : {report_id: "", sent_by: "demo"};
+        : {report_id: "", sent_by: RP.source === "file" ? "manual_cm360" : "demo"};
       await rpSaveContacts(r.site, emails);
       done.push({site: r.site, emails, schedule: {...sc}, report_id: res.report_id, sent_by: res.sent_by, created: new Date().toISOString()});
     }
@@ -2156,14 +2175,17 @@ $("rp-launch").addEventListener("click", async () => {
     msg.className = "ok";
     msg.textContent = RP.live
       ? `${done.length} report(s) programmé(s).`
-      : `${done.length} report(s) enregistré(s) en démonstration : aucun e-mail n'est envoyé tant que l'ad server n'est pas connecté.`;
+      : RP.source === "file"
+        ? `${done.length} report(s) enregistré(s). Sans API, Umnia n'envoie rien : téléchargez l'Excel de chaque régie, ou programmez l'envoi dans CM360 (template « Prompt de rapport CM360 » → « Report régie »).`
+        : `${done.length} report(s) enregistré(s) en démonstration : aucun e-mail n'est envoyé tant que l'ad server n'est pas connecté.`;
     rpRenderSend();
   }
 });
 
 // Reports déjà programmés : pause / reprise, modification, suppression
 const FREQ_LABEL = {daily: "Quotidien", weekly: "Hebdomadaire", monthly: "Mensuel"};
-const SENT_BY = {cm360: "envoyé par CM360", manual: "à programmer dans Adform", demo: "démonstration"};
+const SENT_BY = {cm360: "envoyé par CM360", manual: "à programmer dans Adform", demo: "démonstration",
+                 manual_cm360: "à programmer dans CM360 (Schedule and delivery)"};
 let rpEditing = -1;
 
 function renderScheduled() {
@@ -2270,6 +2292,65 @@ async function rpDeleteSchedule(i) {
   msg.className = "ok";
   msg.textContent = `Report ${s.site} supprimé.` + (s.sent_by === "manual" ? " À supprimer aussi dans Adform." : "");
   renderScheduled();
+}
+
+// --- Mode fichier : export de rapport CM360 déposé dans Umnia (sans API) ---
+$("rp-file-btn").addEventListener("click", () => $("rp-file").click());
+$("rp-file").addEventListener("change", async () => {
+  const f = $("rp-file").files[0];
+  if (!f) return;
+  $("rp-selected").hidden = false;
+  $("rp-selected").textContent = `Lecture de ${f.name}…`;
+  try {
+    const bytes = await f.arrayBuffer();
+    const d = JSON.parse(await call("report_parse", {name: f.name, bytes}));
+    if (d.fatal) throw new Error(d.fatal);
+    const data = rpData();
+    data.file = {name: f.name, parsed: d, dates: null};
+    data.campaign = {id: "file", name: d.campaign.name};
+    data.advertiser = d.campaign.advertiser ? {id: "", name: d.campaign.advertiser} : data.advertiser;
+    delete data.plan_task;
+    current.campaign = d.campaign.name;
+    if (d.campaign.advertiser) current.advertiser = d.campaign.advertiser;
+    renderTaskHead();
+    saveSoon(0);
+    rpApplyFile(data.file);
+  } catch (e) {
+    $("rp-selected").replaceChildren(el("span", {class: "err"}, "Import impossible : " + e.message));
+  } finally { $("rp-file").value = ""; }
+});
+
+function rpApplyFile(file) {
+  const p = file.parsed;
+  rpReset();
+  RP.source = "file";
+  RP.campaign = {...p.campaign, ...(file.dates || {})};
+  RP.placements = p.placements;
+  RP.fileDelivery = p.delivery;
+  $("rp-adv-q").value = RP.campaign.advertiser || "";
+  $("rp-camp-q").value = RP.campaign.name;
+  const sites = rpSites();
+  const start = el("input", {type: "date", id: "rp-fstart", value: RP.campaign.start, "aria-label": "Début de la campagne"});
+  const end = el("input", {type: "date", id: "rp-fend", value: RP.campaign.end, "aria-label": "Fin de la campagne"});
+  const onDates = () => {
+    file.dates = {start: start.value, end: end.value};
+    RP.campaign = {...RP.campaign, ...file.dates};
+    saveSoon(0);
+    if (rpData().template === "check") rpRunCheck();
+  };
+  start.addEventListener("change", onDates);
+  end.addEventListener("change", onDates);
+  $("rp-selected").hidden = false;
+  $("rp-selected").replaceChildren(
+    el("div", {}, "📄 ", el("strong", {}, file.name), ` — ${p.rows} ligne(s) · campagne `, el("strong", {}, RP.campaign.name),
+       RP.campaign.advertiser ? ` (${RP.campaign.advertiser})` : "", ` · ${RP.placements.length} emplacement(s) avec données · ${sites.length} régie(s) : `,
+       ...sites.map((s) => el("span", {class: "chip"}, s.name))),
+    el("div", {class: "rp-dates"}, "Dates de la campagne :", start, "→", end,
+       el("span", {class: "hint"}, file.dates ? "(saisies)" : `(${p.campaign.dates_from} — à corriger si besoin pour le rythme)`)),
+    ...(p.warnings || []).map((w) => el("div", {class: "hint"}, "⚠️ " + w)),
+    el("div", {class: "hint"}, "Les emplacements sans diffusion n'apparaissent pas dans un export : liez le plan média dans le check pour les retrouver."));
+  rpTplState();
+  rpShowTemplate(rpData().template);
 }
 
 // --- Template 3 : prompt de rapport CM360 (sans accès API) ---
