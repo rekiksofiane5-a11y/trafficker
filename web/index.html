@@ -18,8 +18,6 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
        font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-main { max-width: 64rem; margin: 0 auto; padding: 20px 16px 60px; }
-main.wide { max-width: 120rem; }
 .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 14px; }
 @media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); } }
 .pane { border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-width: 0; }
@@ -111,104 +109,269 @@ footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
 a { color: var(--accent); }
 .hidden { display: none; }
 [hidden] { display: none !important; }
+/* Coquille : connexion, barre latérale, tâches */
+body { overflow: hidden; }
+.login { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; overflow: auto; }
+.login-card { width: min(26rem, 100%); background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 26px; }
+.login-card label, dialog label { margin-top: 12px; }
+.login-card input, dialog input, dialog select, .task-view textarea { width: 100%; padding: 9px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--card); color: var(--text); font: inherit; font-weight: 400; margin-top: 4px; }
+.login-card button { width: 100%; justify-content: center; margin-top: 16px; }
+.brand-lg { font-size: 1.6rem; font-weight: 700; }
+.app { display: grid; grid-template-columns: 17rem minmax(0, 1fr); height: 100vh; }
+.sidebar { display: flex; flex-direction: column; background: var(--chip); border-right: 1px solid var(--border); min-height: 0; }
+.side-top { padding: 14px 12px 8px; display: grid; gap: 10px; }
+.brand { font-weight: 700; font-size: 1.15rem; padding: 0 4px; }
+.modes, .scopes { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg); border-radius: 10px; padding: 3px; gap: 3px; }
+.modes button, .scopes button { background: none; color: var(--muted); padding: 6px 8px; justify-content: center; font-size: .85rem; }
+.modes button.on, .scopes button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 2px #0002; }
+.scopes button { padding: 3px 6px; font-size: .75rem; }
+.new-task { justify-content: flex-start; }
+#search { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
+.recents { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 4px 8px; }
+.recents-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 4px; font-size: .8rem; color: var(--muted); font-weight: 600; }
+#task-list { overflow: auto; flex: 1; }
+.task-item { display: block; width: 100%; text-align: left; background: none; color: var(--text); font-weight: 400;
+  padding: 7px 8px; border-radius: 8px; }
+.task-item:hover, .task-item.on { background: var(--bg); }
+.task-item .t { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .9rem; }
+.task-item .s { display: block; font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.account { position: relative; border-top: 1px solid var(--border); padding: 8px; }
+.account-btn { width: 100%; background: none; color: var(--text); padding: 6px; font-weight: 400; text-align: left; }
+.account-btn:hover { background: var(--bg); }
+.avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-text);
+  display: inline-grid; place-items: center; font-weight: 700; flex: none; }
+.who { display: grid; min-width: 0; } .who > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who .hint { margin: 0; }
+.account-menu { position: absolute; bottom: 100%; left: 8px; right: 8px; background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 4px; box-shadow: 0 6px 20px #0003; display: grid; }
+.account-menu button { background: none; color: var(--text); font-weight: 400; justify-content: flex-start; }
+.account-menu button:hover { background: var(--chip); }
+#main { overflow: auto; padding: 0 20px 60px; }
+.topbar { display: flex; justify-content: flex-end; gap: 14px; padding: 8px 0; font-size: .8rem; }
+.topbar .status { font-size: .8rem; }
+.empty { max-width: 40rem; margin: 14vh auto 0; text-align: center; }
+.empty h1 { font-size: 1.7rem; margin-bottom: 6px; }
+.empty button { margin-top: 14px; }
+.task-view { max-width: 120rem; margin: 0 auto; }
+.task-view > .card:first-of-type { max-width: 60rem; }
+.task-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.task-head h1 { margin: 0; font-size: 1.4rem; }
+.task-head-right { display: flex; gap: 10px; align-items: flex-end; }
+.adserver-pick { margin: 0; }
+.lbl { margin-top: 14px; }
+details.more { margin-top: 10px; } details.more summary { cursor: pointer; color: var(--muted); font-size: .88rem; }
+dialog { border: 1px solid var(--border); border-radius: 16px; background: var(--card); color: var(--text); width: min(32rem, calc(100% - 32px)); padding: 22px; }
+dialog::backdrop { background: #0007; }
+dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
+#admin-dialog { width: min(52rem, calc(100% - 32px)); }
+.ok { color: var(--ok); }
+@media (max-width: 760px) { .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; } .sidebar { max-height: 45vh; } body { overflow: auto; } .app { height: auto; } }
 </style>
 </head>
 <body>
-<main>
-  <header>
-    <h1>Trafficker</h1>
-    <p>Contrôle et préparation du trafficking CM360 / Adform à partir d'un plan média.</p>
-    <span class="badge">🔒 100 % dans votre navigateur — aucun fichier n'est envoyé</span>
-  </header>
+<div id="login-screen" class="login" hidden>
+  <form id="login-form" class="login-card" autocomplete="on">
+    <div class="brand-lg">Trafficker</div>
+    <p class="hint">Trafficking et reporting CM360 / Adform</p>
+    <label>E-mail<input id="login-email" type="email" autocomplete="username" required></label>
+    <label>Mot de passe<input id="login-password" type="password" autocomplete="current-password" required></label>
+    <p id="login-error" class="err" role="alert"></p>
+    <button type="submit" id="login-submit">Se connecter</button>
+  </form>
+  <form id="setup-form" class="login-card" hidden>
+    <div class="brand-lg">Trafficker</div>
+    <p class="hint">Première connexion : créez le compte administrateur de l'agence.</p>
+    <label>Nom<input id="setup-name" required></label>
+    <label>E-mail<input id="setup-email" type="email" autocomplete="username" required></label>
+    <label>ID agence<input id="setup-agency" required></label>
+    <label>Mot de passe (10 caractères min.)<input id="setup-password" type="password" autocomplete="new-password" minlength="10" required></label>
+    <label>Clé d'installation<input id="setup-key" type="password" autocomplete="off">
+      <span class="hint">Le secret TRAFFICKER_PASSWORD défini sur le Worker Cloudflare.</span></label>
+    <p id="setup-error" class="err" role="alert"></p>
+    <button type="submit">Créer le compte administrateur</button>
+  </form>
+</div>
 
-  <section class="card" aria-labelledby="t-plan">
-    <h2 id="t-plan">1. Plan média</h2>
-    <p id="engine" class="status" role="status">Chargement du moteur Python… (≈ 10 Mo la première fois)</p>
-    <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
-      <strong>Déposez votre plan ici</strong> ou cliquez pour choisir un fichier
-      <div id="drop-hint" class="hint">CSV, XLSX, XLS — plan d'agence aux colonnes libres ou export « Campaign spreadsheet » CM360.<br>
-        Excel : surlignez en <mark>jaune</mark> les cases à traffiquer, seules celles-ci seront lues.</div>
-      <div id="file-name" class="hint"></div>
+<div id="app" class="app" hidden>
+  <aside class="sidebar" aria-label="Navigation">
+    <div class="side-top">
+      <div class="brand">Trafficker</div>
+      <div class="modes" role="tablist" aria-label="Mode">
+        <button role="tab" data-mode="trafficking" class="on" aria-selected="true">Trafficking</button>
+        <button role="tab" data-mode="reporting" aria-selected="false">Reporting</button>
+      </div>
+      <button id="new-task" class="new-task">＋ Créer</button>
+      <input id="search" type="search" placeholder="Rechercher une tâche…" aria-label="Rechercher une tâche">
     </div>
-    <input id="file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
-    <div class="grid">
-      <div>
-        <label for="adserver">Ad server</label>
-        <select id="adserver">
-          <option value="cm360">Campaign Manager 360</option>
-          <option value="adform">Adform</option>
-        </select>
-        <div class="hint">L'aperçu et l'export s'adaptent à la plateforme.</div>
-      </div>
-      <div>
-        <label for="camp">Campagne (si absente du fichier)</label>
-        <input id="camp" type="text" autocomplete="off">
-      </div>
-      <div>
-        <label for="adv">Annonceur (si absent du fichier)</label>
-        <input id="adv" type="text" autocomplete="off">
-      </div>
-      <div>
-        <label for="nomen">Nomenclatures (JSON, facultatif)</label>
-        <input id="nomen" type="file" accept=".json">
-        <div class="hint">Sans fichier : nomenclature de base OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT</div>
-      </div>
-      <div>
-        <label for="creas">Fichiers créatifs (facultatif)</label>
-        <input id="creas" type="file" multiple accept=".gif,.jpg,.jpeg,.png,.wbmp,.zip,.adz,.mp4,.mov,.m4v,.avi,.mpeg,.mpg,.webm,.wmv,.mp3,.ogg,.oga">
-        <div class="hint">Contrôlés selon les specs CM360 (poids, dimensions, durée, HTML5…)</div>
-      </div>
-    </div>
-    <div class="actions">
-      <button id="analyze" disabled>Analyser le plan</button>
-      <span class="hint">Exemples : <a href="exemples/plan_media_template.csv" download>plan média</a> ·
-        <a href="exemples/nomenclatures.json" download>nomenclatures</a></span>
-    </div>
-  </section>
-
-  <section id="result" class="card hidden" aria-labelledby="t-res" aria-live="polite">
-    <h2 id="t-res">2. Vérification avant envoi</h2>
-    <div id="summary"></div>
-    <div class="split" id="workspace">
-      <div class="pane" aria-labelledby="t-pm">
-        <h3 id="t-pm">Plan média classé par l'agent <span class="hint">— modifiable</span><span id="sync" class="sync" role="status"></span></h3>
-        <p class="hint">Chaque modification met à jour l'aperçu. Cases orange : à compléter.</p>
-        <div class="camp-form" id="camp-form">
-          <label>Campagne<input id="cf-campaign_name" data-cf="campaign_name" placeholder="à compléter"></label>
-          <label>Annonceur<input id="cf-advertiser_name" data-cf="advertiser_name" placeholder="à compléter"></label>
-          <label>Début<input id="cf-campaign_start" data-cf="campaign_start" placeholder="JJ/MM/AAAA"></label>
-          <label>Fin<input id="cf-campaign_end" data-cf="campaign_end" placeholder="JJ/MM/AAAA"></label>
+    <div class="recents">
+      <div class="recents-head">
+        <span>Récents</span>
+        <div class="scopes" role="tablist" aria-label="Portée">
+          <button role="tab" data-scope="mine" class="on" aria-selected="true">Mes tâches</button>
+          <button role="tab" data-scope="agency" aria-selected="false">Agence</button>
         </div>
-        <p class="hint">1 plan média = 1 annonceur = 1 campagne → objectifs → régies → emplacements → créatives.</p>
-        <div class="table-wrap" id="editor"></div>
-        <div class="actions"><button id="add-row" class="secondary">+ Ajouter une ligne</button></div>
       </div>
-      <div class="pane" id="preview-pane"></div>
+      <nav id="task-list" aria-label="Tâches récentes"></nav>
     </div>
-    <div class="actions" id="actions">
-      <button id="demo" class="secondary">▶ Simuler le trafficking (démo)</button>
-      <button id="delivery" class="secondary">📊 Rapport de diffusion (démo)</button>
-      <button id="dl-cm360">⬇ Campaign spreadsheet CM360</button>
-      <span id="adform-export">
-        <button id="dl-adform">⬇ Classeur bulk Adform</button>
-        <select id="adform-type" aria-label="Type de campagne Adform">
-          <option>Non-programmatic</option><option>Programmatic</option><option>Hybrid</option>
-        </select>
-      </span>
+    <div class="account">
+      <div id="account-menu" class="account-menu" hidden>
+        <button id="open-settings">⚙️ Paramètres</button>
+        <button id="open-admin" hidden>🛡️ Administration</button>
+        <button id="logout">↪ Déconnexion</button>
+      </div>
+      <button id="account-btn" class="account-btn" aria-haspopup="menu">
+        <span id="avatar" class="avatar">?</span>
+        <span class="who"><span id="account-name"></span><span id="account-sub" class="hint"></span></span>
+      </button>
     </div>
-  </section>
+  </aside>
 
-  <section id="output" class="card hidden" aria-labelledby="t-out" aria-live="polite">
-    <h2 id="t-out">3. Résultat</h2>
-    <div id="out"></div>
-  </section>
+  <main id="main">
+    <div class="topbar"><span id="local-banner" class="hint" hidden>Mode local : sans serveur, les tâches restent dans ce navigateur.</span>
+      <span id="engine" class="status" role="status">Chargement du moteur Python… (≈ 10 Mo la première fois)</span></div>
 
-  <footer>
-    Cette version tourne entièrement dans le navigateur : analyse, typage des créatives (display,
-    vidéo in-stream, tracking automatique), nomenclatures, exports CM360 et Adform, simulations.
-    Le trafficking réel via les API CM360/Adform se fait avec la version serveur (voir le README du dépôt).
-  </footer>
-</main>
+    <div id="empty-view" class="empty">
+      <h1 id="empty-title">Que voulez-vous trafficker aujourd'hui ?</h1>
+      <p class="hint" id="empty-sub">Créez une tâche, déposez le plan média avec les cases à lire surlignées en jaune, puis lancez la production.</p>
+      <button id="empty-new">＋ Créer une tâche</button>
+    </div>
+
+    <div id="task-view" class="task-view" hidden>
+      <div class="task-head">
+        <div>
+          <h1 id="task-title"></h1>
+          <div class="chips" id="task-chips"></div>
+        </div>
+        <div class="task-head-right">
+          <label class="adserver-pick">Ad server
+            <select id="adserver">
+              <option value="cm360">Campaign Manager 360</option>
+              <option value="adform">Adform</option>
+            </select>
+          </label>
+          <button id="delete-task" class="secondary" title="Supprimer la tâche">🗑</button>
+        </div>
+      </div>
+
+      <section class="card" id="pm-step" aria-labelledby="t-plan">
+        <h2 id="t-plan">Plan média</h2>
+        <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
+          <strong>Déposez le plan média ici</strong> ou cliquez pour choisir un fichier
+          <div id="drop-hint" class="hint">CSV, XLSX, XLS. Surlignez en <mark>jaune fluo</mark> les cellules à lire :
+            elles guident l'agent, le reste est ignoré.</div>
+          <div id="file-name" class="hint"></div>
+        </div>
+        <input id="file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
+        <label for="instructions" class="lbl">Instructions supplémentaires pour l'agent <span class="hint">(facultatif)</span></label>
+        <textarea id="instructions" rows="3" placeholder="Une par ligne, par exemple :&#10;Période : du 02/11 au 15/12/2026&#10;URL : https://www.annonceur.fr&#10;Régie : Teads"></textarea>
+        <details class="more">
+          <summary>Options : nomenclature client, fichiers créatifs</summary>
+          <div class="grid">
+            <div>
+              <label for="nomen">Nomenclatures (JSON)</label>
+              <input id="nomen" type="file" accept=".json">
+              <div class="hint">Sans fichier : OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT</div>
+            </div>
+            <div>
+              <label for="creas">Fichiers créatifs</label>
+              <input id="creas" type="file" multiple accept=".gif,.jpg,.jpeg,.png,.wbmp,.zip,.adz,.mp4,.mov,.m4v,.avi,.mpeg,.mpg,.webm,.wmv,.mp3,.ogg,.oga">
+              <div class="hint">Contrôlés selon les specs CM360</div>
+            </div>
+          </div>
+        </details>
+        <input id="camp" type="hidden"><input id="adv" type="hidden">
+        <div class="actions">
+          <button id="analyze" disabled>🚀 Lancer la production</button>
+          <span class="hint"><a href="exemples/plan_media_template.csv" download>Plan exemple</a></span>
+        </div>
+      </section>
+
+      <section id="result" class="card hidden" aria-labelledby="t-res" aria-live="polite">
+        <h2 id="t-res">Vérification avant envoi</h2>
+        <div id="summary"></div>
+        <div class="split" id="workspace">
+          <div class="pane" aria-labelledby="t-pm">
+            <h3 id="t-pm">Plan média classé par l'agent <span class="hint">— modifiable</span><span id="sync" class="sync" role="status"></span></h3>
+            <p class="hint">Chaque modification met à jour l'aperçu. Cases orange : à compléter.</p>
+            <div class="camp-form" id="camp-form">
+              <label>Campagne<input id="cf-campaign_name" data-cf="campaign_name" placeholder="à compléter"></label>
+              <label>Annonceur<input id="cf-advertiser_name" data-cf="advertiser_name" placeholder="à compléter"></label>
+              <label>Début<input id="cf-campaign_start" data-cf="campaign_start" placeholder="JJ/MM/AAAA"></label>
+              <label>Fin<input id="cf-campaign_end" data-cf="campaign_end" placeholder="JJ/MM/AAAA"></label>
+            </div>
+            <div class="table-wrap" id="editor"></div>
+            <div class="actions"><button id="add-row" class="secondary">+ Ajouter une ligne</button></div>
+          </div>
+          <div class="pane" id="preview-pane"></div>
+        </div>
+        <div class="actions" id="actions">
+          <button id="demo" class="secondary">▶ Simuler le trafficking (démo)</button>
+          <button id="delivery" class="secondary">📊 Rapport de diffusion (démo)</button>
+          <button id="dl-cm360">⬇ Campaign spreadsheet CM360</button>
+          <span id="adform-export">
+            <button id="dl-adform">⬇ Classeur bulk Adform</button>
+            <select id="adform-type" aria-label="Type de campagne Adform">
+              <option>Non-programmatic</option><option>Programmatic</option><option>Hybrid</option>
+            </select>
+          </span>
+        </div>
+      </section>
+
+      <section id="output" class="card hidden" aria-labelledby="t-out" aria-live="polite">
+        <h2 id="t-out">Résultat</h2>
+        <div id="out"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<dialog id="create-dialog" aria-labelledby="cd-title">
+  <form id="create-form" method="dialog">
+    <h2 id="cd-title">Nouvelle tâche <span id="cd-mode" class="chip"></span></h2>
+    <label>Nom de la tâche *<input id="cd-name" required autocomplete="off"></label>
+    <label>Nom de l'annonceur<input id="cd-advertiser" autocomplete="off"></label>
+    <label>Ad server
+      <select id="cd-adserver"><option value="cm360">Campaign Manager 360</option><option value="adform">Adform</option></select>
+    </label>
+    <label>Nom de la campagne<input id="cd-campaign" autocomplete="off"></label>
+    <label>ID agence<input id="cd-agency" autocomplete="off"></label>
+    <p id="cd-error" class="err" role="alert"></p>
+    <div class="actions">
+      <button type="submit" id="cd-submit">Créer</button>
+      <button type="button" class="secondary" id="cd-cancel">Annuler</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="settings-dialog" aria-labelledby="sd-title">
+  <h2 id="sd-title">Paramètres</h2>
+  <div id="sd-profile" class="hint"></div>
+  <form id="password-form">
+    <h3>Changer le mot de passe</h3>
+    <label>Mot de passe actuel<input id="pw-current" type="password" autocomplete="current-password" required></label>
+    <label>Nouveau mot de passe (10 caractères min.)<input id="pw-new" type="password" autocomplete="new-password" minlength="10" required></label>
+    <p id="pw-msg" role="status"></p>
+    <div class="actions"><button type="submit">Enregistrer</button><button type="button" class="secondary" data-close>Fermer</button></div>
+  </form>
+</dialog>
+
+<dialog id="admin-dialog" aria-labelledby="ad-title">
+  <h2 id="ad-title">Administration — utilisateurs</h2>
+  <div class="table-wrap"><table id="users-table"></table></div>
+  <form id="user-form">
+    <h3>Ajouter un utilisateur</h3>
+    <div class="grid">
+      <label>Nom<input id="u-name" required></label>
+      <label>E-mail<input id="u-email" type="email" required></label>
+      <label>ID agence<input id="u-agency" required></label>
+      <label>Mot de passe initial<input id="u-password" type="password" minlength="10" required autocomplete="new-password"></label>
+      <label>Rôle<select id="u-role"><option value="user">Utilisateur</option><option value="admin">Administrateur</option></select></label>
+    </div>
+    <p id="u-msg" role="status"></p>
+    <div class="actions"><button type="submit">Ajouter</button><button type="button" class="secondary" data-close>Fermer</button></div>
+  </form>
+</dialog>
 
 <script>
 "use strict";
@@ -270,6 +433,7 @@ async function boot() {
     engineReady = true;
     setStatus("Moteur prêt (version " + version + ").");
     $("analyze").disabled = !planFile;
+    if (pendingRestore) { const t = pendingRestore; pendingRestore = null; restoreWork(t); }
   } catch (e) {
     setStatus("Le moteur n'a pas pu se charger : " + e.message, true);
   }
@@ -506,6 +670,7 @@ function applyResult(d) {
   const ok = renderSummary(d);
   for (const id of ["demo", "delivery", "dl-cm360", "dl-adform"]) $(id).disabled = !ok || step !== 2;
   updateGroupBtn();
+  if (current && !d.fatal) saveSoon();
   return ok;
 }
 
@@ -605,7 +770,10 @@ function renderPreviewPane() {
       : el("p", {class: "hint"}, "Aucun objet à créer pour l'instant."));
   }
 }
-$("adserver").addEventListener("change", renderPreviewPane);
+$("adserver").addEventListener("change", () => {
+  renderPreviewPane();
+  if (current) { current.adserver = $("adserver").value; renderTaskHead(); saveSoon(0); }
+});
 
 // Aperçu Adform : menu de la campagne (Campagne / Bannières / Tags), colonnes de la plateforme
 function renderAdform(pa) {
@@ -676,14 +844,30 @@ $("analyze").addEventListener("click", async () => {
     // Nom d'origine conservé : il peut servir de nom de campagne (à vérifier)
     const d = JSON.parse(await call("analyze", {
       name: planFile.name, bytes, camp: $("camp").value.trim(), adv: $("adv").value.trim(), nomen, creas,
+      instructions: $("instructions").value,
     }, [bytes, ...creas.map((c) => c.bytes)]));
     $("result").classList.remove("hidden");
-    document.querySelector("main").classList.add("wide");
     step = 1;
     selected.clear();
     applyResult(d);
     if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); }
     $("output").classList.add("hidden");
+    if (!d.fatal && current) {
+      // Le nom de campagne et l'annonceur saisis à la création de la tâche font foi
+      const force = {};
+      if (current.campaign) force.campaign_name = current.campaign;
+      if (current.advertiser) force.advertiser_name = current.advertiser;
+      if (Object.entries(force).some(([k, v]) => table.some((r) => r[k] !== v))) {
+        for (const r of table) Object.assign(r, force);
+        renderEditor({table, columns});
+        renderCampaignForm({...(d.campaign || {}), ...force});
+        scheduleRebuild(0);
+      }
+      Object.assign(current.data, {file_name: planFile.name, nomen, instructions: $("instructions").value});
+      current.status = "produit";
+      saveSoon(0);
+      if (current.mode === "reporting") { step = 2; applyResult(d); if (!$("delivery").disabled) $("delivery").click(); }
+    }
     $("result").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (e) {
     $("result").classList.remove("hidden");
@@ -733,7 +917,340 @@ $("dl-adform").addEventListener("click", async () => {
   catch (e) { showOutput(el("p", {class: "err"}, "Export Adform impossible : " + e.message)); }
 });
 
+// --- Comptes et tâches ---------------------------------------------------------------------
+// Serveur (Worker + D1) quand /api répond ; sinon mode local : tâches dans ce navigateur.
+const Store = {
+  local: false,
+  async api(method, path, body) {
+    const r = await fetch("/api/" + path, {method, credentials: "same-origin",
+      headers: body ? {"content-type": "application/json"} : {}, body: body ? JSON.stringify(body) : undefined});
+    let d = {};
+    try { d = await r.json(); } catch (e) { /* réponse vide */ }
+    if (!r.ok) { const err = new Error(d.error || "Erreur " + r.status); err.status = r.status; err.data = d; throw err; }
+    return d;
+  },
+  async detect() {
+    try {
+      const r = await fetch("/api/me", {credentials: "same-origin"});
+      if ((r.headers.get("content-type") || "").includes("application/json")) return await r.json();
+    } catch (e) { /* hors ligne ou serveur statique */ }
+    this.local = true;
+    return {user: {id: 0, name: "Utilisateur local", email: "", agency_id: "local", role: "admin"}};
+  },
+  readLocal() { try { return JSON.parse(localStorage.getItem("trf_tasks") || "[]"); } catch (e) { return []; } },
+  writeLocal(tasks) { try { localStorage.setItem("trf_tasks", JSON.stringify(tasks)); } catch (e) { /* quota ou privé */ } },
+  async list(scope, mode, q) {
+    if (!this.local) return (await this.api("GET", `tasks?scope=${scope}&mode=${mode}&q=${encodeURIComponent(q)}`)).tasks;
+    const s = q.toLowerCase();
+    return this.readLocal().filter((t) => t.mode === mode
+      && [t.name, t.advertiser, t.campaign].some((v) => (v || "").toLowerCase().includes(s)))
+      .sort((a, b) => b.updated - a.updated).map(({data, ...t}) => t);
+  },
+  async create(t) {
+    if (!this.local) return (await this.api("POST", "tasks", t)).id;
+    const id = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+    const now = Date.now() / 1000;
+    const tasks = this.readLocal();
+    tasks.push({...t, id, agency_id: t.agency_id || "local", owner_name: me.name, status: "brouillon", data: {}, created: now, updated: now});
+    this.writeLocal(tasks);
+    return id;
+  },
+  async get(id) {
+    if (!this.local) return (await this.api("GET", "tasks/" + id)).task;
+    const t = this.readLocal().find((x) => x.id === id);
+    if (!t) throw new Error("Tâche introuvable.");
+    return t;
+  },
+  async update(id, fields) {
+    if (!this.local) return this.api("PUT", "tasks/" + id, fields);
+    const tasks = this.readLocal();
+    const t = tasks.find((x) => x.id === id);
+    if (t) { Object.assign(t, fields, {updated: Date.now() / 1000}); this.writeLocal(tasks); }
+  },
+  async remove(id) {
+    if (!this.local) return this.api("DELETE", "tasks/" + id);
+    this.writeLocal(this.readLocal().filter((x) => x.id !== id));
+  },
+};
+
+let me = null, mode = "trafficking", scope = "mine", current = null, pendingRestore = null, saveTimer = null;
+const MODE_LABEL = {trafficking: "Trafficking", reporting: "Reporting"};
+const ADSERVER_LABEL = {cm360: "CM360", adform: "Adform"};
+
+async function start() {
+  const d = await Store.detect();
+  if (d.user) return enterApp(d.user);
+  $("login-screen").hidden = false;
+  $("setup-form").hidden = !d.setup;
+  $("login-form").hidden = !!d.setup;
+  ($("setup-form").hidden ? $("login-email") : $("setup-name")).focus();
+}
+
+$("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("login-error").textContent = "";
+  try {
+    const d = await Store.api("POST", "login", {email: $("login-email").value, password: $("login-password").value});
+    $("login-password").value = "";
+    enterApp(d.user);
+  } catch (err) { $("login-error").textContent = err.message; }
+});
+
+$("setup-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("setup-error").textContent = "";
+  const email = $("setup-email").value, password = $("setup-password").value;
+  try {
+    await Store.api("POST", "setup", {name: $("setup-name").value, email, agency_id: $("setup-agency").value,
+                                     password, setup_key: $("setup-key").value});
+    const d = await Store.api("POST", "login", {email, password});
+    enterApp(d.user);
+  } catch (err) { $("setup-error").textContent = err.message; }
+});
+
+function enterApp(user) {
+  me = user;
+  $("login-screen").hidden = true;
+  $("app").hidden = false;
+  $("local-banner").hidden = !Store.local;
+  $("account-name").textContent = me.name || me.email;
+  $("account-sub").textContent = `${me.agency_id}${me.role === "admin" ? " · admin" : ""}`;
+  $("avatar").textContent = (me.name || me.email || "?").trim().charAt(0).toUpperCase();
+  $("open-admin").hidden = me.role !== "admin" || Store.local;
+  $("logout").hidden = Store.local;
+  setMode(mode);
+}
+
+// Barre latérale : modes, recherche, récents (mes tâches / agence)
+function setTabs(sel, attr, value) {
+  for (const b of document.querySelectorAll(sel)) {
+    const on = b.dataset[attr] === value;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", String(on));
+  }
+}
+function setMode(m) {
+  mode = m;
+  setTabs(".modes button", "mode", m);
+  $("empty-title").textContent = m === "reporting" ? "Quel reporting voulez-vous lancer ?" : "Que voulez-vous trafficker aujourd'hui ?";
+  if (current && current.mode !== m) closeTask();
+  refreshList();
+}
+for (const b of document.querySelectorAll(".modes button")) b.addEventListener("click", () => setMode(b.dataset.mode));
+for (const b of document.querySelectorAll(".scopes button")) b.addEventListener("click", () => {
+  scope = b.dataset.scope;
+  setTabs(".scopes button", "scope", scope);
+  refreshList();
+});
+let searchTimer = null;
+$("search").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(refreshList, 250); });
+
+async function refreshList() {
+  if (!me) return;
+  let tasks = [];
+  try { tasks = await Store.list(scope, mode, $("search").value.trim()); }
+  catch (e) { $("task-list").replaceChildren(el("p", {class: "hint"}, e.message)); return handleAuth(e); }
+  if (!tasks.length) {
+    $("task-list").replaceChildren(el("p", {class: "hint"}, $("search").value ? "Aucun résultat." : "Aucune tâche pour l'instant."));
+    return;
+  }
+  $("task-list").replaceChildren(...tasks.map((t) => {
+    const sub = [t.advertiser, ADSERVER_LABEL[t.adserver], scope === "agency" ? t.owner_name : "", t.status].filter(Boolean).join(" · ");
+    const b = el("button", {class: "task-item" + (current && current.id === t.id ? " on" : ""), "data-id": t.id},
+      el("span", {class: "t"}, t.name), el("span", {class: "s"}, sub));
+    b.addEventListener("click", () => openTask(t.id));
+    return b;
+  }));
+}
+
+function handleAuth(e) {
+  if (e && e.status === 401 && !Store.local) location.reload();
+}
+
+// Création d'une tâche
+function openCreate() {
+  $("cd-mode").textContent = MODE_LABEL[mode];
+  $("create-form").reset();
+  $("cd-agency").value = me.agency_id || "";
+  $("cd-agency").disabled = me.role !== "admin" && !Store.local;
+  $("cd-error").textContent = "";
+  $("create-dialog").showModal();
+  $("cd-name").focus();
+}
+$("new-task").addEventListener("click", openCreate);
+$("empty-new").addEventListener("click", openCreate);
+$("cd-cancel").addEventListener("click", () => $("create-dialog").close());
+$("create-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const t = {mode, name: $("cd-name").value.trim(), advertiser: $("cd-advertiser").value.trim(),
+             adserver: $("cd-adserver").value, campaign: $("cd-campaign").value.trim(), agency_id: $("cd-agency").value.trim()};
+  if (!t.name) { $("cd-error").textContent = "Nom de la tâche requis."; return; }
+  try {
+    const id = await Store.create(t);
+    $("create-dialog").close();
+    await openTask(id);
+    refreshList();
+  } catch (err) { $("cd-error").textContent = err.message; handleAuth(err); }
+});
+
+function resetWork() {
+  planFile = null;
+  $("file").value = ""; $("nomen").value = ""; $("creas").value = "";
+  $("file-name").textContent = "";
+  $("analyze").disabled = true;
+  $("result").classList.add("hidden");
+  $("output").classList.add("hidden");
+  $("summary").replaceChildren(); $("editor").replaceChildren(); $("preview-pane").replaceChildren();
+  lastResult = null; table = []; columns = []; step = 1; selected.clear();
+}
+
+function renderTaskHead() {
+  $("task-title").textContent = current.name;
+  const chips = [MODE_LABEL[current.mode], current.advertiser && "Annonceur : " + current.advertiser,
+                 current.campaign && "Campagne : " + current.campaign, "Agence : " + (current.agency_id || ""),
+                 current.owner_name && "Par " + current.owner_name, current.status].filter(Boolean);
+  $("task-chips").replaceChildren(...chips.map((c) => el("span", {class: "chip"}, c)));
+}
+
+async function openTask(id) {
+  await flushSave();
+  let t;
+  try { t = await Store.get(id); } catch (e) { handleAuth(e); return; }
+  current = {...t, data: t.data || {}};
+  resetWork();
+  $("empty-view").hidden = true;
+  $("task-view").hidden = false;
+  renderTaskHead();
+  $("adserver").value = current.adserver || "cm360";
+  $("camp").value = current.campaign || "";
+  $("adv").value = current.advertiser || "";
+  $("instructions").value = current.data.instructions || "";
+  $("analyze").textContent = current.mode === "reporting" ? "📊 Lancer le reporting" : "🚀 Lancer la production";
+  $("delete-task").hidden = !(Store.local || current.owner_id === me.id || me.role === "admin");
+  for (const b of document.querySelectorAll(".task-item")) b.classList.toggle("on", b.dataset.id === id);
+  if (current.data.table && current.data.table.length) {
+    $("file-name").textContent = "Dernier plan : " + (current.data.file_name || "") + " (déposez un fichier pour relancer)";
+    if (engineReady) restoreWork(current); else pendingRestore = current;
+  }
+}
+
+async function restoreWork(t) {
+  if (t !== current) return;
+  try {
+    const d = JSON.parse(await call("restore", {table: t.data.table, nomen: t.data.nomen || ""}));
+    if (t !== current) return;
+    $("result").classList.remove("hidden");
+    step = t.data.step || 1;
+    selected.clear();
+    applyResult(d);
+    if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); }
+  } catch (e) {
+    $("result").classList.remove("hidden");
+    $("summary").replaceChildren(el("p", {class: "err"}, "Restauration impossible : " + e.message));
+  }
+}
+
+function closeTask() {
+  flushSave();
+  current = null;
+  resetWork();
+  $("task-view").hidden = true;
+  $("empty-view").hidden = false;
+}
+
+$("delete-task").addEventListener("click", async () => {
+  if (!current || !window.confirm(`Supprimer la tâche « ${current.name} » ?`)) return;
+  try { await Store.remove(current.id); } catch (e) { window.alert(e.message); return; }
+  current = null;
+  closeTask();
+  refreshList();
+});
+
+// Enregistrement automatique de la tâche ouverte
+function saveSoon(delay = 800) {
+  if (!current) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSave, delay);
+}
+async function flushSave() {
+  if (!saveTimer || !current) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  const t = current;
+  if (table.length) { t.data.table = table; t.data.step = step; }
+  t.data.instructions = $("instructions").value;
+  if (step === 2 && t.status === "produit") t.status = "emplacements validés";
+  try {
+    await Store.update(t.id, {name: t.name, advertiser: t.advertiser, adserver: t.adserver, campaign: t.campaign,
+                              status: t.status, data: t.data});
+    if (t === current) renderTaskHead();
+    refreshList();
+  } catch (e) { $("sync").textContent = " · enregistrement impossible : " + e.message; handleAuth(e); }
+}
+$("instructions").addEventListener("input", () => saveSoon());
+window.addEventListener("beforeunload", () => { flushSave(); });
+
+// Compte : paramètres, administration, déconnexion
+$("account-btn").addEventListener("click", (e) => { e.stopPropagation(); $("account-menu").hidden = !$("account-menu").hidden; });
+document.addEventListener("click", () => { $("account-menu").hidden = true; });
+$("logout").addEventListener("click", async () => {
+  await flushSave();
+  try { await Store.api("POST", "logout"); } finally { location.reload(); }
+});
+for (const b of document.querySelectorAll("dialog [data-close]")) b.addEventListener("click", () => b.closest("dialog").close());
+
+$("open-settings").addEventListener("click", () => {
+  $("sd-profile").textContent = `${me.name} · ${me.email || "—"} · agence ${me.agency_id} · rôle ${me.role}`;
+  $("password-form").hidden = Store.local;
+  $("pw-msg").textContent = Store.local ? "" : "";
+  $("settings-dialog").showModal();
+});
+$("password-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await Store.api("POST", "password", {current: $("pw-current").value, password: $("pw-new").value});
+    $("password-form").reset();
+    $("pw-msg").className = "ok"; $("pw-msg").textContent = "Mot de passe modifié.";
+  } catch (err) { $("pw-msg").className = "err"; $("pw-msg").textContent = err.message; }
+});
+
+async function renderUsers() {
+  let users = [];
+  try { users = (await Store.api("GET", "users")).users; }
+  catch (e) { $("users-table").replaceChildren(el("tr", {}, el("td", {class: "err"}, e.message))); return; }
+  $("users-table").replaceChildren(
+    el("thead", {}, el("tr", {}, ...["Nom", "E-mail", "Agence", "Rôle", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...users.map((u) => {
+      const rm = el("button", {class: "secondary", "aria-label": "Supprimer " + u.email}, "Supprimer");
+      rm.disabled = u.id === me.id;
+      rm.addEventListener("click", async () => {
+        if (!window.confirm(`Supprimer le compte ${u.email} ?`)) return;
+        try { await Store.api("DELETE", "users/" + u.id); renderUsers(); } catch (err) { $("u-msg").textContent = err.message; }
+      });
+      return el("tr", {}, el("td", {}, u.name), el("td", {}, u.email), el("td", {}, u.agency_id),
+                el("td", {}, u.role === "admin" ? "Administrateur" : "Utilisateur"), el("td", {}, rm));
+    })));
+}
+$("open-admin").addEventListener("click", () => {
+  $("u-agency").value = me.agency_id || "";
+  $("u-msg").textContent = "";
+  renderUsers();
+  $("admin-dialog").showModal();
+});
+$("user-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  try {
+    await Store.api("POST", "users", {name: $("u-name").value, email: $("u-email").value, agency_id: $("u-agency").value,
+                                     password: $("u-password").value, role: $("u-role").value});
+    $("user-form").reset();
+    $("u-agency").value = me.agency_id || "";
+    $("u-msg").className = "ok"; $("u-msg").textContent = "Utilisateur ajouté.";
+    renderUsers();
+  } catch (err) { $("u-msg").className = "err"; $("u-msg").textContent = err.message; }
+});
+
 boot();
+start();
 </script>
 </body>
 </html>

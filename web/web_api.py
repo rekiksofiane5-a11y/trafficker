@@ -269,8 +269,71 @@ def preview_adform(plan) -> dict:
     return {"campaign": camp_rows, "banners": banners, "tags": tags}
 
 
+INSTRUCTION_KEYS = [
+    (r"campagne|campaign|nom de (la )?campagne", "campaign_name", "set"),
+    (r"annonceur|client|advertiser", "advertiser_name", "set"),
+    (r"(date de )?d[ée]but|start", "campaign_start", "date"),
+    (r"(date de )?fin|end", "campaign_end", "date"),
+    (r"p[ée]riode|dates", "period", "period"),
+    (r"url|landing|destination|lien", "landing_page_url", "fill"),
+    (r"r[ée]gie|support|site|m[ée]dia", "site_name", "fill"),
+    (r"objectif", "objective", "fill"),
+    (r"audience|cible", "audience", "fill"),
+    (r"ciblage|targeting", "targeting", "fill"),
+    (r"devices?", "device", "fill"),
+    (r"package", "package", "fill"),
+]
+
+
+def apply_instructions(rows: list, text: str, report: list) -> None:
+    """Instructions saisies avec la tâche, une par ligne « clé : valeur » (ex.
+    « Campagne : Hiver 2026 », « Période : du 02/11 au 15/12/2026 », « URL : https://… »).
+    campagne/annonceur/dates s'imposent à tout le plan ; les autres complètent les cases
+    vides. Le reste est noté sans être interprété."""
+    import re
+    import plan_agent
+    for raw in re.split(r"[\n;]+", text or ""):
+        line = raw.strip()
+        if not line:
+            continue
+        m = re.match(r"^\s*([^:=]{2,40}?)\s*[:=]\s*(.+)$", line)
+        hit = None
+        if m:
+            key = m.group(1).strip().lower()
+            for pattern, field, how in INSTRUCTION_KEYS:
+                if re.fullmatch(pattern, key, re.I):
+                    hit = (field, how, m.group(2).strip())
+                    break
+        if not hit:
+            report.append(f"Instruction notée, non interprétée : « {line} »")
+            continue
+        field, how, value = hit
+        if how == "period":
+            a, b = plan_agent.parse_period(value)
+            if not (a and b):
+                report.append(f"Instruction non comprise (période) : « {line} »")
+                continue
+            for r in rows:
+                r["campaign_start"], r["campaign_end"] = a, b
+        elif how == "date":
+            d = plan_agent.parse_date(value)
+            if not d:
+                report.append(f"Instruction non comprise (date) : « {line} »")
+                continue
+            for r in rows:
+                r[field] = d
+        elif how == "set":
+            for r in rows:
+                r[field] = value
+        else:
+            for r in rows:
+                if not r.get(field):
+                    r[field] = value
+        report.append(f"Instruction appliquée : « {line} »")
+
+
 def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
-            nomenclature_json: str = "", creatives_dir: str = "") -> str:
+            nomenclature_json: str = "", creatives_dir: str = "", instructions: str = "") -> str:
     """Lit le plan déposé (CSV, XLSX, XLS, export CM360), le classe, le valide et
     applique les nomenclatures. Le fichier est supprimé après lecture."""
     try:
@@ -286,8 +349,10 @@ def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
             pass
     _STATE.clear()
     report = list(getattr(rows, "ingest_report", []))
+    rows = [dict(r) for r in rows]
+    apply_instructions(rows, instructions, report)
     _STATE["report"] = report
-    return _build([dict(r) for r in rows], nomenclature_json, creatives_dir, report)
+    return _build(rows, nomenclature_json, creatives_dir, report)
 
 
 def rebuild(table_json: str) -> str:
@@ -295,6 +360,13 @@ def rebuild(table_json: str) -> str:
     rows = _normalize(json.loads(table_json))
     return _build(rows, _STATE.get("nomen", ""), _STATE.get("creatives_dir", ""),
                   _STATE.get("report", []))
+
+
+def restore(table_json: str, nomenclature_json: str = "") -> str:
+    """Réouverture d'une tâche enregistrée : repart du tableau sauvegardé, sans l'état d'une autre tâche."""
+    _STATE.clear()
+    _STATE["nomen"] = nomenclature_json or ""
+    return _build(_normalize(json.loads(table_json)), _STATE["nomen"], "", [])
 
 
 def _plan():

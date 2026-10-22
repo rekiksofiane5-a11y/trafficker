@@ -31,7 +31,7 @@ function bytesOf(proxy) {
 
 const COMMANDS = {
   version: async () => ready,
-  analyze: async ({name, bytes, camp, adv, nomen, creas}) => {
+  analyze: async ({name, bytes, camp, adv, nomen, creas, instructions}) => {
     const stamp = Date.now();
     const dir = `/tmp/up_${stamp}`, cdir = `/tmp/creas_${stamp}`;
     py.FS.mkdirTree(dir);
@@ -39,9 +39,10 @@ const COMMANDS = {
     const path = dir + "/" + name.replace(/[\/\\]/g, "_");
     py.FS.writeFile(path, new Uint8Array(bytes));
     for (const f of creas) py.FS.writeFile(cdir + "/" + f.name.replace(/[\/\\]/g, "_"), new Uint8Array(f.bytes));
-    return api.analyze(path, camp, adv, nomen, cdir);
+    return api.analyze(path, camp, adv, nomen, cdir, instructions || "");
   },
   rebuild: async ({table}) => api.rebuild(JSON.stringify(table)),
+  restore: async ({table, nomen}) => api.restore(JSON.stringify(table), nomen || ""),
   run_demo: async () => api.run_demo(),
   delivery_demo: async () => api.delivery_demo(),
   export_cm360: async () => bytesOf(api.export_cm360()),

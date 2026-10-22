@@ -50,8 +50,18 @@ def page(site):
         pg.on("pageerror", lambda e: pg.errors.append(str(e)))
         pg.goto(site)
         pg.wait_for_selector("text=Moteur prêt", timeout=120000)
+        _create_task(pg, "Tâche de test")
         yield pg
         browser.close()
+
+
+def _create_task(page, name, **fields):
+    page.click("#new-task")
+    page.fill("#cd-name", name)
+    for key, value in fields.items():
+        page.fill("#cd-" + key, value)
+    page.click("#cd-submit")
+    page.wait_for_selector("#task-view:not([hidden])")
 
 
 def _analyze(page, path, validate=True):
@@ -289,3 +299,30 @@ def test_step_by_step_and_direct_edit_in_preview(page, tmp_path):
     page.keyboard.press("Enter")
     page.wait_for_function("document.getElementById('preview-pane').innerText.includes('ANNONCE-PERSO')", timeout=15000)
     assert page.locator('#editor input[data-key="ad_final"]').count() >= 1
+
+
+def test_tasks_are_saved_restored_and_reporting_mode(page):
+    """Coquille : tâche créée, production lancée, rechargement -> la tâche se rouvre telle quelle."""
+    _create_task(page, "Lancement printemps", advertiser="Annonceur Démo", campaign="Printemps")
+    page.fill("#instructions", "URL : https://www.exemple.fr")
+    _analyze(page, os.path.join(ROOT, "plan_media_template.csv"))
+    page.wait_for_function("document.getElementById('task-chips').textContent.includes('emplacements validés')")
+    page.reload()
+    page.wait_for_selector("text=Moteur prêt", timeout=120000)
+    assert page.is_visible("#empty-view")
+    page.click(".task-item:has-text('Lancement printemps')")
+    page.wait_for_selector("#result:not(.hidden)")
+    page.wait_for_selector("#back-step")                       # étape 2 restaurée
+    assert page.input_value("#cf-campaign_name") == "Printemps"      # la pop-up fait foi
+    assert page.input_value("#cf-advertiser_name") == "Annonceur Démo"
+    assert page.input_value("#instructions") == "URL : https://www.exemple.fr"
+    page.click(".scopes [data-scope=agency]")
+    page.wait_for_selector("#task-list .task-item")
+    page.click(".modes [data-mode=reporting]")
+    assert page.is_visible("#empty-view")
+    _create_task(page, "Bilan mi-parcours")
+    assert "reporting" in page.text_content("#analyze")
+    _analyze(page, os.path.join(ROOT, "plan_media_template.csv"), validate=False)
+    page.wait_for_selector("text=Rapport de diffusion simulé")
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []

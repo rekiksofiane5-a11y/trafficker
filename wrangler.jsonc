@@ -7,6 +7,10 @@
   "compatibility_date": "2026-06-01",
   "build": { "command": "python3 web/build.py" },
   "assets": { "directory": "./web/dist", "binding": "ASSETS" },
+  // Comptes, sessions et tâches partagées par agence (D1, offre gratuite)
+  "d1_databases": [
+    { "binding": "DB", "database_name": "trafficker", "database_id": "4dcc9fc7-6fad-4557-8612-296e8a8f06ab" }
+  ],
   // v1 a créé la classe du conteneur lors d'un premier essai ; v2 la supprime
   // (le Worker gratuit n'en a pas besoin). Pour revenir à la version serveur,
   // ajouter une migration v3 qui la recrée dans wrangler.containers.jsonc.

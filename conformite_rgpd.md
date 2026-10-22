@@ -64,3 +64,11 @@ Non requise a priori : pas de suivi à grande échelle, pas de données sensible
 - Plans analysés, jobs et échecs de connexion (adresse IP + horodatage) sont dans la base SQLite ; même rétention (1 h ; échecs de connexion : fenêtre anti-force brute).
 - Les identifiants d'ad server ne sont jamais écrits : le navigateur les renvoie à chaque action (test automatique : le secret n'apparaît ni dans la base ni dans son journal WAL).
 - Les adresses IP des échecs de connexion sont des données personnelles : finalité sécurité (art. 32), conservées 5 minutes utiles, purgées au plus tard après 1 h.
+
+## 10. Mise à jour v5 — comptes et tâches (version navigateur, Cloudflare D1)
+
+- Données stockées dans D1 (région WEUR) : utilisateurs (nom, e-mail, ID agence, rôle, empreinte PBKDF2 du mot de passe), sessions (jeton, expiration 12 h), échecs de connexion (IP + horodatage, purgés après 1 h), tâches (nom, annonceur, ad server, campagne, auteur, statut, plan classé et instructions).
+- Le fichier du plan média n'est jamais envoyé ; le plan classé l'est pour retrouver la tâche. Il ne doit pas contenir de données personnelles (minimisation, voir §2).
+- Accès : un utilisateur voit ses tâches et celles de son agence ; suppression par l'auteur ou un administrateur ; comptes gérés par l'administrateur.
+- Cloudflare devient sous-traitant pour ces données (DPA Cloudflare à accepter, à inscrire au registre). Rétention des tâches : jusqu'à suppression par l'agence.
+

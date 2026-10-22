@@ -129,3 +129,16 @@ def test_forced_placement_name_wins():
     web_api._STATE.clear()
     d = json.loads(web_api._build(rows, "", "", []))
     assert [r["name"] for r in d["preview"] if r["kind"] == "placement"] == ["MON-NOM"]
+
+
+def test_instructions_are_applied_or_noted():
+    rows = [{"placement_name": "Home", "site_name": "", "landing_page_url": ""},
+            {"placement_name": "Art", "site_name": "Le Monde", "landing_page_url": "https://a.fr"}]
+    report = []
+    web_api.apply_instructions(rows, "Campagne : Hiver 2026\nPériode : du 02/11 au 15/12/2026\n"
+                                     "URL : https://x.fr\nRégie : Teads\nmerci de vérifier les formats", report)
+    assert all(r["campaign_name"] == "Hiver 2026" and r["campaign_start"] == "2026-11-02"
+               and r["campaign_end"] == "2026-12-15" for r in rows)
+    assert rows[0]["landing_page_url"] == "https://x.fr" and rows[1]["landing_page_url"] == "https://a.fr"
+    assert rows[0]["site_name"] == "Teads" and rows[1]["site_name"] == "Le Monde"
+    assert sum("appliquée" in l for l in report) == 4 and any("non interprétée" in l for l in report)
