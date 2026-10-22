@@ -304,6 +304,8 @@ def _sheet(ws, title_lines: List[str], header: List[str], rows: List[List], widt
                 cell.number_format = "# ##0"
             elif isinstance(v, float):
                 cell.number_format = "0.00"
+            elif isinstance(v, str) and v.endswith(" %"):          # rythme, projection : centrés
+                cell.alignment = Alignment(horizontal="center")
         if status_col is not None and row[status_col] in STATUS_FILL:
             ws.cell(r, status_col + 1).fill = PatternFill("solid", fgColor=STATUS_FILL[row[status_col]])
     if total:
@@ -317,6 +319,10 @@ def _sheet(ws, title_lines: List[str], header: List[str], rows: List[List], widt
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[chr(64 + i)].width = w
     ws.freeze_panes = ws.cell(h + 1, 1)
+    # Impression : paysage, toutes les colonnes sur la largeur d'une page
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.auto_filter.ref = f"A{h}:{chr(64 + len(header))}{h + max(len(rows), 1)}"
 
 
@@ -363,7 +369,7 @@ def export_check(campaign: Dict, placements: List[Dict], delivery: List[Dict], t
             "1re impression", "Dernière impression", "Statut"],
            [[r["site"], r["name"], r["id"], r["size"], _fr(r["start"]), _fr(r["end"]), r["impressions"],
              r["clicks"], r["ctr"], _fr(r["first"]), _fr(r["last"]), r["status"]] for r in c["placements"]],
-           [24, 44, 12, 10, 12, 12, 14, 10, 9, 14, 16, 20], status_col=11)
+           [24, 60, 12, 10, 12, 12, 14, 10, 9, 14, 16, 20], status_col=11)
     if c["pacing"].get("available"):
         pc = c["pacing"]
         _sheet(wb.create_sheet("Rythme"), head + [f"Plan média lié : {pc.get('source', '')} · niveau : {pc['kpis']['level']}"],
@@ -372,7 +378,7 @@ def export_check(campaign: Dict, placements: List[Dict], delivery: List[Dict], t
                [[r["site"], r["name"], r["pacing"]["planned"], r["pacing"]["expected"], r["pacing"]["delivered"],
                  _pct(r["pacing"]["pace"]), r["pacing"]["pace_status"], _pct(r["pacing"]["projection_pct"]),
                  r["pacing"]["budget"], r["pacing"]["spent"]] for r in c["placements"] if r.get("pacing")],
-               [24, 44, 14, 14, 14, 10, 16, 14, 12, 18], status_col=6,
+               [24, 60, 15, 15, 16, 12, 16, 16, 14, 20], status_col=6,
                total=["Total", "", pc["kpis"]["planned"], pc["kpis"]["expected"], pc["kpis"]["delivered"],
                       _pct(pc["kpis"]["pace"]), pc["kpis"]["pace_status"], _pct(pc["kpis"]["projection_pct"]),
                       pc["kpis"]["budget"], pc["kpis"]["spent"]])
@@ -383,7 +389,7 @@ def export_check(campaign: Dict, placements: List[Dict], delivery: List[Dict], t
              pls.get(str(r["placement_id"]), {}).get("name", ""), str(r["placement_id"]),
              int(r.get("impressions") or 0), int(r.get("clicks") or 0)]
             for r in sorted(delivery, key=lambda r: (r.get("date", ""), str(r.get("placement_id"))))],
-           [12, 24, 44, 12, 14, 10])
+           [12, 24, 60, 12, 14, 10])
     return _save(wb)
 
 
@@ -395,6 +401,6 @@ def export_regie(campaign: Dict, placements: List[Dict], delivery: List[Dict], s
     ws.title = "Diffusion"
     _sheet(ws, [f"{campaign.get('advertiser', '')} — {campaign.get('name', '')} — {site}",
                 f"Période : {_fr(campaign.get('start'))} → {_fr(campaign.get('end'))} · Données au {_fr(today)}"],
-           rep["columns"], [[_fr(r[0])] + r[1:] for r in rep["rows"]], [12, 44, 14, 10, 14, 10, 9],
+           rep["columns"], [[_fr(r[0])] + r[1:] for r in rep["rows"]], [12, 60, 14, 10, 14, 10, 9],
            total=rep["total"])
     return _save(wb)

@@ -436,6 +436,7 @@ def test_pacing_from_linked_plan_and_manage_scheduled_reports(page, tmp_path):
     path = tmp_path / "upsa.xlsx"
     build(str(path), 1600000, "8 000 €")
     _create_task(page, "UPSA Citrate — trafficking", advertiser="UPSA")
+    page.fill("#instructions", "Régie : DV360 Open Market")       # noms finaux = ceux de la campagne (démo)
     _analyze(page, str(path), validate=False)
     page.wait_for_function("document.getElementById('task-chips').textContent.includes('produit')")
     page.click(".modes [data-mode=reporting]")
