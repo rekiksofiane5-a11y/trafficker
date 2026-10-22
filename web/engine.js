@@ -52,6 +52,8 @@ const COMMANDS = {
     py.FS.writeFile(path, new Uint8Array(bytes));
     return api.report_parse(path, campaign || "", keyword || "");
   },
+  export_pivot: async ({title, header, rows, data}) =>
+    bytesOf(api.export_report_pivot(title, JSON.stringify(header), JSON.stringify(rows), JSON.stringify(data))),
   plan_targets: async ({table, nomen, source}) => api.plan_targets(JSON.stringify(table), nomen || "", source || ""),
   report_check: async ({campaign, placements, delivery, today, targets}) =>
     api.report_check(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), today,

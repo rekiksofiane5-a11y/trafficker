@@ -180,3 +180,22 @@ def test_real_cm360_instant_report_xlsx(tmp_path):
     build(str(path))
     f = reporting.parse_export(str(path), keyword="lemonde")
     assert [p["id"] for p in f["placements"]] == ["451000001"] and f["rows"] == 2
+
+
+def test_export_table_types_and_pivot_excel(tmp_path):
+    """Toutes les colonnes de l'export : dimensions / métriques / taux, Semaine et Mois ajoutés ; Excel du croisé."""
+    openpyxl = pytest.importorskip("openpyxl")
+    sys.path.insert(0, os.path.join(ROOT, "tests", "fixtures"))
+    from make_cm360_export import build
+    path = tmp_path / "query.xlsx"
+    build(str(path))
+    t = reporting.parse_export(str(path))["table"]
+    kinds = {c["label"]: (c["kind"], c["rate"]) for c in t["columns"]}
+    assert kinds["Placement ID"] == ("dimension", False) and kinds["Date"] == ("dimension", False)
+    assert kinds["Impressions"] == ("metric", False) and kinds["Click Rate"] == ("metric", True)
+    assert kinds["Semaine"][0] == "dimension" and kinds["Mois"][0] == "dimension"
+    assert t["rows"][0][-2:] == ["S40 · 28/09/2026", "2026-10"] and len(t["rows"]) == 4
+    wb = openpyxl.load_workbook(io.BytesIO(reporting.export_pivot(
+        "Test", ["Site (CM360)", "Impressions"], [["Teads FR", 50000], ["Total", 229000]], t)))
+    assert wb.sheetnames == ["Tableau croisé", "Données"]
+    assert "Donnees" in wb["Données"].tables

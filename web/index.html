@@ -136,6 +136,16 @@ a { color: var(--accent); }
 .rp-file .hint { flex-basis: 100%; }
 .rp-dates { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
 .rp-dates input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
+.pv-fields { display: grid; grid-template-columns: repeat(3, minmax(10rem, 1fr)) minmax(14rem, 2fr); gap: 10px; align-items: start; margin: 8px 0; }
+.pv-fields select { width: 100%; }
+.pv-values .opts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; }
+.pv-values label { display: inline-flex; gap: 4px; align-items: center; font-weight: 400; margin: 0; }
+.pv-scroll { max-height: 70vh; overflow: auto; }
+table.pivot th { cursor: pointer; white-space: nowrap; }
+table.pivot th[aria-sort="ascending"]::after { content: " ▲"; } table.pivot th[aria-sort="descending"]::after { content: " ▼"; }
+table.pivot td.num, table.pivot th.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.pivot tr.total td { font-weight: 700; border-top: 2px solid var(--text); position: sticky; bottom: 0; background: var(--card); }
+@media (max-width: 1000px) { .pv-fields { grid-template-columns: 1fr 1fr; } }
 .cm360-issues { border: 1px solid var(--warn); border-radius: 10px; padding: 8px 12px; margin: 8px 0; font-size: .88rem; }
 .cm360-issues ul { margin: 4px 0 0; padding-left: 18px; }
 /* Reporting */
@@ -533,10 +543,30 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
               <strong>✅ Check de mise en ligne</strong><span>Toutes les régies et tous les emplacements : qui remonte des données, qui n'en a pas. Tableau de bord et Excel.</span></button>
             <button type="button" class="tpl" data-tpl="regies" role="radio" aria-checked="false">
               <strong>📨 Report d'envoi aux régies</strong><span>Un report automatique par régie, envoyé par e-mail selon un calendrier.</span></button>
+            <button type="button" class="tpl" data-tpl="pivot" role="radio" aria-checked="false">
+              <strong>📊 Tableau croisé</strong><span>L'export importé rangé par dimensions et métriques : lignes, colonnes, valeurs, totaux, Excel.</span></button>
             <button type="button" class="tpl" data-tpl="prompt" role="radio" aria-checked="false">
               <strong>🪄 Prompt de rapport CM360</strong><span>Sans accès API : votre demande en français devient un prompt complet à coller dans « Generate report » de CM360.</span></button>
           </div>
-          <p id="rp-tpl-hint" class="hint">Check et report régie : choisissez d'abord la campagne. Le prompt CM360 fonctionne sans.</p>
+          <p id="rp-tpl-hint" class="hint">Check et report régie : choisissez d'abord la campagne ou importez un export. Tableau croisé : après l'import d'un export. Le prompt CM360 fonctionne sans.</p>
+        </section>
+
+        <section class="card" id="rp-pivot" aria-labelledby="pv-title" hidden>
+          <div class="rp-head">
+            <h2 id="pv-title">Tableau croisé dynamique</h2>
+            <div class="actions"><button type="button" id="pv-dl">⬇ Télécharger l'Excel</button></div>
+          </div>
+          <p class="hint">Toutes les colonnes de l'export, rangées en dimensions (à mettre en lignes ou en colonnes) et en métriques (valeurs).
+            Les sommes s'additionnent, les taux sont recalculés (CTR = clics / impressions). Cliquez un en-tête pour trier.</p>
+          <div id="pv-presets" class="sugg-row" aria-label="Vues prêtes"></div>
+          <div class="pv-fields">
+            <label>Lignes<select id="pv-r1"></select></label>
+            <label>puis<select id="pv-r2"></select></label>
+            <label>Colonnes<select id="pv-col"></select></label>
+            <div class="pv-values"><span class="lbl">Valeurs</span><div id="pv-values" class="opts" role="group" aria-label="Valeurs"></div></div>
+          </div>
+          <p id="pv-info" class="hint" role="status"></p>
+          <div id="pv-out" class="table-wrap pv-scroll"></div>
         </section>
 
         <section class="card" id="rp-prompt" aria-labelledby="pp-title" hidden>
@@ -658,6 +688,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 </dialog>
 
 <script src="cm_prompt.js"></script>
+<script src="pivot.js"></script>
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -1914,6 +1945,7 @@ function rpReset() {
 // Check et report régie demandent une campagne ; le prompt CM360 fonctionne sans
 function rpTplState() {
   for (const b of document.querySelectorAll(".tpl[data-tpl=check], .tpl[data-tpl=regies]")) b.disabled = !RP.campaign;
+  for (const b of document.querySelectorAll(".tpl[data-tpl=pivot]")) b.disabled = RP.source !== "file";
   $("rp-tpl-hint").hidden = !!RP.campaign;
 }
 
@@ -1977,6 +2009,8 @@ function rpShowTemplate(tpl) {
   $("rp-check").hidden = tpl !== "check";
   $("rp-send").hidden = tpl !== "regies";
   $("rp-prompt").hidden = tpl !== "prompt";
+  $("rp-pivot").hidden = tpl !== "pivot" || RP.source !== "file";
+  if (tpl === "pivot" && RP.source === "file") pvOpen();
   if (tpl === "prompt") ppOpen();
   if (tpl === "check") rpLoadPlans().then(() => rpRunCheck());
   if (tpl === "regies") rpRenderSend();
@@ -2430,6 +2464,7 @@ $("rp-file").addEventListener("change", async () => {
     const data = rpData();
     if (!(d.columns || {}).campaign) d.campaign.name = current.campaign || f.name.replace(/\.[^.]+$/, "");   // export sans colonne Campaign
     data.file = {name: f.name, parsed: packFile(d), dates: null, campaign: "", keyword: ""};
+    if (!data.template || data.template === "prompt") data.template = "pivot";       // export importé : on le range d'abord
     data.campaign = {id: "file", name: d.campaign.name};
     data.advertiser = d.campaign.advertiser ? {id: "", name: d.campaign.advertiser} : data.advertiser;
     delete data.plan_task;
@@ -2445,8 +2480,28 @@ $("rp-file").addEventListener("change", async () => {
 
 // Diffusion stockée en tableaux compacts (exports de plusieurs milliers de lignes)
 function packFile(d) {
-  const {delivery, ...rest} = d;
-  return {...rest, d: delivery.map((x) => [x.date, x.placement_id, x.impressions, x.clicks])};
+  const {delivery, table, ...rest} = d;
+  if (!table) return {...rest, d: delivery.map((x) => [x.date, x.placement_id, x.impressions, x.clicks])};
+  // Table à plat : valeurs des dimensions en dictionnaire (un export de 9 000 lignes tient dans la tâche)
+  const dicts = table.columns.map((c) => (c.kind === "dimension" ? [] : null));
+  const pos = table.columns.map(() => new Map());
+  const rows = table.rows.map((r) => r.map((v, j) => {
+    if (!dicts[j]) return v;
+    if (!pos[j].has(v)) { pos[j].set(v, dicts[j].length); dicts[j].push(v); }
+    return pos[j].get(v);
+  }));
+  return {...rest, t: {columns: table.columns, dicts, rows}};
+}
+function unpackTable(p) {
+  if (!p.t) return null;
+  return {columns: p.t.columns, rows: p.t.rows.map((r) => r.map((v, j) => (p.t.dicts[j] ? p.t.dicts[j][v] : v)))};
+}
+// Diffusion jour x emplacement déduite de la table (mêmes règles que l'import)
+function deliveryFromTable(p, table) {
+  const at = (key) => (p.columns && p.columns[key] ? table.columns.findIndex((c) => c.label === p.columns[key]) : -1);
+  const [di, pi, pn, si, ii, ci] = ["date", "placement_id", "placement", "site", "impressions", "clicks"].map(at);
+  return table.rows.map((r) => ({date: di >= 0 ? r[di] : "", impressions: ii >= 0 ? Number(r[ii]) || 0 : 0, clicks: ci >= 0 ? Number(r[ci]) || 0 : 0,
+    placement_id: String((pi >= 0 && r[pi]) || (pn >= 0 && r[pn]) || (si >= 0 && r[si]) || "Campagne")}));
 }
 async function rpParseFile(name, campaign, keyword) {
   const bytes = RP.fileBytes.slice(0);
@@ -2471,7 +2526,9 @@ function rpApplyFile(file) {
   RP.source = "file";
   RP.campaign = {...p.campaign, ...(file.dates || {})};
   RP.placements = p.placements;
-  RP.fileDelivery = (p.d || []).map(([date, placement_id, impressions, clicks]) => ({date, placement_id, impressions, clicks}));
+  RP.table = unpackTable(p);
+  RP.fileDelivery = RP.table ? deliveryFromTable(p, RP.table)
+    : (p.d || []).map(([date, placement_id, impressions, clicks]) => ({date, placement_id, impressions, clicks}));
   $("rp-adv-q").value = RP.campaign.advertiser || "";
   $("rp-camp-q").value = RP.campaign.name;
   const sites = rpSites();
@@ -2527,6 +2584,91 @@ function rpFileFilters(file) {
   }
   return box;
 }
+
+// --- Tableau croisé dynamique sur l'export importé ---
+let pvLast = null;
+function pvSpec() { return rpData().pivot || null; }
+function pvOpen() {
+  const t = RP.table;
+  if (!t) { $("pv-out").replaceChildren(el("p", {class: "hint"}, "Réimportez l'export pour le tableau croisé.")); return; }
+  const ps = Pivot.presets(t);
+  if (!pvSpec()) rpData().pivot = (ps[0] || {spec: {rows: [t.columns.find((c) => c.kind === "dimension").label], col: "",
+    values: t.columns.filter((c) => c.kind === "metric").map((c) => c.label)}}).spec;
+  $("pv-presets").replaceChildren(...ps.map((p) => {
+    const b = el("button", {type: "button"}, p.name);
+    b.addEventListener("click", () => { rpData().pivot = JSON.parse(JSON.stringify(p.spec)); saveSoon(); pvOpen(); });
+    return b;
+  }));
+  const dims = t.columns.filter((c) => c.kind === "dimension").map((c) => c.label);
+  const sp = pvSpec();
+  const fill = (id, opts, value, blank) => {
+    $(id).replaceChildren(...(blank ? [el("option", {value: ""}, "—")] : []), ...opts.map((o) => el("option", {value: o}, o)));
+    $(id).value = value || "";
+  };
+  fill("pv-r1", dims, sp.rows[0]);
+  fill("pv-r2", dims, sp.rows[1] || "", true);
+  fill("pv-col", dims, sp.col || "", true);
+  $("pv-values").replaceChildren(...t.columns.filter((c) => c.kind === "metric").map((c) => {
+    const cb = el("input", {type: "checkbox", value: c.label});
+    cb.checked = (sp.values || []).includes(c.label);
+    return el("label", {}, cb, c.label + (c.rate ? " (taux)" : ""));
+  }));
+  pvRender();
+}
+function pvRead() {
+  const sp = pvSpec();
+  sp.rows = [$("pv-r1").value, $("pv-r2").value].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+  sp.col = $("pv-col").value && !sp.rows.includes($("pv-col").value) ? $("pv-col").value : "";
+  sp.values = [...$("pv-values").querySelectorAll("input:checked")].map((x) => x.value);
+  saveSoon();
+  pvRender();
+}
+for (const id of ["pv-r1", "pv-r2", "pv-col"]) $(id).addEventListener("change", pvRead);
+$("pv-values").addEventListener("change", pvRead);
+
+function pvFmt(v, rate, label) {
+  if (v === null || v === undefined) return "";
+  if (typeof v !== "number") return v;
+  if (rate) return v.toLocaleString("fr-FR", {maximumFractionDigits: 2, minimumFractionDigits: 2}) + (/rate|ctr|taux|%/i.test(label) ? " %" : "");
+  return Number.isInteger(v) ? v.toLocaleString("fr-FR") : v.toLocaleString("fr-FR", {maximumFractionDigits: 2});
+}
+function pvRender() {
+  const sp = pvSpec();
+  const r = Pivot.compute(RP.table, sp);
+  pvLast = r;
+  const valLabel = sp.col ? r.values[0] : "";
+  const head = el("tr", {}, ...r.header.map((h, k) => {
+    const th = el("th", {scope: "col", class: k >= r.rowDims ? "num" : ""}, h);
+    if (sp.sort && sp.sort.by === h) th.setAttribute("aria-sort", sp.sort.dir > 0 ? "ascending" : "descending");
+    th.addEventListener("click", () => {
+      const dir = sp.sort && sp.sort.by === h ? -sp.sort.dir : (k < r.rowDims ? 1 : -1);
+      sp.sort = {by: h, dir};
+      saveSoon();
+      pvRender();
+    });
+    return th;
+  }));
+  const MAX = 500;
+  const label = (k) => (sp.col ? valLabel : r.header[k]);
+  const body = r.rows.slice(0, MAX).map((row) => el("tr", {}, ...row.map((v, k) =>
+    el("td", {class: k >= r.rowDims ? "num" : ""}, pvFmt(v, r.rateCols[k], label(k))))));
+  const tot = el("tr", {class: "total"}, ...r.total.map((v, k) => el("td", {class: k >= r.rowDims ? "num" : ""}, k < r.rowDims ? v : pvFmt(v, r.rateCols[k], label(k)))));
+  $("pv-out").replaceChildren(el("table", {class: "pv pivot", id: "pv-table"}, el("thead", {}, head), el("tbody", {}, ...body, tot)));
+  $("pv-info").textContent = `${r.groups.toLocaleString("fr-FR")} ligne(s) croisée(s) à partir de ${r.sourceRows.toLocaleString("fr-FR")} ligne(s) de l'export`
+    + (sp.col ? ` · valeur affichée : ${valLabel} (une seule valeur quand des colonnes sont choisies)` : "")
+    + (r.truncatedCols ? " · 40 dernières colonnes affichées" : "")
+    + (r.rows.length > MAX ? ` · ${MAX} premières lignes affichées (toutes dans l'Excel)` : "") + ".";
+}
+$("pv-dl").addEventListener("click", async () => {
+  if (!pvLast) return;
+  const sp = pvSpec();
+  const title = `${RP.campaign.name} — ${sp.rows.join(" / ")}${sp.col ? " × " + sp.col : ""}`;
+  const fmtRow = (row) => row.map((v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v));
+  try {
+    download(await call("export_pivot", {title, header: pvLast.header, rows: [...pvLast.rows.map(fmtRow), fmtRow(pvLast.total)], data: RP.table}),
+             `tableau_croise_${slug(RP.campaign.name)}.xlsx`);
+  } catch (e) { $("pv-info").textContent = "Export impossible : " + e.message; }
+});
 
 // --- Template 3 : prompt de rapport CM360 (sans accès API) ---
 const PP_PRESETS = [

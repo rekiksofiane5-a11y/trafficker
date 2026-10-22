@@ -584,3 +584,34 @@ def test_app_bar_history_and_menus(page):
     page.keyboard.press("Escape")
     assert not page.is_visible("#account-menu")
     assert page.errors == []
+
+
+def test_pivot_table_after_export_import(page):
+    """Export importé : tableau croisé par défaut (régie), préréglage croisé, tri, Excel."""
+    openpyxl = pytest.importorskip("openpyxl")
+    page.click(".modes [data-mode=reporting]")
+    _create_task(page, "Croisé export")
+    page.set_input_files("#rp-file", os.path.join(ROOT, "web", "exemple_export_cm360.csv"))
+    page.wait_for_selector("#pv-table")                                      # vue par défaut après import
+    head = page.locator("#pv-table thead th").all_text_contents()
+    assert head[0] == "Site (CM360)" and "Impressions" in head and "Click Rate" in head
+    total = page.text_content("#pv-table tr.total").replace(" ", " ")
+    assert "1 747 655" in total and "0,23 %" in total                         # CTR recalculé sur le total
+    page.click("#pv-presets button:has-text('Par emplacement')")
+    assert page.locator("#pv-table tbody tr:not(.total)").count() == 12
+    page.click("#pv-presets button:has-text('Régie × semaine')")
+    assert "S43" in " ".join(page.locator("#pv-table thead th").all_text_contents())
+    page.select_option("#pv-r1", "Date")
+    page.select_option("#pv-col", "")
+    page.locator("#pv-table thead th", has_text="Date").click()                # tri croissant par date
+    first = page.locator("#pv-table tbody tr").first.text_content()
+    assert first.startswith("2026-10-16")
+    with page.expect_download() as dl:
+        page.click("#pv-dl")
+    wb = openpyxl.load_workbook(io.BytesIO(open(dl.value.path(), "rb").read()))
+    assert wb.sheetnames == ["Tableau croisé", "Données"]
+    page.click(".task-item:has-text('Croisé export')")                       # réouverture : vue conservée
+    page.wait_for_selector("#pv-table")
+    assert page.input_value("#pv-r1") == "Date"
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []

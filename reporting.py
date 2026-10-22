@@ -480,7 +480,10 @@ def parse_export(path: str, campaign_name: str = "", keyword: str = "") -> Dict:
     for sheet, grid in grids:
         for i, row in enumerate(grid[:60]):
             cells = [_plain(c) for c in row]
-            if "impressions" in cells and any(c in cells for c in ("placement", "emplacement", "site (cm360)", "site", "date")):
+            has_metric = any(c in cells for c in ("impressions", "clicks", "clics", "total conversions", "media cost")) \
+                or any(c.startswith(("active view", "video ", "unique reach")) for c in cells)
+            if has_metric and any(c in cells for c in ("placement", "emplacement", "site (cm360)", "site", "date", "campaign",
+                                                       "creative", "ad", "platform type", "country")):
                 best = (sheet, grid, i, cells)
                 break
         if best:
@@ -578,11 +581,104 @@ def parse_export(path: str, campaign_name: str = "", keyword: str = "") -> Dict:
                 "dates_from": ("période du rapport" if report_range and starts == [report_range[0]] else
                                "colonnes de dates de campagne" if starts else "premier et dernier jour du fichier")}
     return {"campaign": campaign, "campaigns": names, "placements": list(placements.values()), "delivery": delivery,
+            "table": export_table(grid[h], rows),
             "rows": len(rows), "total_rows": total_rows, "warnings": warnings, "account_wide": account_wide,
             "keyword": keyword, "meta": {"account": meta.get("account id", ""), "range": meta.get("date range", ""),
                                          "timezone": meta.get("report time zone", ""),
                                          "generated": meta.get("date/time generated", "")},
             "columns": {k: grid[h][i] for k, i in col.items()}}
+
+
+# --- Tableau croisé : toutes les colonnes de l'export, classées dimensions / métriques -------
+
+RATE_WORDS = ("rate", "ctr", "taux", "%", "average", "moyenne", "frequency", "frequence", "cpm", "cpc", "cpa")
+
+
+def _num_cell(v) -> Optional[float]:
+    t = str(v if v is not None else "").strip().replace("\u202f", "").replace("\xa0", "").replace(" ", "")
+    if not t or t in ("-", "---"):
+        return None
+    t = t.rstrip("%")
+    if re.fullmatch(r"-?\d{1,3}(,\d{3})+(\.\d+)?", t):          # 1,234,567.89
+        t = t.replace(",", "")
+    elif re.fullmatch(r"-?\d+,\d+", t):                           # 4,76 (décimale à la française)
+        t = t.replace(",", ".")
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def export_table(header: List, rows: List[List]) -> Dict:
+    """Export à plat -> colonnes typées (dimension / métrique, taux recalculé ou moyen) + lignes ;
+    Semaine et Mois ajoutés quand une colonne de dates est présente."""
+    cols = []
+    for i, h in enumerate(header):
+        label = str(h or "").strip()
+        if not label:
+            continue
+        vals = [row[i] for row in rows if i < len(row) and str(row[i]).strip() not in ("", "-", "---")]
+        nums = [_num_cell(v) for v in vals]
+        numeric = bool(vals) and sum(n is not None for n in nums) >= 0.9 * len(vals)
+        is_id = bool(re.search(r"(^|\W)id($|\W)", label.lower()))
+        is_date = bool(vals) and not is_id and sum(bool(_any_date(str(v))) for v in vals[:50]) >= 0.8 * min(len(vals), 50) \
+            and not all(re.fullmatch(r"\d+(\.\d+)?", str(v)) for v in vals[:20])
+        kind = "metric" if numeric and not is_id and not is_date else "dimension"
+        rate = kind == "metric" and any(w in _plain(label) for w in RATE_WORDS)
+        cols.append({"i": i, "label": label, "kind": kind, "rate": rate, "date": is_date})
+    date_col = next((c for c in cols if c["date"]), None)
+    out_cols = [{"label": c["label"], "kind": c["kind"], "rate": c["rate"]} for c in cols]
+    if date_col:
+        out_cols += [{"label": "Semaine", "kind": "dimension", "rate": False, "derived": True},
+                     {"label": "Mois", "kind": "dimension", "rate": False, "derived": True}]
+    out_rows = []
+    for row in rows:
+        r = []
+        for c in cols:
+            v = row[c["i"]] if c["i"] < len(row) else ""
+            if c["kind"] == "metric":
+                n = _num_cell(v)
+                r.append(0 if n is None else int(n) if n == int(n) else round(n, 4))
+            elif c["date"]:
+                r.append(_any_date(str(v)) or str(v))
+            else:
+                r.append(str(v).strip())
+        if date_col:
+            d = _d(_any_date(str(row[date_col["i"]]) if date_col["i"] < len(row) else ""))
+            if d:
+                monday = d - timedelta(days=d.weekday())
+                r += [f"S{d.isocalendar()[1]:02d} · {monday.strftime('%d/%m/%Y')}", d.strftime("%Y-%m")]
+            else:
+                r += ["", ""]
+        out_rows.append(r)
+    return {"columns": out_cols, "rows": out_rows}
+
+
+def export_pivot(title: str, header: List[str], rows: List[List], data: Dict) -> bytes:
+    """Tableau croisé calculé dans la page + données à plat en tableau Excel (filtres, et base
+    d'un tableau croisé dynamique natif : Insertion > Tableau croisé dynamique)."""
+    from openpyxl import Workbook
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Tableau croisé"
+    body = [r for r in rows if r and r[0] != "Total"]
+    total = next((r for r in rows if r and r[0] == "Total"), None)
+    _sheet(ws, [title, "Calculé par Umnia à partir de l'export. Taux recalculés (ex. CTR = clics / impressions)."],
+           header, body, [34] + [16] * (len(header) - 1), total=total)
+    wd = wb.create_sheet("Données")
+    labels = [c["label"] for c in data.get("columns", [])]
+    wd.append(labels)
+    for r in data.get("rows", []):
+        wd.append(r)
+    if labels and data.get("rows"):
+        last = f"{chr(64 + len(labels)) if len(labels) <= 26 else 'Z'}{len(data['rows']) + 1}"
+        t = Table(displayName="Donnees", ref=f"A1:{last}")
+        t.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
+        wd.add_table(t)
+        for i in range(1, min(len(labels), 26) + 1):
+            wd.column_dimensions[chr(64 + i)].width = 22
+    return _save(wb)
 
 
 def with_plan_placements(placements: List[Dict], targets: Dict) -> List[Dict]:

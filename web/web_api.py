@@ -580,3 +580,9 @@ def report_parse(path: str, campaign_name: str = "", keyword: str = "") -> str:
         if os.path.exists(path):
             os.remove(path)
 
+
+def export_report_pivot(title: str, header_json: str, rows_json: str, data_json: str) -> bytes:
+    """Tableau croisé calculé dans la page -> Excel (onglet croisé + données à plat en tableau)."""
+    import reporting
+    return reporting.export_pivot(title, json.loads(header_json), json.loads(rows_json), json.loads(data_json))
+
