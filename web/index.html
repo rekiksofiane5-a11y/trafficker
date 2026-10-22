@@ -4,16 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Umnia</title>
+<script>try { const t = localStorage.getItem("umnia_theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
-:root {
-  --bg: #f6f7f9; --card: #ffffff; --text: #1d2330; --muted: #5d6675; --border: #dde1e7;
-  --accent: #1a5fd0; --accent-text: #ffffff; --ok: #12784a; --warn: #9a5b00; --err: #b3261e;
-  --chip: #eef2f8; --code: #f1f3f6;
+:root { color-scheme: light;
+  --bg: #ece5d3; --card: #f7f3ea; --text: #121a25; --muted: #5b564b; --border: #d3c8ae;
+  --accent: #172233; --accent-text: #ede6d4; --ok: #1d6a43; --warn: #8a4a00; --err: #a3261e;
+  --chip: #e2d9c3; --code: #e8e0cc; --gold: #685a38; --side: #e4dcc8;
 }
+/* Thème : auto (système) par défaut, ou forcé par data-theme sur <html> */
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #14171c; --card: #1d2128; --text: #e7eaf0; --muted: #a2aab7; --border: #333a45;
-          --accent: #6ea2ff; --accent-text: #0d1117; --ok: #5fd39a; --warn: #f0b45a; --err: #ff8a80;
-          --chip: #272d37; --code: #232830; }
+  :root:not([data-theme="light"]) { color-scheme: dark;
+  --bg: #0e1621; --card: #152031; --text: #ede6d4; --muted: #a8a08e; --border: #2b3749;
+  --accent: #d9cdb3; --accent-text: #0e1621; --ok: #7fd3a6; --warn: #f0b45a; --err: #ff8a80;
+  --chip: #1d293b; --code: #1a2535; --gold: #b5a27a; --side: #111b29;
+  }
+}
+:root[data-theme="dark"] { color-scheme: dark;
+  --bg: #0e1621; --card: #152031; --text: #ede6d4; --muted: #a8a08e; --border: #2b3749;
+  --accent: #d9cdb3; --accent-text: #0e1621; --ok: #7fd3a6; --warn: #f0b45a; --err: #ff8a80;
+  --chip: #1d293b; --code: #1a2535; --gold: #b5a27a; --side: #111b29;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
@@ -117,11 +126,18 @@ body { overflow: hidden; }
 .login-card input, dialog input, dialog select, .task-view textarea { width: 100%; padding: 9px 10px; border: 1px solid var(--border);
   border-radius: 8px; background: var(--card); color: var(--text); font: inherit; font-weight: 400; margin-top: 4px; }
 .login-card button { width: 100%; justify-content: center; margin-top: 16px; }
-.brand-lg { font-size: 1.6rem; font-weight: 700; }
+.wordmark { font-weight: 300; letter-spacing: .32em; text-transform: uppercase; color: var(--text); line-height: 1.1; }
+.wordmark .tag { display: block; font-size: .32em; letter-spacing: .28em; color: var(--gold); font-weight: 500; margin-top: .9em; }
+.brand-lg { font-size: 2.3rem; text-align: center; margin: 4px 0 18px; }
+.login .hint { text-align: center; }
+.theme-toggle { background: none; color: var(--muted); padding: 4px 8px; font-weight: 400; font-size: .8rem; border: 1px solid var(--border); }
+.theme-toggle:hover { color: var(--text); }
+.login > .theme-toggle { position: fixed; top: 14px; right: 16px; }
 .app { display: grid; grid-template-columns: 17rem minmax(0, 1fr); height: 100vh; }
-.sidebar { display: flex; flex-direction: column; background: var(--chip); border-right: 1px solid var(--border); min-height: 0; }
+.sidebar { display: flex; flex-direction: column; background: var(--side); border-right: 1px solid var(--border); min-height: 0; }
 .side-top { padding: 14px 12px 8px; display: grid; gap: 10px; }
-.brand { font-weight: 700; font-size: 1.15rem; padding: 0 4px; }
+.brand-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 2px; }
+.brand { font-size: 1.25rem; }
 .modes, .scopes { display: grid; grid-template-columns: 1fr 1fr; background: var(--bg); border-radius: 10px; padding: 3px; gap: 3px; }
 .modes button, .scopes button { background: none; color: var(--muted); padding: 6px 8px; justify-content: center; font-size: .85rem; }
 .modes button.on, .scopes button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 2px #0002; }
@@ -171,8 +187,9 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 </head>
 <body>
 <div id="login-screen" class="login" hidden>
+  <button type="button" class="theme-toggle" data-theme-toggle>Thème : auto</button>
   <form id="login-form" class="login-card" autocomplete="on">
-    <div class="brand-lg">Umnia</div>
+    <div class="brand-lg wordmark" role="img" aria-label="Umnia, Autonomous Ad Operations"><span aria-hidden="true">UMNIΛ<span class="tag">Autonomous Ad Operations</span></span></div>
     <p class="hint">Trafficking et reporting CM360 / Adform</p>
     <label>E-mail<input id="login-email" type="email" autocomplete="username" required></label>
     <label>Mot de passe<input id="login-password" type="password" autocomplete="current-password" required></label>
@@ -180,7 +197,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
     <button type="submit" id="login-submit">Se connecter</button>
   </form>
   <form id="setup-form" class="login-card" hidden>
-    <div class="brand-lg">Umnia</div>
+    <div class="brand-lg wordmark" role="img" aria-label="Umnia, Autonomous Ad Operations"><span aria-hidden="true">UMNIΛ<span class="tag">Autonomous Ad Operations</span></span></div>
     <p class="hint">Première connexion : créez le compte administrateur de l'agence.</p>
     <label>Nom<input id="setup-name" required></label>
     <label>E-mail<input id="setup-email" type="email" autocomplete="username" required></label>
@@ -196,7 +213,10 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 <div id="app" class="app" hidden>
   <aside class="sidebar" aria-label="Navigation">
     <div class="side-top">
-      <div class="brand">Umnia</div>
+      <div class="brand-row">
+        <div class="brand wordmark" role="img" aria-label="Umnia"><span aria-hidden="true">UMNIΛ</span></div>
+        <button type="button" class="theme-toggle" data-theme-toggle>Thème : auto</button>
+      </div>
       <div class="modes" role="tablist" aria-label="Mode">
         <button role="tab" data-mode="trafficking" class="on" aria-selected="true">Trafficking</button>
         <button role="tab" data-mode="reporting" aria-selected="false">Reporting</button>
@@ -1247,6 +1267,23 @@ $("user-form").addEventListener("submit", async (e) => {
     $("u-msg").className = "ok"; $("u-msg").textContent = "Utilisateur ajouté.";
     renderUsers();
   } catch (err) { $("u-msg").className = "err"; $("u-msg").textContent = err.message; }
+});
+
+// Thème clair / sombre / auto (préférence du navigateur), mémorisé localement
+const THEMES = ["auto", "light", "dark"], THEME_LABEL = {auto: "Thème : auto", light: "Thème : clair", dark: "Thème : sombre"};
+function applyTheme(t) {
+  if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
+  for (const b of document.querySelectorAll("[data-theme-toggle]")) {
+    b.textContent = THEME_LABEL[t];
+    b.setAttribute("aria-label", THEME_LABEL[t] + " (changer)");
+  }
+}
+let theme = document.documentElement.dataset.theme || "auto";
+applyTheme(theme);
+for (const b of document.querySelectorAll("[data-theme-toggle]")) b.addEventListener("click", () => {
+  theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+  applyTheme(theme);
+  try { theme === "auto" ? localStorage.removeItem("umnia_theme") : localStorage.setItem("umnia_theme", theme); } catch (e) { /* stockage indisponible */ }
 });
 
 boot();
