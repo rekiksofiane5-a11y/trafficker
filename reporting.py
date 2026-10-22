@@ -574,11 +574,22 @@ def parse_export(path: str, campaign_name: str = "", keyword: str = "") -> Dict:
     report_range = [_any_date(x.strip()) for x in meta.get("date range", "").split(" - ")] if meta.get("date range") else []
     if not starts and len(report_range) == 2 and all(report_range):
         starts, ends = [report_range[0]], [report_range[1]]
+    # Nomenclature d'agence : « 20260914-ANNONCEUR-… » = date de début dans le nom de campagne
+    m = re.match(r"^(20\d{2})(\d{2})(\d{2})\b", chosen or "")
+    named_start = ""
+    if m:
+        try:
+            named_start = date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+        except ValueError:
+            named_start = ""
+    if named_start and (not starts or named_start < min(starts)) and not any(get(r, "campaign_start") for r in rows[:1]):
+        starts = [named_start]
     campaign = {"id": "file", "name": chosen or os.path.splitext(os.path.basename(path))[0], "from_file": True,
                 "advertiser": next((get(r, "advertiser") for r in rows if get(r, "advertiser")), ""),
                 "start": min(starts) if starts else (min(days) if days else ""),
                 "end": max(ends) if ends else (max(days) if days else ""),
-                "dates_from": ("période du rapport" if report_range and starts == [report_range[0]] else
+                "dates_from": ("date en tête du nom de campagne" if named_start and starts == [named_start] else
+                               "période du rapport" if report_range and starts == [report_range[0]] else
                                "colonnes de dates de campagne" if starts else "premier et dernier jour du fichier")}
     return {"campaign": campaign, "campaigns": names, "placements": list(placements.values()), "delivery": delivery,
             "table": export_table(grid[h], rows),

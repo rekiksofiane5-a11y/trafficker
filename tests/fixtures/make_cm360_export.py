@@ -19,13 +19,19 @@ def _cell(ref, value, style=6):
     return f'<c r="{ref}" s="{style}" t="inlineStr"><is><t>{escape(str(value))}</t></is></c>'
 
 
-def build(path):
-    head = [("Date/Time Generated", "02/10/2026 17:33"), ("Report Time Zone", "Europe/Paris"), ("Account ID", "3021"),
-            ("Date Range", "01/10/2026 - 02/10/2026"), ("Reporting numbers are finalized after seven days.", "")]
-    rows = [[k, v] for k, v in head] + [[], [], ["Report Fields", "", "", "", "Report Metrics"],
-                                        ["Date", "Site (CM360)", "Placement", "Placement ID", "Impressions", "Clicks", "Click Rate"]]
-    rows += [list(r) for r in ROWS]
-    rows.append(["Grand Total:", "---", "---", "---", sum(r[4] for r in ROWS), sum(r[5] for r in ROWS), 0.1])
+HEADER = ["Date", "Site (CM360)", "Placement", "Placement ID", "Impressions", "Clicks", "Click Rate"]
+
+
+def build(path, header=None, data=None, date_range="01/10/2026 - 02/10/2026", generated="02/10/2026 17:33"):
+    header, data = header or HEADER, data or ROWS
+    head = [("Date/Time Generated", generated), ("Report Time Zone", "Europe/Paris"), ("Account ID", "3021"),
+            ("Date Range", date_range), ("Reporting numbers are finalized after seven days.", "")]
+    n_dims = sum(1 for h in header if h not in ("Impressions", "Clicks", "Click Rate"))
+    rows = [[k, v] for k, v in head] + [[], [], ["Report Fields"] + [""] * (n_dims - 1) + ["Report Metrics"], list(header)]
+    rows += [list(r) for r in data]
+    imp, clk = header.index("Impressions"), header.index("Clicks")
+    ti, tc = sum(r[imp] for r in data), sum(r[clk] for r in data)
+    rows.append(["Grand Total:"] + ["---"] * (n_dims - 1) + [ti, tc, round(tc / ti * 100, 2) if ti else 0])
     xml_rows = []
     for i, r in enumerate(rows, start=1):
         cells = "".join(_cell(f"{chr(65 + j)}{i}", v) for j, v in enumerate(r) if v != "" or j == 0)

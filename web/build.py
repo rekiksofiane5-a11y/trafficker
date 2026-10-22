@@ -36,6 +36,7 @@ def main() -> None:
     shutil.copy(os.path.join(WEB, "cm_prompt.js"), DIST)
     shutil.copy(os.path.join(WEB, "pivot.js"), DIST)
     shutil.copy(os.path.join(WEB, "exemple_export_cm360.csv"), os.path.join(DIST, "exemples"))
+    shutil.copy(os.path.join(WEB, "exemple_export_cm360_une_campagne.xlsx"), os.path.join(DIST, "exemples"))
     for m in PY_MODULES:
         shutil.copy(os.path.join(ROOT, m), os.path.join(DIST, "py"))
     shutil.copy(os.path.join(ROOT, "templates", "adform_bulk_template.xlsx"),

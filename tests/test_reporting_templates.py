@@ -199,3 +199,14 @@ def test_export_table_types_and_pivot_excel(tmp_path):
         "Test", ["Site (CM360)", "Impressions"], [["Teads FR", 50000], ["Total", 229000]], t)))
     assert wb.sheetnames == ["Tableau croisé", "Données"]
     assert "Donnees" in wb["Données"].tables
+
+
+def test_single_campaign_example_export(tmp_path):
+    """Exemple livré : export Excel CM360 d'une seule campagne (Campaign / Campaign ID), nomenclature agence."""
+    import shutil
+    path = tmp_path / "one.xlsx"
+    shutil.copy(os.path.join(ROOT, "web", "exemple_export_cm360_une_campagne.xlsx"), path)
+    r = reporting.parse_export(str(path))
+    assert r["campaign"]["name"].endswith("635419 (36649579)") and not r["account_wide"]
+    assert r["campaign"]["start"] == "2026-09-14" and r["campaign"]["dates_from"] == "date en tête du nom de campagne"
+    assert len(r["placements"]) == 9 and not any("Campaign" in w for w in r["warnings"])

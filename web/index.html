@@ -529,7 +529,8 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             <strong>Pas d'accès API ?</strong>
             <button type="button" id="rp-file-btn" class="secondary">📄 Importer un export de rapport CM360</button>
             <input id="rp-file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
-            <a href="exemples/exemple_export_cm360.csv" download>Exemple d'export</a>
+            <a href="exemples/exemple_export_cm360_une_campagne.xlsx" download>Exemple Excel CM360 (une campagne)</a>
+            <a href="exemples/exemple_export_cm360.csv" download>Exemple CSV</a>
             <div class="hint">CSV ou Excel téléchargé depuis CM360 (Report builder → « Download »). Colonnes utiles : Date, Site (CM360),
               Placement, Placement ID, Impressions, Clicks — le template « Prompt de rapport CM360 » → « Check de mise en ligne » les demande.</div>
           </div>
@@ -1910,7 +1911,7 @@ async function rpSearchAdv() {
 }
 async function rpPickAdv(a) {
   const data = rpData();
-  if (data.file) { delete data.file; RP.source = ""; data.campaign = null; }
+  if (data.file) { delete data.file; RP.source = ""; data.campaign = null; rpSource(); }
   if ((data.advertiser || {}).id !== a.id) { data.campaign = null; rpReset(); }
   data.advertiser = {id: a.id, name: a.name};
   current.advertiser = a.name;
@@ -2531,6 +2532,8 @@ function rpApplyFile(file) {
     : (p.d || []).map(([date, placement_id, impressions, clicks]) => ({date, placement_id, impressions, clicks}));
   $("rp-adv-q").value = RP.campaign.advertiser || "";
   $("rp-camp-q").value = RP.campaign.name;
+  $("rp-adv-list").replaceChildren(); $("rp-camp-list").replaceChildren();
+  $("rp-source").textContent = `Données de l'export importé (${file.name}) — pas d'API nécessaire. Pour revenir à l'ad server, recherchez un annonceur.`;
   const sites = rpSites();
   const start = el("input", {type: "date", id: "rp-fstart", value: RP.campaign.start, "aria-label": "Début de la campagne"});
   const end = el("input", {type: "date", id: "rp-fend", value: RP.campaign.end, "aria-label": "Fin de la campagne"});
