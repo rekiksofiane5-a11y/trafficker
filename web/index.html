@@ -243,15 +243,17 @@ body { overflow: hidden; }
 .modes button { background: none; color: var(--text); font-weight: 500; padding: 8px 16px; border-radius: 10px; }
 .modes button:hover { background: var(--chip); }
 .modes button.on { background: var(--accent); color: var(--accent-text); font-weight: 600; }
-.appsearch, .hsearch { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--border);
+.hsearch { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--border);
   border-radius: 12px; padding: 0 12px; color: var(--muted); margin: 0; font-weight: 400; }
-.appsearch { flex: 1; max-width: 38rem; margin: 0 auto; }
-.appsearch input, .hsearch input { flex: 1; border: 0; background: none; color: var(--text); font: inherit; padding: 9px 0; outline: none; min-width: 0; }
-.appsearch:focus-within, .hsearch:focus-within { border-color: var(--accent); }
-.appbar-right { display: flex; align-items: center; gap: 8px; }
+.hsearch input { flex: 1; border: 0; background: none; color: var(--text); font: inherit; padding: 9px 0; outline: none; min-width: 0; }
+.hsearch:focus-within { border-color: var(--accent); }
+.appbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .ghost { background: none; color: var(--text); font-weight: 500; padding: 7px 10px; border-radius: 10px; }
 .ghost:hover, .ghost[aria-expanded="true"] { background: var(--chip); }
 #history-btn { border: 1px solid var(--border); }
+.icon-only { padding: 8px; display: inline-grid; place-items: center; }
+.icon-only .moon { display: none; }
+.is-dark .icon-only .sun { display: none; } .is-dark .icon-only .moon { display: block; }
 .menu-wrap { position: relative; }
 .pop { position: absolute; top: calc(100% + 6px); right: 0; min-width: 13rem; background: var(--card); border: 1px solid var(--border);
   border-radius: 12px; padding: 4px; box-shadow: 0 10px 30px #0000002e; display: grid; z-index: 20; }
@@ -264,7 +266,7 @@ body { overflow: hidden; }
 .who { display: grid; min-width: 0; line-height: 1.2; } .who > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who #account-name { font-weight: 600; font-size: .9rem; } .who .hint { margin: 0; font-size: .72rem; }
 .app-body { flex: 1; display: flex; min-height: 0; }
-.history { width: 23rem; flex: none; margin: 14px 0 14px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 18px;
+.history { order: 2; width: 23rem; flex: none; margin: 14px 14px 14px 0; background: var(--card); border: 1px solid var(--border); border-radius: 18px;
   box-shadow: 0 6px 24px #00000014; display: flex; flex-direction: column; min-height: 0; }
 .history-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 6px; }
 .history-head h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 1.15rem; }
@@ -312,14 +314,17 @@ dialog::backdrop { background: #0007; }
 dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 #admin-dialog { width: min(52rem, calc(100% - 32px)); }
 .ok { color: var(--ok); }
-@media (max-width: 1000px) { .appbar { flex-wrap: wrap; gap: 10px; } .appsearch { order: 3; flex-basis: 100%; max-width: none; }
-  .history { position: fixed; z-index: 15; left: 0; top: 0; bottom: 0; margin: 0; border-radius: 0 18px 18px 0; max-width: 92vw; }
+@media (max-width: 1000px) { .appbar { flex-wrap: wrap; gap: 10px; }
+  .history { position: fixed; z-index: 15; right: 0; top: 0; bottom: 0; margin: 0; border-radius: 18px 0 0 18px; max-width: 92vw; }
   .who { display: none; } }
 </style>
 </head>
 <body>
 <div id="login-screen" class="login" hidden>
-  <button type="button" class="theme-toggle" data-theme-toggle>Thème : auto</button>
+  <button type="button" class="theme-toggle icon-only" data-theme-toggle aria-label="Changer de thème">
+    <svg class="ico sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    <svg class="ico moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+  </button>
   <form id="login-form" class="login-card" autocomplete="on">
     <div class="brand-lg wordmark" role="img" aria-label="Umnia, Autonomous Ad Operations"><span aria-hidden="true">UMNIΛ<span class="tag">Autonomous Ad Operations</span></span></div>
     <label>E-mail<input id="login-email" type="email" autocomplete="username" required></label>
@@ -345,20 +350,14 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
   <header class="appbar">
     <div class="brand wordmark" role="img" aria-label="Umnia"><span aria-hidden="true">UMNIΛ</span></div>
     <div class="modes" role="tablist" aria-label="Mode">
-      <button role="tab" data-mode="trafficking" class="on" aria-selected="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14M6 17l1.5-5h9L18 17M7.5 12 9 8h6l1.5 4"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/></svg>Trafficking</button>
+      <button role="tab" data-mode="trafficking" class="on" aria-selected="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="2" y="16" width="6" height="5" rx="1"/><rect x="9" y="16" width="6" height="5" rx="1"/><rect x="16" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M5 16v-4h14v4"/></svg>Trafficking</button>
       <button role="tab" data-mode="reporting" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Reporting</button>
     </div>
-    <label class="appsearch"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="search" type="search" placeholder="Rechercher une tâche…" aria-label="Rechercher une tâche"></label>
     <div class="appbar-right">
-      <div class="menu-wrap">
-        <button type="button" id="theme-btn" class="ghost" aria-haspopup="menu" aria-expanded="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg><span id="theme-label">Thème : auto</span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg></button>
-        <div id="theme-menu" class="pop" role="menu" hidden>
-          <button type="button" role="menuitemradio" data-theme-set="auto">Auto (système)</button>
-          <button type="button" role="menuitemradio" data-theme-set="light">Clair</button>
-          <button type="button" role="menuitemradio" data-theme-set="dark">Sombre</button>
-        </div>
-      </div>
+      <button type="button" id="theme-btn" class="ghost icon-only" aria-label="Passer en thème sombre">
+        <svg class="ico sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="ico moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+      </button>
       <div class="menu-wrap">
         <button type="button" id="account-btn" class="account-btn" aria-haspopup="menu" aria-expanded="false">
           <span id="avatar" class="avatar">?</span>
@@ -1519,19 +1518,15 @@ for (const b of document.querySelectorAll(".scopes button")) b.addEventListener(
   refreshList();
 });
 let searchTimer = null;
-$("search").addEventListener("input", () => {
-  $("history-q").value = $("search").value;
-  if ($("search").value && $("history").hidden) setHistory(true);
-  clearTimeout(searchTimer); searchTimer = setTimeout(refreshList, 250);
-});
+
 
 async function refreshList() {
   if (!me) return;
   let tasks = [];
-  try { tasks = await Store.list(scope, mode, $("search").value.trim()); }
+  try { tasks = await Store.list(scope, mode, $("history-q").value.trim()); }
   catch (e) { $("task-list").replaceChildren(el("p", {class: "hint"}, e.message)); return handleAuth(e); }
   if (!tasks.length) {
-    $("task-list").replaceChildren(el("p", {class: "hint"}, $("search").value ? "Aucun résultat." : "Aucune tâche pour l'instant."));
+    $("task-list").replaceChildren(el("p", {class: "hint"}, $("history-q").value ? "Aucun résultat." : "Aucune tâche pour l'instant."));
     return;
   }
   $("task-list").replaceChildren(...tasks.map((t) => {
@@ -1599,11 +1594,7 @@ $("history-close").addEventListener("click", () => setHistory(false));
   try { const v = localStorage.getItem("umnia_history"); if (v !== null) open = v === "1"; } catch (e) { /* idem */ }
   setHistory(open);
 })();
-// Les deux recherches (barre du haut, historique) filtrent la même liste
-$("history-q").addEventListener("input", () => {
-  $("search").value = $("history-q").value;
-  clearTimeout(searchTimer); searchTimer = setTimeout(refreshList, 250);
-});
+$("history-q").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(refreshList, 250); });
 
 function handleAuth(e) {
   if (e && e.status === 401 && !Store.local) location.reload();
@@ -1757,10 +1748,9 @@ function toggleMenu(btn, menu) {
   btn.setAttribute("aria-expanded", String(open));
 }
 function closeMenus() {
-  for (const [b, m] of [["account-btn", "account-menu"], ["theme-btn", "theme-menu"]]) { $(m).hidden = true; $(b).setAttribute("aria-expanded", "false"); }
+  for (const [b, m] of [["account-btn", "account-menu"]]) { $(m).hidden = true; $(b).setAttribute("aria-expanded", "false"); }
 }
 $("account-btn").addEventListener("click", (e) => { e.stopPropagation(); toggleMenu($("account-btn"), $("account-menu")); });
-$("theme-btn").addEventListener("click", (e) => { e.stopPropagation(); toggleMenu($("theme-btn"), $("theme-menu")); });
 document.addEventListener("click", closeMenus);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); });
 $("logout").addEventListener("click", async () => {
@@ -2807,15 +2797,18 @@ async function rpOpen() {
 let pendingReporting = false;
 
 // Thème clair / sombre / auto (préférence du navigateur), mémorisé localement
-const THEMES = ["auto", "light", "dark"], THEME_LABEL = {auto: "Thème : auto", light: "Thème : clair", dark: "Thème : sombre"};
 function applyTheme(t) {
   if (t === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = t;
-  for (const b of document.querySelectorAll("[data-theme-toggle]")) {
-    b.textContent = THEME_LABEL[t];
-    b.setAttribute("aria-label", THEME_LABEL[t] + " (changer)");
+  const dark = effectiveDark(t);
+  document.documentElement.classList.toggle("is-dark", dark);
+  for (const b of [$("theme-btn"), ...document.querySelectorAll("[data-theme-toggle]")]) {
+    b.setAttribute("aria-label", dark ? "Passer en thème clair" : "Passer en thème sombre");
+    b.title = dark ? "Thème clair" : "Thème sombre";
   }
-  $("theme-label").textContent = THEME_LABEL[t];
-  for (const b of document.querySelectorAll("[data-theme-set]")) b.setAttribute("aria-checked", String(b.dataset.themeSet === t));
+}
+// Thème réellement affiché : choix mémorisé, sinon celui du système
+function effectiveDark(t) {
+  return t === "dark" || (t === "auto" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
 }
 function setTheme(t) {
   theme = t;
@@ -2824,9 +2817,10 @@ function setTheme(t) {
 }
 let theme = document.documentElement.dataset.theme || "auto";
 applyTheme(theme);
-for (const b of document.querySelectorAll("[data-theme-toggle]"))          // page de connexion : bascule
-  b.addEventListener("click", () => setTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]));
-for (const b of document.querySelectorAll("[data-theme-set]")) b.addEventListener("click", () => setTheme(b.dataset.themeSet));
+// Un clic : clair <-> sombre (icône soleil / lune, sans texte)
+for (const b of [$("theme-btn"), ...document.querySelectorAll("[data-theme-toggle]")])
+  b.addEventListener("click", () => setTheme(effectiveDark(theme) ? "light" : "dark"));
+if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyTheme(theme));
 
 boot();
 start();

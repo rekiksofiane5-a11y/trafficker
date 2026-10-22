@@ -564,21 +564,23 @@ def test_app_bar_history_and_menus(page):
     assert page.is_visible("#history")
     item = page.locator(".task-item:has-text('Tâche historique')")
     assert "Brouillon" in item.text_content() and "instant" in item.text_content()
-    page.fill("#search", "historique")
-    page.wait_for_function("document.getElementById('history-q').value === 'historique'")
+    assert page.locator("#search").count() == 0                              # plus de recherche en haut
+    page.fill("#history-q", "historique")
     page.wait_for_function("document.querySelectorAll('#task-list .task-item').length === 1")
     page.fill("#history-q", "")
     page.dispatch_event("#history-q", "input")
+    box, main = page.locator("#history").bounding_box(), page.locator("#main").bounding_box()
+    assert box["x"] > main["x"]                                                 # historique à droite
     page.click("#history-close")
     assert not page.is_visible("#history") and page.get_attribute("#history-btn", "aria-expanded") == "false"
     page.click("#history-btn")
     assert page.is_visible("#history")
+    assert page.text_content("#theme-btn").strip() == ""                       # icône seule
+    before = page.evaluate("document.documentElement.classList.contains('is-dark')")
     page.click("#theme-btn")
-    page.click("[data-theme-set=dark]")
-    assert page.evaluate("document.documentElement.dataset.theme") == "dark" and page.text_content("#theme-label") == "Thème : sombre"
+    assert page.evaluate("document.documentElement.classList.contains('is-dark')") != before
     page.click("#theme-btn")
-    page.click("[data-theme-set=auto]")
-    assert page.evaluate("document.documentElement.dataset.theme") is None
+    assert page.evaluate("document.documentElement.classList.contains('is-dark')") == before
     page.click("#account-btn")
     assert page.is_visible("#open-settings")
     page.keyboard.press("Escape")
