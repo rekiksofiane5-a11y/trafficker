@@ -323,9 +323,7 @@ def test_tasks_are_saved_restored_and_reporting_mode(page):
     page.click(".modes [data-mode=reporting]")
     assert page.is_visible("#empty-view")
     _create_task(page, "Bilan mi-parcours")
-    assert "reporting" in page.text_content("#analyze")
-    _analyze(page, os.path.join(ROOT, "plan_media_template.csv"), validate=False)
-    page.wait_for_selector("text=Rapport de diffusion simulé")
+    assert page.is_visible("#rp-view") and not page.is_visible("#pm-step")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
 
@@ -380,4 +378,52 @@ def test_bulk_edit_modify_duplicate_delete(page, tmp_path):
     assert page.text_content("#bulk-count") == "16 ligne(s) sélectionnée(s)"
     page.click("#bulk-clear")
     assert not page.is_visible("#bulk-bar")
+    assert page.errors == []
+
+
+def test_reporting_check_and_scheduled_reports(page):
+    """Reporting (démo, sans ad server connecté) : annonceur -> campagne -> check de mise en ligne
+    (tableau de bord + Excel) puis report d'envoi par régie (carnet d'adresses, aperçu, programmation)."""
+    openpyxl = pytest.importorskip("openpyxl")
+    page.click(".modes [data-mode=reporting]")
+    _create_task(page, "Check SUV")
+    assert "démonstration" in page.text_content("#rp-source")
+    page.fill("#rp-adv-q", "auto")
+    page.click("#rp-adv-list button:has-text('Automobiles Démo')")
+    page.click("#rp-camp-list button:has-text('Lancement SUV')")
+    page.wait_for_selector("#rp-template:not([hidden])")
+    assert "4 régie(s)" in page.text_content("#rp-selected")
+    page.click(".tpl[data-tpl=check]")
+    page.wait_for_selector(".kpis")
+    dash = page.text_content("#rp-dash")
+    assert "Régies avec données" in dash and "Aucune donnée" in dash and "Données reçues" in dash
+    assert page.locator("#rp-check-table tbody tr").count() == 7
+    with page.expect_download() as dl:
+        page.click("#rp-dl-check")
+    assert dl.value.suggested_filename == "check_mise_en_ligne_Lancement_SUV_electrique.xlsx"
+    assert openpyxl.load_workbook(io.BytesIO(open(dl.value.path(), "rb").read())).sheetnames == ["Synthèse", "Par régie", "Emplacements", "Données jour"]
+    page.click(".tpl[data-tpl=regies]")
+    page.wait_for_selector(".rp-regie")
+    options = page.locator(".rp-regie select option").all_text_contents()
+    assert len(options) == 4 and all(any(n in o for n in ("Le Monde", "Les Échos", "Prisma", "Teads")) for o in options)
+    page.click("#rp-launch")
+    assert "Ajoutez au moins un e-mail" in page.text_content("#rp-send-msg")
+    page.fill(".rp-regie input", "trafic@lemonde.fr")
+    page.click("#rp-add-regie")
+    assert page.locator(".rp-regie").count() == 2
+    page.locator(".rp-regie").nth(1).locator("input").fill("pas-un-mail")
+    page.click("#rp-launch")
+    assert "E-mail invalide" in page.text_content("#rp-send-msg")
+    page.locator(".rp-regie").nth(1).locator("input").fill("adops@regie.fr")
+    page.locator(".rp-regie").nth(0).locator("button:has-text('Prévisualiser')").click()
+    page.wait_for_selector("#rp-preview:not([hidden])")
+    assert "Total" in page.text_content("#rp-preview") and "Impressions" in page.text_content("#rp-preview")
+    page.click("#rp-launch")
+    page.wait_for_selector("#rp-send-msg.ok")
+    assert page.locator("#rp-scheduled tbody tr").count() == 2
+    assert "trafic@lemonde.fr" in page.text_content(".rp-regie .sugg")                # carnet d'adresses
+    page.click(".task-item:has-text('Check SUV')")                                   # réouverture
+    page.wait_for_selector("#rp-template:not([hidden])")
+    assert page.locator(".tpl.on").get_attribute("data-tpl") == "regies"
+    page.click(".modes [data-mode=trafficking]")
     assert page.errors == []

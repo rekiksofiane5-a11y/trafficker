@@ -44,6 +44,17 @@ const COMMANDS = {
   rebuild: async ({table}) => api.rebuild(JSON.stringify(table)),
   restore: async ({table, nomen}) => api.restore(JSON.stringify(table), nomen || ""),
   run_demo: async () => api.run_demo(),
+  // Reporting : objets JSON (campagne, emplacements, diffusion) -> templates
+  report_demo: async ({campaign, placements, today}) =>
+    api.report_demo(JSON.stringify(campaign), JSON.stringify(placements), today),
+  report_check: async ({campaign, placements, delivery, today}) =>
+    api.report_check(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), today),
+  report_regie: async ({campaign, placements, delivery, site}) =>
+    api.report_regie(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), site),
+  export_report_check: async ({campaign, placements, delivery, today}) =>
+    bytesOf(api.export_report_check(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), today)),
+  export_report_regie: async ({campaign, placements, delivery, site, today}) =>
+    bytesOf(api.export_report_regie(JSON.stringify(campaign), JSON.stringify(placements), JSON.stringify(delivery), site, today)),
   delivery_demo: async () => api.delivery_demo(),
   export_cm360: async () => bytesOf(api.export_cm360()),
   export_adform: async ({type}) => bytesOf(api.export_adform(type)),

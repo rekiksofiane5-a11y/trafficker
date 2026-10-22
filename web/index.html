@@ -118,6 +118,45 @@ footer { margin-top: 26px; color: var(--muted); font-size: .85rem; }
 a { color: var(--accent); }
 .hidden { display: none; }
 [hidden] { display: none !important; }
+/* Reporting */
+.pick-list { display: grid; gap: 2px; max-height: 15rem; overflow: auto; margin-top: 6px; }
+.pick-list button { justify-content: space-between; background: var(--chip); color: var(--text); font-weight: 400; padding: 7px 10px; text-align: left; }
+.pick-list button.on { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.pick-list .s { font-size: .75rem; opacity: .8; white-space: nowrap; }
+.rp-pick input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
+.tpl-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 12px; }
+.tpl { display: grid; gap: 4px; text-align: left; background: var(--card); color: var(--text); border: 2px solid var(--border); padding: 14px; font-weight: 400; }
+.tpl span { color: var(--muted); font-size: .85rem; }
+.tpl.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+.rp-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rp-head .actions { margin: 0; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 10px; margin: 10px 0 16px; }
+.kpi { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: var(--card); }
+.kpi .v { font-size: 1.45rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.kpi .l { font-size: .78rem; color: var(--muted); }
+.bars { display: grid; gap: 6px; margin: 6px 0 16px; }
+.bar-row { display: grid; grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr) 7.5rem 9.5rem; align-items: center; gap: 10px; font-size: .85rem; }
+.bar-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-track { height: 14px; border-radius: 4px; background: var(--chip); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 0 4px 4px 0; background: var(--accent); min-width: 2px; }
+.bar-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+.st { white-space: nowrap; font-size: .8rem; }
+.st-live { color: var(--ok); } .st-none { color: var(--err); } .st-wait { color: var(--muted); } .st-part { color: var(--warn); }
+.rp-regie { border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px; display: grid; gap: 8px; }
+.rp-regie .row { display: grid; grid-template-columns: minmax(12rem, 18rem) minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+.rp-regie select, .rp-regie input, .rp-sched select, .rp-sched input, .rp-sched textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--card); color: var(--text); font: inherit; font-weight: 400; margin-top: 3px; }
+.rp-regie .sugg { display: flex; flex-wrap: wrap; gap: 6px; font-size: .8rem; }
+.rp-regie .sugg button { padding: 2px 10px; font-size: .78rem; font-weight: 400; background: var(--chip); color: var(--text); }
+.rp-regie .tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.rp-regie .tools button { padding: 6px 12px; }
+.rp-sched { border: 1px solid var(--border); border-radius: 12px; margin: 14px 0 0; padding: 10px 14px 14px; }
+.rp-sched legend { font-weight: 600; padding: 0 6px; }
+.rp-days { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.rp-days label { display: inline-flex; gap: 4px; align-items: center; font-weight: 400; margin: 0; }
+.rp-preview { margin-top: 14px; border: 1px solid var(--accent); border-radius: 12px; padding: 12px; }
+.rp-preview h3 { margin: 0 0 4px; font-size: 1rem; }
+@media (max-width: 760px) { .bar-row { grid-template-columns: 1fr 5.5rem; } .bar-row .bar-track { grid-column: 1 / -1; order: 3; } .rp-regie .row { grid-template-columns: 1fr; } }
 .bulk-bar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; padding: 8px 10px; margin: 8px 0 0;
   border: 1px solid var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 7%, var(--card)); font-size: .85rem; }
 .bulk-bar strong { align-self: center; margin-right: 4px; }
@@ -377,6 +416,73 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
         </div>
       </section>
 
+      <!-- Reporting : campagne de l'ad server -> template (check de mise en ligne / report d'envoi aux régies) -->
+      <div id="rp-view" hidden>
+        <section class="card" aria-labelledby="rp-t1">
+          <h2 id="rp-t1">1. Campagne</h2>
+          <p id="rp-source" class="hint"></p>
+          <div class="grid rp-pick">
+            <div>
+              <label for="rp-adv-q">Annonceur</label>
+              <input id="rp-adv-q" type="search" autocomplete="off" placeholder="Rechercher un annonceur…">
+              <div id="rp-adv-list" class="pick-list" role="listbox" aria-label="Annonceurs"></div>
+            </div>
+            <div>
+              <label for="rp-camp-q">Campagne</label>
+              <input id="rp-camp-q" type="search" autocomplete="off" placeholder="Choisissez d'abord l'annonceur" disabled>
+              <div id="rp-camp-list" class="pick-list" role="listbox" aria-label="Campagnes"></div>
+            </div>
+          </div>
+          <div id="rp-selected" class="info" hidden></div>
+        </section>
+
+        <section class="card" id="rp-template" aria-labelledby="rp-t2" hidden>
+          <h2 id="rp-t2">2. Template</h2>
+          <div class="tpl-choices" role="radiogroup" aria-label="Template de reporting">
+            <button type="button" class="tpl" data-tpl="check" role="radio" aria-checked="false">
+              <strong>✅ Check de mise en ligne</strong><span>Toutes les régies et tous les emplacements : qui remonte des données, qui n'en a pas. Tableau de bord et Excel.</span></button>
+            <button type="button" class="tpl" data-tpl="regies" role="radio" aria-checked="false">
+              <strong>📨 Report d'envoi aux régies</strong><span>Un report automatique par régie, envoyé par e-mail selon un calendrier.</span></button>
+          </div>
+        </section>
+
+        <section class="card" id="rp-check" aria-labelledby="rp-t3" hidden>
+          <div class="rp-head">
+            <h2 id="rp-t3">Check de mise en ligne</h2>
+            <div class="actions">
+              <button type="button" id="rp-refresh" class="secondary">↻ Actualiser</button>
+              <button type="button" id="rp-dl-check">⬇ Télécharger l'Excel</button>
+            </div>
+          </div>
+          <p id="rp-check-status" class="status" role="status"></p>
+          <div id="rp-dash"></div>
+        </section>
+
+        <section class="card" id="rp-send" aria-labelledby="rp-t4" hidden>
+          <h2 id="rp-t4">Report d'envoi aux régies</h2>
+          <p class="hint">Une régie par bloc ; seules les régies présentes dans la campagne sont proposées. Les e-mails saisis sont mémorisés pour la prochaine fois.</p>
+          <div id="rp-regies"></div>
+          <button type="button" id="rp-add-regie" class="secondary">＋ Ajouter une régie</button>
+          <fieldset class="rp-sched">
+            <legend>Calendrier d'envoi</legend>
+            <div class="grid">
+              <label>Fréquence
+                <select id="rp-freq"><option value="daily">Quotidien</option><option value="weekly" selected>Hebdomadaire</option><option value="monthly">Mensuel</option></select></label>
+              <label>Données envoyées
+                <select id="rp-range"><option value="cumul">Cumul depuis le début de la campagne</option><option value="period">Période écoulée depuis le dernier envoi</option></select></label>
+              <label>Premier envoi<input id="rp-start" type="date"></label>
+              <label>Dernier envoi<input id="rp-end" type="date"></label>
+            </div>
+            <div id="rp-days" class="rp-days" role="group" aria-label="Jours d'envoi"></div>
+            <label>Message joint (facultatif)<textarea id="rp-message" rows="2" placeholder="Bonjour, vous trouverez ci-joint le report de diffusion de la campagne…"></textarea></label>
+          </fieldset>
+          <p id="rp-send-msg" role="status"></p>
+          <div class="actions"><button type="button" id="rp-launch">📨 Programmer les envois</button></div>
+          <div id="rp-preview" class="rp-preview" hidden></div>
+          <div id="rp-scheduled"></div>
+        </section>
+      </div>
+
       <section id="output" class="card hidden" aria-labelledby="t-out" aria-live="polite">
         <h2 id="t-out">Résultat</h2>
         <div id="out"></div>
@@ -393,7 +499,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
     <label>Ad server
       <select id="cd-adserver"><option value="cm360">Campaign Manager 360</option><option value="adform">Adform</option></select>
     </label>
-    <label>Nom de la campagne<input id="cd-campaign" autocomplete="off"></label>
+    <label id="cd-campaign-l">Nom de la campagne<input id="cd-campaign" autocomplete="off"></label>
     <label>ID agence<input id="cd-agency" autocomplete="off"></label>
     <p id="cd-error" class="err" role="alert"></p>
     <div class="actions">
@@ -493,6 +599,7 @@ async function boot() {
     setStatus("Moteur prêt (version " + version + ").");
     $("analyze").disabled = !planFile;
     if (pendingRestore) { const t = pendingRestore; pendingRestore = null; restoreWork(t); }
+    if (pendingReporting && current && current.mode === "reporting") { pendingReporting = false; rpLoadCampaign(); }
   } catch (e) {
     setStatus("Le moteur n'a pas pu se charger : " + e.message, true);
   }
@@ -737,7 +844,8 @@ function applyResult(d) {
 // Largeurs de colonnes mémorisées par tableau (préférence du poste)
 const COL_WIDTHS = (() => { try { return JSON.parse(localStorage.getItem("umnia_cols") || "{}"); } catch (e) { return {}; } })();
 const WIDE_COLS = {targeting: 220, targeting_detail: 320, placement_name: 240, placement_final: 240, ad_final: 240,
-                   creative_final: 220, ad_name: 220, creative_name: 220, landing_page_url: 220, Name: 380};
+                   creative_final: 220, ad_name: 220, creative_name: 220, landing_page_url: 220, Name: 380,
+                   Emplacement: 320, "Régie": 150};
 function resizable(tableEl, prefix, keys, fallback = 140) {
   const ths = [...tableEl.querySelectorAll("thead th")];
   const cols = ths.map(() => el("col"));
@@ -958,7 +1066,11 @@ function renderPreviewPane() {
 }
 $("adserver").addEventListener("change", () => {
   renderPreviewPane();
-  if (current) { current.adserver = $("adserver").value; renderTaskHead(); saveSoon(0); }
+  if (current) {
+    current.adserver = $("adserver").value;
+    if (current.mode === "reporting") { delete current.data.rp; current.advertiser = current.campaign = ""; rpOpen(); }
+    renderTaskHead(); saveSoon(0);
+  }
 });
 
 // Aperçu Adform : menu de la campagne (Campagne / Bannières / Tags), colonnes de la plateforme
@@ -1054,7 +1166,6 @@ $("analyze").addEventListener("click", async () => {
       Object.assign(current.data, {file_name: planFile.name, nomen, instructions: $("instructions").value});
       current.status = "produit";
       saveSoon(0);
-      if (current.mode === "reporting") { step = 2; applyResult(d); if (!$("delivery").disabled) $("delivery").click(); }
     }
     $("result").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (e) {
@@ -1221,6 +1332,9 @@ function setMode(m) {
   mode = m;
   setTabs(".modes button", "mode", m);
   $("empty-title").textContent = m === "reporting" ? "Quel reporting voulez-vous lancer ?" : "Que voulez-vous trafficker aujourd'hui ?";
+  $("empty-sub").textContent = m === "reporting"
+    ? "Créez une tâche, choisissez l'annonceur et la campagne dans l'ad server, puis le template : check de mise en ligne ou report d'envoi aux régies."
+    : "Créez une tâche, déposez le plan média avec les cases à lire surlignées en jaune, puis lancez la production.";
   if (current && current.mode !== m) closeTask();
   refreshList();
 }
@@ -1258,6 +1372,7 @@ function handleAuth(e) {
 // Création d'une tâche
 function openCreate() {
   $("cd-mode").textContent = MODE_LABEL[mode];
+  $("cd-campaign-l").hidden = mode === "reporting";      // reporting : campagne choisie dans l'ad server
   $("create-form").reset();
   $("cd-agency").value = me.agency_id || "";
   $("cd-agency").disabled = me.role !== "admin" && !Store.local;
@@ -1325,10 +1440,13 @@ async function openTask(id) {
   $("camp").value = current.campaign || "";
   $("adv").value = current.advertiser || "";
   $("instructions").value = current.data.instructions || "";
-  $("analyze").textContent = current.mode === "reporting" ? "📊 Lancer le reporting" : "🚀 Lancer la production";
+  const reporting = current.mode === "reporting";
+  $("pm-step").hidden = reporting;
+  $("rp-view").hidden = !reporting;
   $("delete-task").hidden = !(Store.local || current.owner_id === me.id || me.role === "admin");
   for (const b of document.querySelectorAll(".task-item")) b.classList.toggle("on", b.dataset.id === id);
-  if (current.data.table && current.data.table.length) {
+  if (reporting) rpOpen();
+  else if (current.data.table && current.data.table.length) {
     $("file-name").textContent = "Dernier plan : " + (current.data.file_name || "") + " (déposez un fichier pour relancer)";
     if (engineReady) restoreWork(current); else pendingRestore = current;
   }
@@ -1448,6 +1566,458 @@ $("user-form").addEventListener("submit", async (e) => {
     renderUsers();
   } catch (err) { $("u-msg").className = "err"; $("u-msg").textContent = err.message; }
 });
+
+// --- Reporting -----------------------------------------------------------------------------
+// Campagne lue dans l'ad server (API via le Worker ; démo sans clé) -> template :
+// check de mise en ligne (tableau de bord + Excel) ou report d'envoi programmé par régie.
+const RP = {live: false, demo: null, advertisers: [], campaigns: [], campaign: null, placements: [], delivery: null,
+            contacts: [], seq: 0};
+const WEEKDAYS = [["MONDAY", "Lun"], ["TUESDAY", "Mar"], ["WEDNESDAY", "Mer"], ["THURSDAY", "Jeu"], ["FRIDAY", "Ven"],
+                  ["SATURDAY", "Sam"], ["SUNDAY", "Dim"]];
+const fmtN = (n) => Number(n || 0).toLocaleString("fr-FR");
+const isoToday = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const addDays = (iso, n) => { const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const rpData = () => (current.data.rp = current.data.rp || {});
+
+async function rpSource() {
+  RP.live = false;
+  if (!Store.local) {
+    try { RP.live = !!(await Store.api("GET", "adserver/status"))[$("adserver").value]; } catch (e) { handleAuth(e); }
+  }
+  if (!RP.live && !RP.demo) {
+    try { RP.demo = await (await fetch("demo_adserver.json")).json(); } catch (e) { RP.demo = {advertisers: [], campaigns: []}; }
+  }
+  $("rp-source").textContent = RP.live
+    ? `Données en direct : ${ADSERVER_LABEL[$("adserver").value]} (API).`
+    : `Données de démonstration : ${ADSERVER_LABEL[$("adserver").value]} n'est pas encore connecté (clés API à ajouter dans les secrets du Worker).`;
+}
+
+function demoCampaign(c) {
+  const today = isoToday();
+  const adv = RP.demo.advertisers.find((a) => a.id === c.advertiser_id) || {};
+  return {id: c.id, name: c.name, advertiser_id: c.advertiser_id, advertiser: adv.name || "",
+          start: addDays(today, c.start_offset), end: addDays(today, c.end_offset)};
+}
+
+async function rpAdvertisers(q) {
+  if (RP.live) return (await Store.api("GET", `adserver/advertisers?adserver=${$("adserver").value}&q=${encodeURIComponent(q)}`)).advertisers;
+  const s = q.toLowerCase();
+  return RP.demo.advertisers.filter((a) => a.name.toLowerCase().includes(s));
+}
+async function rpCampaigns(advId, q) {
+  if (RP.live) return (await Store.api("GET", `adserver/campaigns?adserver=${$("adserver").value}&advertiser_id=${encodeURIComponent(advId)}&q=${encodeURIComponent(q)}`)).campaigns;
+  const s = q.toLowerCase();
+  return RP.demo.campaigns.filter((c) => c.advertiser_id === advId && c.name.toLowerCase().includes(s)).map(demoCampaign);
+}
+async function rpPlacements(campId) {
+  if (RP.live) return Store.api("GET", `adserver/placements?adserver=${$("adserver").value}&campaign_id=${encodeURIComponent(campId)}`);
+  const c = RP.demo.campaigns.find((x) => x.id === campId);
+  return {campaign: demoCampaign(c), placements: c.placements};
+}
+async function rpDelivery() {
+  const args = {campaign: RP.campaign, placements: RP.placements, today: isoToday()};
+  if (!RP.live) return JSON.parse(await call("report_demo", args));
+  let d = await Store.api("POST", "adserver/delivery", {adserver: $("adserver").value, campaign_id: RP.campaign.id});
+  for (let i = 0; d.pending && i < 40; i++) {           // rapport asynchrone : la page relance (~2 min max)
+    $("rp-check-status").textContent = "Rapport en cours de génération dans l'ad server…";
+    await new Promise((ok) => setTimeout(ok, 3000));
+    d = await Store.api("GET", `adserver/delivery?adserver=${$("adserver").value}&report_id=${d.pending.report_id}&file_id=${d.pending.file_id}`);
+  }
+  if (d.pending) throw new Error("Le rapport de l'ad server n'est pas prêt, réessayez dans quelques minutes.");
+  return d.delivery;
+}
+
+function pickList(box, items, sel, label, sub, onPick) {
+  box.replaceChildren(...(items.length ? items.map((it) => {
+    const b = el("button", {type: "button", role: "option", "aria-selected": String(it.id === sel), class: it.id === sel ? "on" : ""},
+      el("span", {}, label(it)), el("span", {class: "s"}, sub(it)));
+    b.addEventListener("click", () => onPick(it));
+    return b;
+  }) : [el("p", {class: "hint"}, "Aucun résultat.")]));
+}
+
+async function rpSearchAdv() {
+  const seq = ++RP.seq;
+  try {
+    const list = await rpAdvertisers($("rp-adv-q").value.trim());
+    if (seq !== RP.seq) return;
+    RP.advertisers = list;
+    pickList($("rp-adv-list"), list, (rpData().advertiser || {}).id, (a) => a.name, (a) => "ID " + a.id, rpPickAdv);
+  } catch (e) { $("rp-adv-list").replaceChildren(el("p", {class: "err"}, e.message)); handleAuth(e); }
+}
+async function rpPickAdv(a) {
+  const data = rpData();
+  if ((data.advertiser || {}).id !== a.id) { data.campaign = null; rpReset(); }
+  data.advertiser = {id: a.id, name: a.name};
+  current.advertiser = a.name;
+  $("rp-adv-q").value = a.name;
+  $("rp-camp-q").disabled = false;
+  $("rp-camp-q").placeholder = "Rechercher une campagne…";
+  renderTaskHead();
+  saveSoon();
+  rpSearchAdv();
+  rpSearchCamp();
+}
+async function rpSearchCamp() {
+  const adv = rpData().advertiser;
+  if (!adv) return;
+  try {
+    const list = await rpCampaigns(adv.id, $("rp-camp-q").value.trim());
+    RP.campaigns = list;
+    const fr = (d) => d ? d.split("-").reverse().join("/") : "?";
+    pickList($("rp-camp-list"), list, (rpData().campaign || {}).id, (c) => c.name, (c) => `${fr(c.start)} → ${fr(c.end)}`, rpPickCamp);
+  } catch (e) { $("rp-camp-list").replaceChildren(el("p", {class: "err"}, e.message)); handleAuth(e); }
+}
+let rpTimer = null;
+$("rp-adv-q").addEventListener("input", () => { clearTimeout(rpTimer); rpTimer = setTimeout(rpSearchAdv, 250); });
+$("rp-camp-q").addEventListener("input", () => { clearTimeout(rpTimer); rpTimer = setTimeout(rpSearchCamp, 250); });
+
+function rpReset() {
+  RP.campaign = null; RP.placements = []; RP.delivery = null;
+  for (const id of ["rp-selected", "rp-template", "rp-check", "rp-send"]) $(id).hidden = true;
+  $("rp-preview").hidden = true;
+}
+
+async function rpPickCamp(c) {
+  const data = rpData();
+  if ((data.campaign || {}).id !== c.id) { data.regies = []; data.template = data.template || ""; }
+  data.campaign = {id: c.id, name: c.name};
+  current.campaign = c.name;
+  $("rp-camp-q").value = c.name;
+  renderTaskHead();
+  rpSearchCamp();
+  await rpLoadCampaign();
+  saveSoon(0);
+}
+
+async function rpLoadCampaign() {
+  const data = rpData();
+  rpReset();
+  $("rp-selected").hidden = false;
+  $("rp-selected").textContent = "Lecture de la campagne dans l'ad server…";
+  try {
+    const d = await rpPlacements(data.campaign.id);
+    RP.campaign = {...d.campaign, advertiser: d.campaign.advertiser || (data.advertiser || {}).name || ""};
+    RP.placements = d.placements;
+  } catch (e) {
+    $("rp-selected").textContent = "Campagne illisible : " + e.message;
+    handleAuth(e);
+    return;
+  }
+  const sites = rpSites();
+  const fr = (d) => d ? d.split("-").reverse().join("/") : "à compléter";
+  $("rp-selected").replaceChildren(
+    el("strong", {}, RP.campaign.name), ` — ${RP.campaign.advertiser} · du ${fr(RP.campaign.start)} au ${fr(RP.campaign.end)} · `
+    + `${RP.placements.length} emplacement(s) · ${sites.length} régie(s) : `,
+    ...sites.map((s) => el("span", {class: "chip"}, s.name)));
+  $("rp-template").hidden = false;
+  rpShowTemplate(data.template);
+}
+
+// Régies détectées dans la programmation de la campagne
+function rpSites() {
+  const m = new Map();
+  for (const p of RP.placements) if (!m.has(p.site)) m.set(p.site, {id: p.site_id || "", name: p.site || "Régie inconnue", placements: 0});
+  for (const p of RP.placements) m.get(p.site).placements++;
+  return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, "fr"));
+}
+
+for (const b of document.querySelectorAll(".tpl")) b.addEventListener("click", () => {
+  rpData().template = b.dataset.tpl;
+  saveSoon(0);
+  rpShowTemplate(b.dataset.tpl);
+});
+function rpShowTemplate(tpl) {
+  for (const b of document.querySelectorAll(".tpl")) {
+    b.classList.toggle("on", b.dataset.tpl === tpl);
+    b.setAttribute("aria-checked", String(b.dataset.tpl === tpl));
+  }
+  $("rp-check").hidden = tpl !== "check";
+  $("rp-send").hidden = tpl !== "regies";
+  if (tpl === "check") rpRunCheck();
+  if (tpl === "regies") rpRenderSend();
+}
+
+async function rpEnsureDelivery(force) {
+  if (!RP.delivery || force) RP.delivery = await rpDelivery();
+  return RP.delivery;
+}
+
+// --- Template 1 : check de mise en ligne ---
+async function rpRunCheck(force = false) {
+  $("rp-check-status").textContent = "Récupération des données de diffusion…";
+  $("rp-dash").replaceChildren();
+  try {
+    const delivery = await rpEnsureDelivery(force);
+    const c = JSON.parse(await call("report_check", {campaign: RP.campaign, placements: RP.placements, delivery, today: isoToday()}));
+    $("rp-check-status").textContent = `Données au ${new Date().toLocaleDateString("fr-FR")}` + (RP.live ? "" : " (démonstration)") + ".";
+    $("rp-dash").replaceChildren(...renderDashboard(c));
+    rpData().checked = new Date().toISOString();
+    if (current.status === "brouillon") current.status = "check réalisé";
+    saveSoon(0);
+  } catch (e) {
+    $("rp-check-status").textContent = "Check impossible : " + e.message;
+    $("rp-check-status").classList.add("err");
+    handleAuth(e);
+  }
+}
+$("rp-refresh").addEventListener("click", () => rpRunCheck(true));
+
+const STATUS_UI = {"Données reçues": ["st-live", "✅"], "Aucune donnée": ["st-none", "⛔"],
+                   "Pas encore démarré": ["st-wait", "⏳"], "Partiel": ["st-part", "⚠️"]};
+const statusChip = (s) => el("span", {class: "st " + ((STATUS_UI[s] || [])[0] || "")}, `${(STATUS_UI[s] || [])[1] || ""} ${s}`);
+
+function renderDashboard(c) {
+  const k = c.kpis;
+  const fr = (d) => d ? d.split("-").reverse().join("/") : "—";
+  const tile = (v, l) => el("div", {class: "kpi"}, el("div", {class: "v"}, v), el("div", {class: "l"}, l));
+  const kpis = el("div", {class: "kpis"},
+    tile(fmtN(k.impressions), "Impressions"), tile(fmtN(k.clicks), "Clics"), tile(k.ctr.toFixed(2) + " %", "CTR"),
+    tile(`${k.placements_live} / ${k.placements}`, "Emplacements avec données"),
+    tile(`${k.sites_live} / ${k.sites}`, "Régies avec données"), tile(fr(k.last), "Dernière donnée"));
+  const max = Math.max(1, ...c.sites.map((s) => s.impressions));
+  const bars = el("div", {class: "bars", role: "list", "aria-label": "Impressions par régie"}, ...c.sites.map((s) =>
+    el("div", {class: "bar-row", role: "listitem", title: `${s.site} : ${fmtN(s.impressions)} impressions, ${fmtN(s.clicks)} clics, `
+               + `${s.live} / ${s.placements} emplacement(s) avec données`},
+      el("span", {class: "name"}, s.site),
+      el("div", {class: "bar-track", "aria-hidden": "true"}, el("div", {class: "bar-fill", style: `width:${s.impressions / max * 100}%`})),
+      el("span", {class: "num"}, fmtN(s.impressions)), statusChip(s.status))));
+  const missing = c.placements.filter((p) => p.status === "Aucune donnée");
+  const alert = missing.length
+    ? el("div", {class: "info"}, `⛔ ${missing.length} emplacement(s) sans donnée alors qu'ils devraient diffuser — régies concernées : `
+        + [...new Set(missing.map((p) => p.site))].join(", ") + ".")
+    : el("div", {class: "info"}, "✅ Tous les emplacements démarrés remontent des données.");
+  const head = ["Régie", "Emplacement", "ID", "Format", "Début", "Fin", "Impressions", "Clics", "CTR", "1re impr.", "Dernière impr.", "Statut"];
+  const rows = c.placements.map((p) => el("tr", {},
+    el("td", {}, p.site), el("td", {}, p.name), el("td", {class: "pv-id"}, p.id), el("td", {}, p.size), el("td", {}, fr(p.start)),
+    el("td", {}, fr(p.end)), el("td", {class: "num"}, fmtN(p.impressions)), el("td", {class: "num"}, fmtN(p.clicks)),
+    el("td", {class: "num"}, p.ctr.toFixed(2) + " %"), el("td", {}, fr(p.first)), el("td", {}, fr(p.last)),
+    el("td", {}, statusChip(p.status))));
+  const tbl = el("table", {class: "pv", id: "rp-check-table"}, el("thead", {}, el("tr", {}, ...head.map((h) => el("th", {}, h)))), el("tbody", {}, ...rows));
+  return [kpis, alert, el("h3", {}, "Impressions par régie"), bars, el("h3", {}, "Détail par emplacement"),
+          el("div", {class: "table-wrap"}, resizable(tbl, "check", head, 110))];
+}
+
+$("rp-dl-check").addEventListener("click", async () => {
+  try {
+    const delivery = await rpEnsureDelivery();
+    const bytes = await call("export_report_check", {campaign: RP.campaign, placements: RP.placements, delivery, today: isoToday()});
+    download(bytes, `check_mise_en_ligne_${slug(RP.campaign.name)}.xlsx`);
+  } catch (e) { $("rp-check-status").textContent = "Export impossible : " + e.message; }
+});
+const slug = (s) => String(s || "").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_|_$/g, "");
+
+// --- Template 2 : report d'envoi aux régies ---
+async function rpLoadContacts() {
+  if (Store.local) {
+    try { RP.contacts = JSON.parse(localStorage.getItem("umnia_contacts") || "[]"); } catch (e) { RP.contacts = []; }
+    return;
+  }
+  try { RP.contacts = (await Store.api("GET", "contacts")).contacts; } catch (e) { RP.contacts = []; handleAuth(e); }
+}
+async function rpSaveContacts(site, emails) {
+  if (Store.local) {
+    for (const email of emails) if (!RP.contacts.some((c) => c.site === site && c.email === email)) RP.contacts.push({site, email});
+    try { localStorage.setItem("umnia_contacts", JSON.stringify(RP.contacts)); } catch (e) { /* stockage indisponible */ }
+    return;
+  }
+  await Store.api("POST", "contacts", {site, emails});
+  for (const email of emails) if (!RP.contacts.some((c) => c.site === site && c.email === email)) RP.contacts.push({site, email});
+}
+const parseEmails = (s) => String(s || "").split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[a-z]{2,}$/i;
+
+function rpSchedule() {
+  const data = rpData();
+  data.schedule = data.schedule || {frequency: "weekly", weekdays: ["MONDAY"], range: "cumul",
+    start: RP.campaign.start > isoToday() ? RP.campaign.start : addDays(isoToday(), 1), end: addDays(RP.campaign.end || isoToday(), 1), message: ""};
+  return data.schedule;
+}
+
+async function rpRenderSend() {
+  await rpLoadContacts();
+  const data = rpData();
+  const sites = rpSites();
+  data.regies = (data.regies || []).filter((r) => sites.some((s) => s.name === r.site));
+  if (!data.regies.length && sites.length) data.regies.push({site: sites[0].name, emails: ""});
+  $("rp-regies").replaceChildren(...data.regies.map((r, i) => regieBlock(r, i, sites)));
+  $("rp-add-regie").disabled = data.regies.length >= sites.length;
+  const sc = rpSchedule();
+  $("rp-freq").value = sc.frequency; $("rp-range").value = sc.range; $("rp-start").value = sc.start;
+  $("rp-end").value = sc.end; $("rp-message").value = sc.message || "";
+  $("rp-days").replaceChildren(...WEEKDAYS.map(([v, l]) => {
+    const cb = el("input", {type: "checkbox", value: v});
+    cb.checked = sc.weekdays.includes(v);
+    cb.addEventListener("change", () => {
+      sc.weekdays = [...$("rp-days").querySelectorAll("input:checked")].map((x) => x.value);
+      saveSoon();
+    });
+    return el("label", {}, cb, l);
+  }));
+  $("rp-days").hidden = sc.frequency !== "weekly";
+  renderScheduled();
+}
+
+function regieBlock(r, i, sites) {
+  const data = rpData();
+  const taken = new Set(data.regies.map((x) => x.site));
+  const select = el("select", {"aria-label": `Régie ${i + 1}`},
+    ...sites.filter((s) => s.name === r.site || !taken.has(s.name))
+      .map((s) => { const o = el("option", {value: s.name}, `${s.name} (${s.placements} empl.)`); if (s.name === r.site) o.selected = true; return o; }));
+  select.addEventListener("change", () => { r.site = select.value; saveSoon(); rpRenderSend(); });
+  const input = el("input", {value: r.emails || "", placeholder: "prenom.nom@regie.fr, trafic@regie.fr", "aria-label": `E-mails de la régie ${r.site}`,
+                             autocomplete: "off"});
+  input.addEventListener("input", () => { r.emails = input.value; saveSoon(); });
+  const known = RP.contacts.filter((c) => c.site === r.site).map((c) => c.email);
+  const sugg = el("div", {class: "sugg"}, ...(known.length ? [el("span", {class: "hint"}, "Carnet :")] : []), ...known.map((e) => {
+    const b = el("button", {type: "button", title: "Ajouter " + e}, "＋ " + e);
+    b.addEventListener("click", () => {
+      const list = parseEmails(input.value);
+      if (!list.includes(e)) list.push(e);
+      input.value = r.emails = list.join(", ");
+      saveSoon();
+    });
+    return b;
+  }));
+  const rm = el("button", {type: "button", class: "secondary", "aria-label": "Retirer la régie " + r.site}, "✕");
+  rm.disabled = data.regies.length === 1;
+  rm.addEventListener("click", () => { data.regies.splice(i, 1); saveSoon(); rpRenderSend(); });
+  const prev = el("button", {type: "button", class: "secondary"}, "👁 Prévisualiser l'Excel");
+  prev.addEventListener("click", () => rpPreview(r.site));
+  const dl = el("button", {type: "button", class: "secondary"}, "⬇ Excel");
+  dl.addEventListener("click", () => rpDownloadRegie(r.site));
+  return el("div", {class: "rp-regie", "data-site": r.site},
+    el("div", {class: "row"}, el("label", {}, "Régie", select), el("label", {}, "E-mail(s) de la régie", input), rm),
+    sugg, el("div", {class: "tools"}, prev, dl));
+}
+
+$("rp-add-regie").addEventListener("click", () => {
+  const data = rpData();
+  const free = rpSites().find((s) => !data.regies.some((r) => r.site === s.name));
+  if (!free) return;
+  data.regies.push({site: free.name, emails: ""});
+  saveSoon();
+  rpRenderSend();
+});
+for (const [id, key] of [["rp-freq", "frequency"], ["rp-range", "range"], ["rp-start", "start"], ["rp-end", "end"], ["rp-message", "message"]]) {
+  $(id).addEventListener(id === "rp-message" ? "input" : "change", () => {
+    const sc = rpSchedule();
+    sc[key] = $(id).value;
+    $("rp-days").hidden = sc.frequency !== "weekly";
+    saveSoon();
+  });
+}
+
+async function rpPreview(site) {
+  try {
+    const delivery = await rpEnsureDelivery();
+    const rep = JSON.parse(await call("report_regie", {campaign: RP.campaign, placements: RP.placements, delivery, site}));
+    const fr = (d) => d ? d.split("-").reverse().join("/") : "";
+    const fmt = (v, j) => j === 0 ? fr(v) : j >= 4 && j <= 5 ? fmtN(v) : j === 6 ? Number(v).toFixed(2) : v;
+    const rows = rep.rows.slice(0, 200).map((r) => el("tr", {}, ...r.map((v, j) => el("td", {class: j >= 4 ? "num" : ""}, fmt(v, j)))));
+    rows.push(el("tr", {class: "af-campaign"}, ...rep.total.map((v, j) => el("td", {class: j >= 4 ? "num" : ""}, j ? fmt(v, j) : v))));
+    const close = el("button", {type: "button", class: "secondary"}, "Fermer l'aperçu");
+    close.addEventListener("click", () => { $("rp-preview").hidden = true; });
+    $("rp-preview").replaceChildren(
+      el("div", {class: "rp-head"}, el("h3", {}, `Aperçu du fichier envoyé à ${site}`), close),
+      el("p", {class: "hint"}, `${RP.campaign.advertiser} — ${RP.campaign.name} · ${rep.placements_live} / ${rep.placements} emplacement(s) avec données · `
+        + `${rep.rows.length} ligne(s)` + (rep.rows.length > 200 ? " (200 premières affichées)" : "") + (RP.live ? "" : " · données de démonstration")),
+      el("div", {class: "table-wrap"}, el("table", {class: "pv"}, el("thead", {}, el("tr", {}, ...rep.columns.map((h) => el("th", {}, h)))),
+        el("tbody", {}, ...(rows.length > 1 ? rows : [el("tr", {}, el("td", {colspan: "7", class: "hint"}, "Aucune donnée pour cette régie à ce jour."))])))));
+    $("rp-preview").hidden = false;
+    $("rp-preview").scrollIntoView({behavior: "smooth", block: "nearest"});
+  } catch (e) { $("rp-send-msg").className = "err"; $("rp-send-msg").textContent = "Aperçu impossible : " + e.message; }
+}
+async function rpDownloadRegie(site) {
+  try {
+    const delivery = await rpEnsureDelivery();
+    download(await call("export_report_regie", {campaign: RP.campaign, placements: RP.placements, delivery, site, today: isoToday()}),
+             `report_${slug(site)}_${slug(RP.campaign.name)}.xlsx`);
+  } catch (e) { $("rp-send-msg").className = "err"; $("rp-send-msg").textContent = "Export impossible : " + e.message; }
+}
+
+$("rp-launch").addEventListener("click", async () => {
+  const data = rpData();
+  const sc = rpSchedule();
+  const msg = $("rp-send-msg");
+  msg.className = "err";
+  const sites = rpSites();
+  for (const r of data.regies) {
+    const emails = parseEmails(r.emails);
+    if (!emails.length) { msg.textContent = `Ajoutez au moins un e-mail pour ${r.site}.`; return; }
+    const bad = emails.find((e) => !EMAIL_RE.test(e));
+    if (bad) { msg.textContent = `E-mail invalide pour ${r.site} : ${bad}`; return; }
+  }
+  if (!sc.start || !sc.end || sc.start > sc.end) { msg.textContent = "Calendrier : premier envoi avant le dernier."; return; }
+  if (sc.frequency === "weekly" && !sc.weekdays.length) { msg.textContent = "Calendrier : choisissez au moins un jour d'envoi."; return; }
+  const btn = $("rp-launch");
+  busy(btn, true, "Programmation…");
+  const done = [];
+  try {
+    for (const r of data.regies) {
+      const emails = parseEmails(r.emails);
+      const site = sites.find((s) => s.name === r.site) || {id: "", name: r.site};
+      const res = RP.live
+        ? await Store.api("POST", "adserver/schedule", {adserver: $("adserver").value, campaign_id: RP.campaign.id,
+                                                        site: {id: site.id, name: site.name}, emails, schedule: sc})
+        : {report_id: "", sent_by: "demo"};
+      await rpSaveContacts(r.site, emails);
+      done.push({site: r.site, emails, schedule: {...sc}, report_id: res.report_id, sent_by: res.sent_by, created: new Date().toISOString()});
+    }
+  } catch (e) {
+    msg.textContent = "Programmation interrompue : " + e.message;
+    handleAuth(e);
+  } finally { busy(btn, false); }
+  if (done.length) {
+    data.schedules = [...(data.schedules || []), ...done];
+    current.status = "reports programmés";
+    saveSoon(0);
+    msg.className = "ok";
+    msg.textContent = RP.live
+      ? `${done.length} report(s) programmé(s).`
+      : `${done.length} report(s) enregistré(s) en démonstration : aucun e-mail n'est envoyé tant que l'ad server n'est pas connecté.`;
+    rpRenderSend();
+  }
+});
+
+function renderScheduled() {
+  const list = rpData().schedules || [];
+  if (!list.length) { $("rp-scheduled").replaceChildren(); return; }
+  const FREQ = {daily: "Quotidien", weekly: "Hebdomadaire", monthly: "Mensuel"};
+  const BY = {cm360: "envoyé par CM360", manual: "à programmer dans Adform", demo: "démonstration"};
+  const fr = (d) => d ? d.split("-").reverse().join("/") : "";
+  $("rp-scheduled").replaceChildren(el("h3", {}, "Reports programmés"), el("div", {class: "table-wrap"}, el("table", {class: "pv"},
+    el("thead", {}, el("tr", {}, ...["Régie", "Destinataires", "Fréquence", "Du", "Au", "Envoi", "ID rapport"].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...list.map((s) => el("tr", {}, el("td", {}, s.site), el("td", {}, s.emails.join(", ")),
+      el("td", {}, FREQ[s.schedule.frequency] + (s.schedule.frequency === "weekly"
+        ? " (" + s.schedule.weekdays.map((d) => (WEEKDAYS.find((w) => w[0] === d) || [d, d])[1]).join(", ") + ")" : "")),
+      el("td", {}, fr(s.schedule.start)), el("td", {}, fr(s.schedule.end)), el("td", {}, BY[s.sent_by] || s.sent_by),
+      el("td", {class: "pv-id"}, s.report_id || "—")))))));
+}
+
+// Ouverture d'une tâche de reporting : on reprend l'annonceur, la campagne et le template choisis
+async function rpOpen() {
+  rpReset();
+  $("rp-adv-q").value = "";
+  $("rp-camp-q").value = "";
+  $("rp-adv-list").replaceChildren(); $("rp-camp-list").replaceChildren();
+  $("rp-camp-q").disabled = true;
+  $("rp-send-msg").textContent = "";
+  await rpSource();
+  const data = rpData();
+  if (data.advertiser) {
+    $("rp-adv-q").value = data.advertiser.name;
+    $("rp-camp-q").disabled = false;
+    $("rp-camp-q").placeholder = "Rechercher une campagne…";
+  } else if (current.advertiser) {
+    $("rp-adv-q").value = current.advertiser;
+  }
+  await rpSearchAdv();
+  if (data.advertiser) await rpSearchCamp();
+  if (data.campaign && engineReady) await rpLoadCampaign();
+  else if (data.campaign) pendingReporting = true;
+}
+let pendingReporting = false;
 
 // Thème clair / sombre / auto (préférence du navigateur), mémorisé localement
 const THEMES = ["auto", "light", "dark"], THEME_LABEL = {auto: "Thème : auto", light: "Thème : clair", dark: "Thème : sombre"};

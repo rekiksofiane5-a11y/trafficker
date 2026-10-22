@@ -15,7 +15,7 @@ WEB = os.path.join(ROOT, "web")
 DIST = os.path.join(WEB, "dist")
 
 PY_MODULES = ["cm360_trafficker.py", "cm360_reporting.py", "cm360_bulk.py",
-              "adform_bulk.py", "ingest.py", "plan_agent.py", "creative_specs.py",
+              "adform_bulk.py", "ingest.py", "plan_agent.py", "creative_specs.py", "reporting.py",
               "web/web_api.py"]
 PYODIDE_FILES = ["pyodide.js", "pyodide.asm.js", "pyodide.asm.wasm",
                  "python_stdlib.zip", "pyodide-lock.json"]
@@ -32,6 +32,7 @@ def main() -> None:
     shutil.copy(os.path.join(WEB, "index.html"), DIST)
     shutil.copy(os.path.join(WEB, "_headers"), DIST)
     shutil.copy(os.path.join(WEB, "engine.js"), DIST)
+    shutil.copy(os.path.join(WEB, "demo_adserver.json"), DIST)
     for m in PY_MODULES:
         shutil.copy(os.path.join(ROOT, m), os.path.join(DIST, "py"))
     shutil.copy(os.path.join(ROOT, "templates", "adform_bulk_template.xlsx"),

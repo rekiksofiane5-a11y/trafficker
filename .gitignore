@@ -8,3 +8,4 @@ cle*.json
 node_modules/
 .wrangler/
 web/dist/
+.dev.vars

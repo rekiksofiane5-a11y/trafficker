@@ -131,13 +131,22 @@ Le dry-run (et l'UI) signalent : champs manquants, tailles invalides, dates inex
 - **Confort** : colonnes redimensionnables (glisser le bord de l'en-tête, double-clic = large, flèches au clavier ; largeurs mémorisées), contenu complet en infobulle ; après la production, la zone de dépôt se replie en une ligne (« Modifier le plan ou relancer »).
 - **Choix de l'ad server** au départ (CM360 ou Adform) : l'aperçu et l'export s'adaptent. Aperçu **Adform** fidèle à la plateforme, avec le menu de la campagne en liste déroulante : **Campagne** (campagne puis « Direct Line Item » : Media = régie, Type Direct, Status, ID, Start/End Date, Non-Programmatic Budget, Volume en Imps), **Bannières** (type, taille, line item, URL de clic) et **Tags** (taille, type de tag, nombre de bannières). Les informations manquantes ne sont plus listées : elles apparaissent en orange dans le plan et dans l'aperçu ; le détail de lecture et de nomenclature est replié.
 - **Interface type Claude** : page de connexion, puis barre latérale à gauche avec deux modes **Trafficking / Reporting**, recherche, **＋ Créer**, **Récents** (« Mes tâches » / « Agence » pour voir les demandes des collègues de la même agence) et, en bas, le compte (Paramètres : mot de passe ; Administration : utilisateurs, pour les admins ; Déconnexion).
-- **Tâche** : la pop-up de création demande nom de la tâche, annonceur, ad server, nom de la campagne, ID agence (campagne et annonceur saisis ici priment sur ceux du fichier). Dans la tâche : dépôt du plan (cellules surlignées en jaune fluo = ce que lit l'agent), **instructions supplémentaires** (une par ligne, `Clé : valeur` — campagne, annonceur, début, fin, période, URL, régie, objectif, audience, ciblage, devices, package ; les autres sont notées sans être interprétées), puis **Lancer la production** (mode Reporting : rapport de diffusion simulé). La tâche s'enregistre au fil de l'eau (plan classé, étape, instructions) et se rouvre telle quelle.
+- **Tâche** : la pop-up de création demande nom de la tâche, annonceur, ad server, nom de la campagne, ID agence (campagne et annonceur saisis ici priment sur ceux du fichier). Dans la tâche : dépôt du plan (cellules surlignées en jaune fluo = ce que lit l'agent), **instructions supplémentaires** (une par ligne, `Clé : valeur` — campagne, annonceur, début, fin, période, URL, régie, objectif, audience, ciblage, devices, package ; les autres sont notées sans être interprétées), puis **Lancer la production**. La tâche s'enregistre au fil de l'eau (plan classé, étape, instructions) et se rouvre telle quelle.
 - **Comptes et tâches** : API du Worker (`/api/*`) et base **D1** `trafficker` (offre gratuite). Mots de passe PBKDF2-SHA256 salés, session en cookie HttpOnly/Secure/SameSite 12 h, blocage après 5 échecs en 5 min par IP, contrôle d'origine sur les écritures. Premier passage : création du compte administrateur avec la **clé d'installation** = valeur du secret `TRAFFICKER_PASSWORD` du Worker. Sans `/api` (serveur statique, tests), mode local : tâches dans le navigateur.
 - Confidentialité : le plan média est lu dans le navigateur et n'est jamais envoyé en fichier ; seul le **plan classé** (tableau modifié) d'une tâche est enregistré en D1 pour la retrouver. Aucune requête hors du site (test automatique).
 - Limite : pas d'appel direct aux API CM360/Adform depuis le navigateur — le trafficking réel passe par la version serveur (UI Flask, CLI ou MCP).
 - Déploiement : dépôt connecté au Worker `trafficker` (Workers Builds), réglages par défaut. `npx wrangler deploy` lance `python3 web/build.py` (copie du moteur, du modèle Adform, des wheels openpyxl/xlrd et du cœur Pyodide — auto-hébergé, sans CDN) puis publie `web/dist`.
 - Accès restreint (facultatif, gratuit) : Cloudflare Zero Trust → Access → application sur l'adresse du Worker, connexion par code envoyé par e-mail.
 - Local : `npm ci && python3 web/build.py && python3 -m http.server -d web/dist 8000`.
+
+### Reporting (mode Reporting de l'interface)
+
+1. **Campagne** : recherche de l'annonceur puis de la campagne **dans l'ad server** (API via le Worker) ; Umnia lit les emplacements et en déduit les régies (sites CM360 / médias Adform).
+2. **Template** :
+   - **Check de mise en ligne** : toutes les régies et tous les emplacements, statut par emplacement (données reçues / aucune donnée / pas encore démarré) et par régie (complet / partiel / aucune donnée), petit tableau de bord (impressions, clics, CTR, emplacements et régies avec données, dernière donnée, impressions par régie), alerte sur les emplacements muets, Excel (Synthèse, Par régie, Emplacements, Données jour).
+   - **Report d'envoi aux régies** : un bloc par régie (seules les régies de la campagne sont proposées, « ＋ Ajouter une régie »), e-mails libres avec **carnet d'adresses** par régie (mémorisé par agence en D1), calendrier (quotidien, hebdomadaire avec jours, mensuel ; cumul depuis le début ou période écoulée ; premier et dernier envoi ; message), **aperçu de l'Excel** envoyé à chaque régie et téléchargement. « Programmer les envois » : CM360 crée un rapport programmé par régie (filtres campagne + site, format Excel, destinataires) et l'envoie lui-même par e-mail. Adform : pas de rapport programmé par API — le calendrier est enregistré dans Umnia, le rapport est à programmer dans Adform (Excel prêt).
+- **Connexion des ad servers** (secrets du Worker, jamais dans la page) : CM360 → `CM360_SA_JSON` (JSON du compte de service ayant accès au profil) et `CM360_PROFILE_ID` ; Adform → `ADFORM_CLIENT_ID` et `ADFORM_CLIENT_SECRET` (endpoints Adform **à valider avec un accès réel**). Sans secret : **données de démonstration** (`web/demo_adserver.json`), signalées dans l'interface ; aucun e-mail n'est envoyé.
+- Templates de l'agence : les mises en forme actuelles (colonnes, onglets) sont un point de départ — à aligner sur les templates existants de l'agence.
 
 ### Version serveur sur Cloudflare Containers (offre payante)
 
@@ -161,6 +170,8 @@ gunicorn (`TRAFFICKER_WORKERS` processus, 2 par défaut, 8 threads chacun : plan
 - Rétention 1 h : worker démarré dès le chargement de l'UI (quel que soit le serveur), purge aussi déclenchée par les requêtes (au plus une fois par minute), et un job expiré n'est jamais relu, même avant la purge.
 
 ## Tests
+
+- `node tests/worker_cm360.mjs` : Worker + faux CM360 (jeton RS256, lecture annonceurs / campagnes / emplacements, rapport CSV asynchrone, programmation d'un report régie, carnet d'adresses).
 
 ```bash
 pip install -r requirements-dev.txt

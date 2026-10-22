@@ -1,0 +1,228 @@
+{
+ "note": "Données de démonstration (aucun ad server connecté). Dates relatives au jour J.",
+ "advertisers": [
+  {
+   "id": "9001",
+   "name": "UPSA"
+  },
+  {
+   "id": "9002",
+   "name": "Automobiles Démo"
+  },
+  {
+   "id": "9003",
+   "name": "Banque Démo"
+  }
+ ],
+ "campaigns": [
+  {
+   "id": "3417",
+   "advertiser_id": "9001",
+   "name": "Citrate programmatique 2025",
+   "start_offset": -6,
+   "end_offset": 1,
+   "placements": [
+    {
+     "id": "341701",
+     "name": "REACH_&_VISIBILITE-SOCIO-DEMO-300X250",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "300x250"
+    },
+    {
+     "id": "341702",
+     "name": "REACH_&_VISIBILITE-SOCIO-DEMO-160X600",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "160x600"
+    },
+    {
+     "id": "341703",
+     "name": "REACH_&_VISIBILITE-SOCIO-DEMO-728X90",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "728x90"
+    },
+    {
+     "id": "341704",
+     "name": "REACH_&_VISIBILITE-SOCIO-DEMO-300X600",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "300x600"
+    },
+    {
+     "id": "341705",
+     "name": "REACH_&_VISIBILITE-CONTEXTUEL-300X250",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "300x250"
+    },
+    {
+     "id": "341706",
+     "name": "REACH_&_VISIBILITE-CONTEXTUEL-160X600",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "160x600"
+    },
+    {
+     "id": "341707",
+     "name": "REACH_&_VISIBILITE-CONTEXTUEL-728X90",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "728x90"
+    },
+    {
+     "id": "341708",
+     "name": "REACH_&_VISIBILITE-CONTEXTUEL-300X600",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "300x600"
+    },
+    {
+     "id": "341709",
+     "name": "REACH_&_VISIBILITE-CONCURRENTS-300X250",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "300x250"
+    },
+    {
+     "id": "341710",
+     "name": "REACH_&_VISIBILITE-CONCURRENTS-160X600",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "160x600"
+    },
+    {
+     "id": "341711",
+     "name": "REACH_&_VISIBILITE-CONCURRENTS-728X90",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "728x90"
+    },
+    {
+     "id": "341712",
+     "name": "REACH_&_VISIBILITE-CONCURRENTS-300X600",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "300x600"
+    },
+    {
+     "id": "341713",
+     "name": "REACH_&_VISIBILITE-COMPORTEMENTAL-300X250",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "300x250"
+    },
+    {
+     "id": "341714",
+     "name": "REACH_&_VISIBILITE-COMPORTEMENTAL-160X600",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "160x600"
+    },
+    {
+     "id": "341715",
+     "name": "REACH_&_VISIBILITE-COMPORTEMENTAL-728X90",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "728x90"
+    },
+    {
+     "id": "341716",
+     "name": "REACH_&_VISIBILITE-COMPORTEMENTAL-300X600",
+     "site": "DV360 Open Market",
+     "site_id": "591403",
+     "size": "300x600"
+    }
+   ]
+  },
+  {
+   "id": "5520",
+   "advertiser_id": "9002",
+   "name": "Lancement SUV électrique",
+   "start_offset": -12,
+   "end_offset": 30,
+   "placements": [
+    {
+     "id": "552001",
+     "name": "NOTORIETE-CSP+-LE_MONDE-HOME-PAVE",
+     "site": "Le Monde",
+     "site_id": "254637",
+     "size": "300x250"
+    },
+    {
+     "id": "552002",
+     "name": "NOTORIETE-CSP+-LE_MONDE-ARTICLE-GRAND_ANGLE",
+     "site": "Le Monde",
+     "site_id": "254637",
+     "size": "300x600"
+    },
+    {
+     "id": "552003",
+     "name": "NOTORIETE-25-49-TEADS-OUTSTREAM-VIDEO",
+     "site": "Teads",
+     "site_id": "175306",
+     "size": "640x360"
+    },
+    {
+     "id": "552004",
+     "name": "NOTORIETE-25-49-TEADS-INREAD",
+     "site": "Teads",
+     "site_id": "175306",
+     "size": "640x360"
+    },
+    {
+     "id": "552005",
+     "name": "TRAFIC-FEMMES-PRISMA-HABILLAGE",
+     "site": "Prisma Media",
+     "site_id": "354162",
+     "size": "1800x1000"
+    },
+    {
+     "id": "552006",
+     "name": "TRAFIC-FEMMES-PRISMA-PAVE",
+     "site": "Prisma Media",
+     "site_id": "354162",
+     "size": "300x250"
+    },
+    {
+     "id": "552007",
+     "name": "NOTORIETE-CSP+-LES_ECHOS-MEGABANNIERE",
+     "site": "Les Échos",
+     "site_id": "554138",
+     "size": "728x90"
+    }
+   ]
+  },
+  {
+   "id": "6031",
+   "advertiser_id": "9003",
+   "name": "Crédit immobilier automne",
+   "start_offset": 3,
+   "end_offset": 40,
+   "placements": [
+    {
+     "id": "603101",
+     "name": "CONVERSION-RETARGETING-LE_FIGARO-PAVE",
+     "site": "Le Figaro",
+     "site_id": "209799",
+     "size": "300x250"
+    },
+    {
+     "id": "603102",
+     "name": "CONVERSION-RETARGETING-LE_FIGARO-SKYSCRAPER",
+     "site": "Le Figaro",
+     "site_id": "209799",
+     "size": "160x600"
+    },
+    {
+     "id": "603103",
+     "name": "CONVERSION-IMMO-LEBONCOIN-NATIVE",
+     "site": "Leboncoin",
+     "site_id": "991919",
+     "size": "1x1"
+    }
+   ]
+  }
+ ]
+}

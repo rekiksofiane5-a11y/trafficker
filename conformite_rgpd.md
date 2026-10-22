@@ -72,3 +72,9 @@ Non requise a priori : pas de suivi à grande échelle, pas de données sensible
 - Accès : un utilisateur voit ses tâches et celles de son agence ; suppression par l'auteur ou un administrateur ; comptes gérés par l'administrateur.
 - Cloudflare devient sous-traitant pour ces données (DPA Cloudflare à accepter, à inscrire au registre). Rétention des tâches : jusqu'à suppression par l'agence.
 
+## 11. Mise à jour v6 — reporting et carnet d'adresses des régies
+
+- Carnet d'adresses (D1, par agence) : régie + e-mail professionnel du contact, saisis par l'utilisateur ; finalité : envoi des reports de diffusion. Supprimable sur demande (droit d'opposition / effacement).
+- Reports programmés CM360 : Google (CM360) génère et envoie les fichiers aux adresses indiquées — sous-traitance déjà couverte par le contrat CM360 de l'agence.
+- Clés d'ad server : secrets chiffrés du Worker Cloudflare, jamais transmises à la page ni stockées en base.
+

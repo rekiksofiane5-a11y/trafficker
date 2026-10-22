@@ -3,6 +3,8 @@
 // Le moteur d'analyse reste dans le navigateur ; ne sont stockés ici que les comptes
 // et les tâches (paramètres + plan classé par l'agent).
 
+import {HttpError, adserverStatus, client} from "./adserver.js";
+
 const SESSION_HOURS = 12;
 const PBKDF2_ITERATIONS = 10000;      // offre gratuite : ~10 ms de CPU par requête
 const MAX_FAILURES = 5, FAILURE_WINDOW = 300;   // anti-force brute : 5 essais / 5 min / IP
@@ -19,7 +21,11 @@ const SCHEMA = [
      owner_name TEXT, status TEXT NOT NULL DEFAULT 'brouillon', data TEXT, created REAL NOT NULL,
      updated REAL NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS tasks_agency ON tasks (agency_id, updated)`,
+  // Carnet d'adresses des régies (proposé lors de la programmation des reports)
+  `CREATE TABLE IF NOT EXISTS contacts (agency_id TEXT NOT NULL, site TEXT NOT NULL, email TEXT NOT NULL,
+     updated REAL NOT NULL, PRIMARY KEY (agency_id, site, email))`,
 ];
+const EMAIL = /^[^\s@<>,;]+@[^\s@<>,;]+\.[a-z]{2,}$/i;
 let schemaReady = false;
 
 async function ensureSchema(db) {
@@ -184,6 +190,55 @@ async function api(request, env, url) {
       await db.prepare("DELETE FROM tasks WHERE id = ?").bind(task.id).run();
       return json({ok: true});
     }
+  }
+
+  // --- Ad servers (CM360 / Adform) : les clés restent dans les secrets du Worker ---
+  if (path.startsWith("/api/adserver/")) {
+    const q = url.searchParams;
+    const b = method === "POST" ? await body(request) : {};
+    const adserver = (b.adserver || q.get("adserver")) === "adform" ? "adform" : "cm360";
+    const route = path.slice("/api/adserver/".length);
+    try {
+      if (route === "status") return json(adserverStatus(env));
+      const c = client(adserver, env);
+      if (route === "advertisers") return json({advertisers: await c.advertisers(clean(q.get("q"), 100))});
+      if (route === "campaigns") return json({campaigns: await c.campaigns(clean(q.get("advertiser_id"), 40), clean(q.get("q"), 100))});
+      if (route === "placements") return json(await c.placements(clean(q.get("campaign_id"), 40)));
+      if (route === "delivery" && method === "POST") return json(await c.delivery(clean(b.campaign_id, 40)));
+      if (route === "delivery" && method === "GET") return json(await c.deliveryFile(clean(q.get("report_id"), 40), clean(q.get("file_id"), 40)));
+      if (route === "schedule" && method === "POST") {
+        const emails = [].concat(b.emails || []).map((e) => clean(e, 120).toLowerCase()).filter(Boolean);
+        if (!emails.length || emails.length > 20 || !emails.every((e) => EMAIL.test(e))) return fail("E-mail(s) de la régie invalide(s).");
+        const sc = b.schedule || {};
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(sc.start || "") || !/^\d{4}-\d{2}-\d{2}$/.test(sc.end || "") || sc.start > sc.end)
+          return fail("Dates du calendrier invalides.");
+        const site = {id: clean(b.site && b.site.id, 40), name: clean(b.site && b.site.name, 200)};
+        return json(await c.schedule(clean(b.campaign_id, 40), site, emails, {
+          frequency: ["daily", "weekly", "monthly"].includes(sc.frequency) ? sc.frequency : "weekly",
+          weekdays: [].concat(sc.weekdays || []).filter((d) => /^[A-Z]+DAY$/.test(d)), range: sc.range === "period" ? "period" : "cumul",
+          start: sc.start, end: sc.end, message: clean(sc.message, 1000)}));
+      }
+    } catch (e) {
+      if (e instanceof HttpError) return fail(e.message, e.status);
+      throw e;
+    }
+    return fail("Route inconnue.", 404);
+  }
+
+  // --- Carnet d'adresses des régies (par agence) ---
+  if (path === "/api/contacts" && method === "GET") {
+    const rows = await db.prepare("SELECT site, email FROM contacts WHERE agency_id = ? ORDER BY site, updated DESC")
+      .bind(user.agency_id).all();
+    return json({contacts: rows.results});
+  }
+  if (path === "/api/contacts" && method === "POST") {
+    const b = await body(request);
+    const site = clean(b.site, 200);
+    const emails = [].concat(b.emails || []).map((e) => clean(e, 120).toLowerCase()).filter((e) => EMAIL.test(e)).slice(0, 20);
+    if (!site || !emails.length) return fail("Régie et e-mail requis.");
+    await db.batch(emails.map((e) => db.prepare(`INSERT INTO contacts (agency_id, site, email, updated) VALUES (?, ?, ?, ?)
+      ON CONFLICT (agency_id, site, email) DO UPDATE SET updated = excluded.updated`).bind(user.agency_id, site, e, now())));
+    return json({ok: true});
   }
 
   // --- Administration (rôle admin) ---

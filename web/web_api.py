@@ -413,3 +413,36 @@ def export_cm360() -> bytes:
 def export_adform(campaign_type: str = "") -> bytes:
     from adform_bulk import write_adform_bulk
     return _export(write_adform_bulk, campaign_type)
+
+
+# --- Reporting (templates : check de mise en ligne, report régie) -------------------------
+
+def report_demo(campaign_json: str, placements_json: str, today: str) -> str:
+    """Diffusion simulée quand aucun ad server n'est connecté."""
+    import reporting
+    return json.dumps(reporting.demo_delivery(json.loads(campaign_json), json.loads(placements_json), today))
+
+
+def report_check(campaign_json: str, placements_json: str, delivery_json: str, today: str) -> str:
+    import reporting
+    return json.dumps(reporting.check(json.loads(campaign_json), json.loads(placements_json),
+                                      json.loads(delivery_json), today), ensure_ascii=False)
+
+
+def report_regie(campaign_json: str, placements_json: str, delivery_json: str, site: str) -> str:
+    import reporting
+    return json.dumps(reporting.regie_report(json.loads(campaign_json), json.loads(placements_json),
+                                             json.loads(delivery_json), site), ensure_ascii=False)
+
+
+def export_report_check(campaign_json: str, placements_json: str, delivery_json: str, today: str) -> bytes:
+    import reporting
+    return reporting.export_check(json.loads(campaign_json), json.loads(placements_json),
+                                  json.loads(delivery_json), today)
+
+
+def export_report_regie(campaign_json: str, placements_json: str, delivery_json: str, site: str, today: str) -> bytes:
+    import reporting
+    return reporting.export_regie(json.loads(campaign_json), json.loads(placements_json),
+                                  json.loads(delivery_json), site, today)
+
