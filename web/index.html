@@ -10,7 +10,7 @@
   --bg: #fbf8f2; --card: #fffdf9; --paper: #ffffff; --text: #13203a; --muted: #625e57; --border: #e6dccb;
   --accent: #13213a; --accent-text: #ffffff; --ok: #1d6a43; --warn: #8a4a00; --err: #a3261e;
   --chip: #f4ece0; --code: #f1eadf; --gold: #9a7440; --side: #f7f2ea; --sub: #6c7282;
-  --halo: rgba(255, 255, 255, .7); --orb-a: #ffffff; --orb-b: #b9cbe0; --orb-c: #e8d9bd;
+  --halo: rgba(255, 255, 255, .7);
 }
 /* Thème : auto (système) par défaut, ou forcé par data-theme sur <html> */
 @media (prefers-color-scheme: dark) {
@@ -18,14 +18,14 @@
   --bg: #0e1621; --card: #152031; --text: #ede6d4; --muted: #a8a08e; --border: #2b3749;
   --accent: #d9cdb3; --accent-text: #0e1621; --ok: #7fd3a6; --warn: #f0b45a; --err: #ff8a80; --paper: #17233a; --sub: #a8a08e;
   --chip: #1d293b; --code: #1a2535; --gold: #b5a27a; --side: #111b29;
-  --halo: rgba(120, 160, 205, .14); --orb-a: #e9f1fb; --orb-b: #5d7fa6; --orb-c: #2a3a52;
+  --halo: rgba(120, 160, 205, .14);
   }
 }
 :root[data-theme="dark"] { color-scheme: dark;
   --bg: #0e1621; --card: #152031; --text: #ede6d4; --muted: #a8a08e; --border: #2b3749;
   --accent: #d9cdb3; --accent-text: #0e1621; --ok: #7fd3a6; --warn: #f0b45a; --err: #ff8a80; --paper: #17233a; --sub: #a8a08e;
   --chip: #1d293b; --code: #1a2535; --gold: #b5a27a; --side: #111b29;
-  --halo: rgba(120, 160, 205, .14); --orb-a: #e9f1fb; --orb-b: #5d7fa6; --orb-c: #2a3a52;
+  --halo: rgba(120, 160, 205, .14);
 }
 @font-face { font-family: "Inter"; src: url("assets/inter-var.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: "DM Serif Display"; src: url("assets/dm-serif-display.woff2") format("woff2"); font-weight: 400; font-display: swap; }
@@ -200,8 +200,8 @@ table.pivot td.num, table.pivot th.num { text-align: right; font-variant-numeric
 table.pivot tr.total td { font-weight: 700; border-top: 2px solid var(--text); position: sticky; bottom: 0; background: var(--card); }
 @media (max-width: 1000px) { .pv-fields { grid-template-columns: 1fr 1fr; } }
 /* Écran « PM prêt » allégé : carte de synthèse, plan + aperçu, points à vérifier à droite */
-#pm-step[data-state="ready"] { grid-template-columns: 1fr; padding: 0; margin-top: 10px; }
-#pm-step[data-state="ready"] .orb { display: none; }
+#pm-step[data-state="ready"] { grid-template-columns: 1fr; padding: 0; margin-top: 10px; min-height: 0; }
+#pm-step[data-state="ready"] .bg-grid { display: none; }
 #pm-step[data-state="ready"] .pm-left { max-width: none; }
 .pm-ready { display: grid; grid-template-columns: minmax(17rem, 1fr) auto minmax(16rem, 19rem); gap: 22px; align-items: center;
   background: var(--paper); border: 1px solid var(--border); border-radius: 22px; padding: 24px 28px; box-shadow: 0 18px 50px -30px #4a3b2033; }
@@ -318,9 +318,9 @@ table.pv.rz .pv-name { max-width: none; }
 /* Accueil et carte du plan média (maquette) : titre serif, carte blanche, sphère à droite.
    États : idle (dépôt) -> file (fichier choisi) -> busy (étapes du moteur) -> ready */
 .serif { font-family: "DM Serif Display", Georgia, "Times New Roman", serif; font-weight: 400; }
-.hero, .pm-hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); align-items: center; gap: 2vw; }
+.hero, .pm-hero { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 2vw; }
 .hero { margin: 0; padding: 4vh 2vw 2vh 4vw; min-height: calc(100vh - var(--appbar-h, 80px) - 40px); }
-.pm-hero { padding: 1vh 2vw 0 3vw; margin-top: 6px; }
+.pm-hero { padding: 3vh 2vw 4vh 4vw; margin-top: 6px; min-height: calc(100vh - var(--appbar-h, 80px) - 60px); }
 .hero-main, .pm-left { max-width: 40rem; width: 100%; text-align: left; }
 .hero h1, .pm-hero .pm-h { font-size: clamp(2.4rem, 5vw, 4.6rem); line-height: 1.02; letter-spacing: -.02em; margin: 0 0 6px; color: var(--text); }
 .pm-hero .pm-h { font-size: clamp(2rem, 4vw, 3.6rem); display: flex; align-items: center; gap: 14px; }
@@ -370,11 +370,15 @@ table.pv.rz .pv-name { max-width: none; }
 .stepper li.on::before { box-shadow: 0 0 0 4px var(--paper), 0 0 0 8px color-mix(in srgb, var(--gold) 30%, transparent); }
 .stepper li.on strong { color: var(--gold); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-/* Arbre de lignes qui se divisent (web/flow.js) : canvas animé, réagit à la souris et à l'état (data-state) */
-.orb { position: relative; width: 100%; height: min(78vh, 760px); justify-self: stretch; align-self: stretch; }
-#pm-step .orb { height: min(62vh, 560px); }
-.orb canvas { position: absolute; inset: 0; display: block; }
-@media (max-width: 980px) { .hero, .pm-hero, #pm-step[data-state="ready"] { grid-template-columns: 1fr; } .orb { display: none; } }
+/* Fond animé (web/grid.js) : trame de points et vagues derrière le contenu, selon l'état (data-state) */
+.hero, .pm-hero { position: relative; isolation: isolate; }
+.bg-grid { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  /* les points s'effacent sous les textes (colonne de gauche) pour rester lisibles */
+  -webkit-mask-image: linear-gradient(to right, transparent 0, transparent 30%, #000 58%);
+  mask-image: linear-gradient(to right, transparent 0, transparent 30%, #000 58%); }
+@media (max-width: 980px) { .bg-grid { -webkit-mask-image: none; mask-image: none; opacity: .35; } }
+.bg-grid canvas { position: absolute; inset: 0; display: block; }
+.hero > :not(.bg-grid), .pm-hero > :not(.bg-grid) { position: relative; z-index: 1; }
 /* Coquille : connexion, barre latérale, tâches */
 body { overflow: hidden; }
 .login { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; overflow: auto; }
@@ -470,7 +474,7 @@ body { overflow: hidden; }
 .engine-pill.quiet { opacity: 0; transition: opacity 1s; }
 /* Tant que le PM n'est pas analysé, l'écran reste celui de la maquette : pas d'en-tête de tâche */
 #task-view[data-pm="idle"] .task-head, #task-view[data-pm="file"] .task-head, #task-view[data-pm="busy"] .task-head { display: none; }
-.hero[data-mode="reporting"] .up-card, .hero[data-mode="reporting"] .orb { display: none; }
+.hero[data-mode="reporting"] .up-card { display: none; }
 .hero[data-mode="reporting"] { grid-template-columns: 1fr; }
 .hero[data-mode="reporting"] #empty-new { text-decoration: none; background: var(--accent); color: var(--accent-text);
   padding: 12px 26px; border-radius: 12px; font-weight: 600; }
@@ -585,7 +589,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
         <input id="hero-file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
         <button id="empty-new" type="button" class="linkish">ou créer une tâche vide</button>
       </div>
-      <div class="orb" data-flow aria-hidden="true"></div>
+      <div class="bg-grid" data-grid aria-hidden="true"></div>
     </div>
 
     <div id="task-view" class="task-view" hidden>
@@ -678,7 +682,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             </div>
           </div>
         </div>
-        <div class="orb" data-flow aria-hidden="true"></div>
+        <div class="bg-grid" data-grid aria-hidden="true"></div>
       </section>
 
       <section id="result" class="card hidden" aria-labelledby="t-res" aria-live="polite">
@@ -3764,6 +3768,6 @@ if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEven
 boot();
 start();
 </script>
-<script src="flow.js"></script>
+<script src="grid.js"></script>
 </body>
 </html>
