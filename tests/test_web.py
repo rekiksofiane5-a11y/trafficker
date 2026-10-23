@@ -639,3 +639,35 @@ def test_nomenclature_dimensions_chart_and_editor_grouping(page):
     assert "GRANDANGLE" in page.text_content("#rp-check-table")                # format lu dans la nomenclature
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
+
+
+def test_site_mapping_filters_and_saved_views(page):
+    """Correspondance des régies (agence), filtres du croisé, vues enregistrées."""
+    page.click(".modes [data-mode=reporting]")
+    _create_task(page, "Lotus réglages")
+    page.set_input_files("#rp-file", os.path.join(ROOT, "web", "exemple_export_cm360_une_campagne.xlsx"))
+    page.wait_for_selector("#pv-table")
+    page.click("#rp-sitemap-open")
+    page.fill('.sitemap input[data-site="Facebook FR"]', "Meta")
+    page.fill('.sitemap input[data-site="Youtube FR"]', "Google")
+    page.click("#sitemap-save")
+    page.wait_for_function("document.getElementById('rp-sitemap-open').textContent.includes('2 règle')")
+    page.click("#pv-presets button:has-text('Par régie')")
+    regies = page.locator("#pv-table tbody tr:not(.total) td:first-child").all_text_contents()
+    assert "Meta" in regies and "Google" in regies and "Facebook FR" not in regies
+    page.click("#pv-add-filter")
+    page.select_option("#pvf-dim", "Site (CM360)")
+    page.check('#pv-filter-editor input[value="Google"]')
+    page.click("#pvf-apply")
+    assert "Google" not in page.locator("#pv-table tbody tr:not(.total) td:first-child").all_text_contents()
+    assert "sauf Google" in page.text_content("#pv-filter-chips")
+    page.once("dialog", lambda d: d.accept("Sans YouTube"))
+    page.click("#pv-save-view")
+    page.wait_for_selector("#pv-saved button:has-text('Sans YouTube')")
+    page.click("#pv-filter-chips button")                                     # retire le filtre
+    assert "Google" in page.locator("#pv-table tbody tr:not(.total) td:first-child").all_text_contents()
+    page.click("#pv-saved button:has-text('Sans YouTube')")                   # la vue le remet
+    assert "Google" not in page.locator("#pv-table tbody tr:not(.total) td:first-child").all_text_contents()
+    page.evaluate("localStorage.removeItem('umnia_set_site_map'); localStorage.removeItem('umnia_set_pivot_views')")
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []

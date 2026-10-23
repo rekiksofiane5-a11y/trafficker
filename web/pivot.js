@@ -15,7 +15,27 @@
     return imp >= 0 ? {weight: imp} : {mean: true};
   }
 
+  // Filtres : [{col, mode: "include" | "exclude", values: [...]}] appliqués avant le croisement
+  function filterRows(table, filters) {
+    const active = (filters || []).map((f) => ({i: table.columns.findIndex((c) => c.label === f.col), mode: f.mode,
+                                               set: new Set((f.values || []).map(String))}))
+      .filter((f) => f.i >= 0 && f.set.size);
+    if (!active.length) return table.rows;
+    return table.rows.filter((r) => active.every((f) => (f.mode === "exclude") !== f.set.has(String(r[f.i]))));
+  }
+
+  // Valeurs d'une dimension, les plus lourdes d'abord (pour choisir quoi filtrer)
+  function dimValues(table, label, limit = 300) {
+    const i = table.columns.findIndex((c) => c.label === label);
+    const imp = table.columns.findIndex((c) => c.kind === "metric" && /^impressions?$|^impr/.test(norm(c.label)));
+    if (i < 0) return [];
+    const w = new Map();
+    for (const r of table.rows) w.set(r[i], (w.get(r[i]) || 0) + (imp >= 0 ? Number(r[imp]) || 0 : 1));
+    return [...w.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([v, n]) => ({value: v, weight: n}));
+  }
+
   function compute(table, spec) {
+    table = {columns: table.columns, rows: filterRows(table, spec.filters)};
     const cols = table.columns;
     const idx = (label) => cols.findIndex((c) => c.label === label);
     const rowIdx = (spec.rows || []).map(idx).filter((i) => i >= 0);
@@ -122,7 +142,7 @@
     return out;
   }
 
-  const api = {compute, presets};
+  const api = {compute, presets, filterRows, dimValues};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Pivot = api;
 })(typeof self !== "undefined" ? self : globalThis);

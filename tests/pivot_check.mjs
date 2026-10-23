@@ -28,4 +28,11 @@ assert.deepEqual(r.rows.map((x) => x[1]), ["LM-PAVE", "TEADS-VID"]);
 assert.deepEqual(r.total, ["Total", "", 6000]);
 const names = P.presets(t).map((p) => p.name);
 assert.deepEqual(names, ["Par régie", "Par emplacement", "Par jour", "Par semaine", "Régie × semaine", "Emplacement × jour"]);
+// Filtres : exclure / garder des valeurs avant le croisement
+r = P.compute(t, {rows: ["Site (CM360)"], values: ["Impressions"], filters: [{col: "Site (CM360)", mode: "exclude", values: ["Teads"]}]});
+assert.deepEqual(r.rows.map((x) => x[0]), ["Le Monde"]);
+assert.deepEqual(r.total, ["Total", 4000]);
+r = P.compute(t, {rows: ["Date"], values: ["Clicks"], filters: [{col: "Semaine", mode: "include", values: ["S41"]}]});
+assert.deepEqual(r.rows, [["2026-10-06", 4]]);
+assert.deepEqual(P.dimValues(t, "Site (CM360)").map((v) => v.value), ["Le Monde", "Teads"]);    // les plus lourdes d'abord
 console.log("OK : tableau croisé (sommes, taux recalculés, colonnes, tri, préréglages).");

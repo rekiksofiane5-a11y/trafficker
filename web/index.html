@@ -141,6 +141,21 @@ a { color: var(--accent); }
 .pv-values .opts { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 6px; }
 .pv-values label { display: inline-flex; gap: 4px; align-items: center; font-weight: 400; margin: 0; }
 .pv-scroll { max-height: 70vh; overflow: auto; }
+.pv-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 6px 0; }
+.pv-filters .lbl { margin: 0; }
+.pv-sep { flex: 1; }
+.fchip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--chip); font-size: .8rem; }
+.fchip button { background: none; color: var(--muted); padding: 0 6px; font-weight: 400; }
+#pv-saved button.view { padding: 4px 4px 4px 12px; gap: 2px; }
+#pv-saved button.view span.x { padding: 0 6px; color: var(--muted); }
+.pv-filter-editor, .sitemap { border: 1px solid var(--accent); border-radius: 12px; padding: 10px 12px; margin: 6px 0 10px; display: grid; gap: 8px; }
+.pv-filter-editor .vals, .sitemap .rows { max-height: 16rem; overflow: auto; display: grid; gap: 2px; }
+.pv-filter-editor .vals label { display: flex; justify-content: space-between; gap: 10px; font-weight: 400; margin: 0; font-size: .85rem; }
+.pv-filter-editor .vals label span.w, .sitemap .w { color: var(--muted); font-size: .75rem; }
+.pv-filter-editor .row, .sitemap .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sitemap .rows > div { display: grid; grid-template-columns: minmax(10rem, 1fr) 7rem minmax(10rem, 1fr); gap: 8px; align-items: center; font-size: .85rem; }
+.sitemap input, .pv-filter-editor input[type=search], .pv-filter-editor select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--text); font: inherit; }
 .pv-chart { margin: 6px 0 14px; padding: 12px 14px 6px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
 .pv-chart figcaption { font-weight: 600; font-size: .9rem; margin-bottom: 4px; }
 .pv-chart svg { width: 100%; height: auto; display: block; overflow: visible; }
@@ -576,6 +591,15 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             <label>Colonnes<select id="pv-col"></select></label>
             <div class="pv-values"><span class="lbl">Valeurs</span><div id="pv-values" class="opts" role="group" aria-label="Valeurs"></div></div>
           </div>
+          <div class="pv-filters">
+            <span class="lbl">Filtres</span>
+            <span id="pv-filter-chips"></span>
+            <button type="button" id="pv-add-filter" class="secondary sm">＋ Filtre</button>
+            <span class="pv-sep"></span>
+            <span id="pv-saved" class="sugg-row" aria-label="Vues enregistrées de l'agence"></span>
+            <button type="button" id="pv-save-view" class="secondary sm">💾 Enregistrer la vue</button>
+          </div>
+          <div id="pv-filter-editor" class="pv-filter-editor" hidden></div>
           <p id="pv-info" class="hint" role="status"></p>
           <figure id="pv-chart" class="pv-chart" hidden></figure>
           <div id="pv-out" class="table-wrap pv-scroll"></div>
@@ -1460,6 +1484,15 @@ const Store = {
     if (!this.local) return this.api("DELETE", "tasks/" + id);
     this.writeLocal(this.readLocal().filter((x) => x.id !== id));
   },
+  // Réglages partagés par l'agence (correspondance des régies, vues du croisé)
+  async setting(key) {
+    if (!this.local) return (await this.api("GET", "settings/" + key)).value;
+    try { return JSON.parse(localStorage.getItem("umnia_set_" + key) || "null"); } catch (e) { return null; }
+  },
+  async putSetting(key, value) {
+    if (!this.local) return this.api("PUT", "settings/" + key, {value});
+    try { localStorage.setItem("umnia_set_" + key, JSON.stringify(value)); } catch (e) { /* stockage indisponible */ }
+  },
 };
 
 let me = null, mode = "trafficking", scope = "mine", current = null, pendingRestore = null, saveTimer = null;
@@ -1972,7 +2005,7 @@ async function rpPickCamp(c) {
 
 async function rpLoadCampaign() {
   const data = rpData();
-  if (data.file) { rpApplyFile(data.file); return; }
+  if (data.file) { await rpLoadSiteMap(); rpApplyFile(data.file); return; }
   rpReset();
   RP.source = RP.live ? "api" : "demo";
   $("rp-selected").hidden = false;
@@ -2475,6 +2508,7 @@ $("rp-file").addEventListener("change", async () => {
   $("rp-selected").textContent = `Lecture de ${f.name}…`;
   try {
     RP.fileBytes = await f.arrayBuffer();               // gardé en mémoire : changer de campagne / filtre
+    await rpLoadSiteMap();
     const d = await rpParseFile(f.name, "", "");
     const data = rpData();
     if (!(d.columns || {}).campaign) d.campaign.name = current.campaign || f.name.replace(/\.[^.]+$/, "");   // export sans colonne Campaign
@@ -2535,13 +2569,32 @@ async function rpRefilter(file, campaign, keyword) {
   } catch (e) { $("rp-selected").append(el("div", {class: "err"}, "Filtre impossible : " + e.message)); }
 }
 
+// Correspondance des régies de l'agence : {nom lu dans l'export: régie retenue}
+async function rpLoadSiteMap() {
+  try { RP.siteMap = (await Store.setting("site_map")) || {}; } catch (e) { RP.siteMap = {}; handleAuth(e); }
+}
+function siteColumn(p, table) {
+  return p.columns && p.columns.site ? table.columns.findIndex((c) => c.label === p.columns.site) : -1;
+}
+function applySiteMap(p, table, placements) {
+  const map = RP.siteMap || {};
+  const si = siteColumn(p, table);
+  if (!Object.keys(map).length) return {table, placements};
+  const to = (v) => map[v] || v;
+  return {table: si < 0 ? table : {columns: table.columns, rows: table.rows.map((r) => { const x = r.slice(); x[si] = to(r[si]); return x; })},
+          placements: placements.map((pl) => ({...pl, site: to(pl.site)}))};
+}
+
 function rpApplyFile(file) {
   const p = file.parsed;
   rpReset();
   RP.source = "file";
   RP.campaign = {...p.campaign, ...(file.dates || {})};
-  RP.placements = p.placements;
-  RP.table = unpackTable(p);
+  const raw = unpackTable(p);
+  RP.rawTable = raw;
+  const mapped = applySiteMap(p, raw || {columns: [], rows: []}, p.placements);
+  RP.placements = mapped.placements;
+  RP.table = raw ? mapped.table : null;
   RP.fileDelivery = RP.table ? deliveryFromTable(p, RP.table)
     : (p.d || []).map(([date, placement_id, impressions, clicks]) => ({date, placement_id, impressions, clicks}));
   $("rp-adv-q").value = RP.campaign.advertiser || "";
@@ -2573,6 +2626,7 @@ function rpApplyFile(file) {
           .filter(Boolean).join(" · ") + ". Les chiffres CM360 sont définitifs après 7 jours.") : "",
     ...(p.warnings || []).map((w) => el("div", {class: w.includes("tout le compte") ? "err" : "hint"}, "⚠️ " + w)),
     rpFileFilters(file),
+    rpSiteMapButton(file),
     el("div", {class: "hint"}, "Les emplacements sans diffusion n'apparaissent pas dans un export : liez le plan média dans le check pour les retrouver."));
   rpTplState();
   rpShowTemplate(rpData().template);
@@ -2602,6 +2656,58 @@ function rpFileFilters(file) {
   return box;
 }
 
+// Panneau « Correspondance des régies » (partagé par l'agence)
+function rpSiteMapButton(file) {
+  const box = el("div", {id: "rp-sitemap-box"});
+  const n = Object.keys(RP.siteMap || {}).length;
+  const btn = el("button", {type: "button", class: "secondary sm", id: "rp-sitemap-open"},
+                 `🔁 Correspondance des régies${n ? ` (${n} règle(s) de l'agence)` : ""}`);
+  btn.addEventListener("click", () => {
+    if (box.querySelector(".sitemap")) { box.querySelector(".sitemap").remove(); return; }
+    box.append(siteMapEditor(file));
+  });
+  box.append(btn);
+  return box;
+}
+function siteMapEditor(file) {
+  const p = file.parsed, raw = RP.rawTable;
+  const si = raw ? siteColumn(p, raw) : -1;
+  const weights = new Map();
+  if (si >= 0) {
+    const ii = raw.columns.findIndex((c) => c.kind === "metric" && /^impressions?$/i.test(c.label));
+    for (const r of raw.rows) weights.set(r[si], (weights.get(r[si]) || 0) + (ii >= 0 ? Number(r[ii]) || 0 : 1));
+  } else for (const pl of p.placements) weights.set(pl.site, (weights.get(pl.site) || 0) + 1);
+  const names = [...weights.keys()].sort((a, b) => weights.get(b) - weights.get(a));
+  const map = {...(RP.siteMap || {})};
+  const list = el("datalist", {id: "sitemap-names"}, ...[...new Set([...names, ...Object.values(map)])].map((n) => el("option", {value: n})));
+  const rows = names.map((n) => {
+    const inp = el("input", {value: map[n] || "", placeholder: "(inchangée)", list: "sitemap-names", "aria-label": `Regrouper ${n} sous`, "data-site": n});
+    return el("div", {}, el("span", {}, n), el("span", {class: "w"}, Number(weights.get(n)).toLocaleString("fr-FR")), inp);
+  });
+  const filter = el("input", {type: "search", placeholder: "Filtrer les régies…", "aria-label": "Filtrer les régies"});
+  const rowsBox = el("div", {class: "rows"}, ...rows);
+  filter.addEventListener("input", () => {
+    const q = filter.value.toLowerCase();
+    for (const r of rowsBox.children) r.hidden = q && !r.firstChild.textContent.toLowerCase().includes(q);
+  });
+  const save = el("button", {type: "button", id: "sitemap-save"}, "Enregistrer pour l'agence");
+  const msg = el("span", {class: "hint", role: "status"});
+  save.addEventListener("click", async () => {
+    for (const inp of rowsBox.querySelectorAll("input")) {
+      const v = inp.value.trim();
+      if (v && v !== inp.dataset.site) map[inp.dataset.site] = v; else delete map[inp.dataset.site];
+    }
+    try { await Store.putSetting("site_map", map); } catch (e) { msg.textContent = "Enregistrement impossible : " + e.message; return; }
+    RP.siteMap = map;
+    rpApplyFile(file);
+  });
+  return el("div", {class: "sitemap"},
+    el("div", {class: "head"}, el("strong", {}, "Correspondance des régies"),
+       el("span", {class: "hint"}, "Regroupe des régies sous un même nom (ex. Facebook FR et Meta FR → Meta). Règles partagées par l'agence, appliquées à chaque import."),
+       filter),
+    rowsBox, list, el("div", {class: "head"}, save, msg));
+}
+
 // --- Tableau croisé dynamique sur l'export importé ---
 let pvLast = null;
 function pvSpec() { return rpData().pivot || null; }
@@ -2622,6 +2728,8 @@ function pvOpen() {
     $(id).replaceChildren(...(blank ? [el("option", {value: ""}, "—")] : []), ...opts.map((o) => el("option", {value: o}, o)));
     $(id).value = value || "";
   };
+  pvRenderFilters();
+  pvLoadViews();
   fill("pv-r1", dims, sp.rows[0]);
   fill("pv-r2", dims, sp.rows[1] || "", true);
   fill("pv-col", dims, sp.col || "", true);
@@ -2734,6 +2842,77 @@ function pvChart(r, sp) {
   fig.innerHTML = `<figcaption>${esc(metric)} par ${esc(dimLabel)}${temporal ? "" : r.rows.length > 12 ? " — 12 premiers" : ""}</figcaption>` + svg;
   fig.hidden = false;
 }
+
+// Filtres du croisé : garder ou exclure des valeurs d'une dimension
+function pvRenderFilters() {
+  const sp = pvSpec();
+  sp.filters = sp.filters || [];
+  $("pv-filter-chips").replaceChildren(...sp.filters.map((f, i) => {
+    const x = el("button", {type: "button", "aria-label": `Retirer le filtre ${f.col}`}, "✕");
+    x.addEventListener("click", () => { sp.filters.splice(i, 1); saveSoon(); pvRenderFilters(); pvRender(); });
+    const what = f.values.length <= 2 ? f.values.join(", ") : `${f.values.length} valeurs`;
+    return el("span", {class: "fchip"}, `${f.col} : ${f.mode === "exclude" ? "sauf" : "seulement"} ${what}`, x);
+  }));
+}
+$("pv-add-filter").addEventListener("click", () => {
+  const ed = $("pv-filter-editor");
+  if (!ed.hidden) { ed.hidden = true; return; }
+  const t = RP.table;
+  const dims = t.columns.filter((c) => c.kind === "dimension").map((c) => c.label);
+  const dim = el("select", {id: "pvf-dim", "aria-label": "Dimension"}, ...dims.map((d) => el("option", {value: d}, d)));
+  const mode = el("select", {id: "pvf-mode", "aria-label": "Type de filtre"}, el("option", {value: "exclude"}, "Exclure"), el("option", {value: "include"}, "Garder seulement"));
+  const q = el("input", {type: "search", id: "pvf-q", placeholder: "Chercher une valeur…", "aria-label": "Chercher une valeur"});
+  const vals = el("div", {class: "vals", role: "group", "aria-label": "Valeurs"});
+  const fillVals = () => {
+    const s = q.value.toLowerCase();
+    vals.replaceChildren(...Pivot.dimValues(t, dim.value).filter((v) => !s || String(v.value).toLowerCase().includes(s)).map((v) =>
+      el("label", {}, el("span", {}, el("input", {type: "checkbox", value: String(v.value)}), " ", String(v.value) || "(vide)"),
+         el("span", {class: "w"}, Number(v.weight).toLocaleString("fr-FR")))));
+  };
+  dim.addEventListener("change", fillVals);
+  q.addEventListener("input", fillVals);
+  fillVals();
+  const ok = el("button", {type: "button", id: "pvf-apply"}, "Appliquer");
+  ok.addEventListener("click", () => {
+    const values = [...vals.querySelectorAll("input:checked")].map((x) => x.value);
+    if (values.length) { pvSpec().filters = [...(pvSpec().filters || []), {col: dim.value, mode: mode.value, values}]; saveSoon(); }
+    ed.hidden = true;
+    pvRenderFilters();
+    pvRender();
+  });
+  ed.replaceChildren(el("div", {class: "row"}, dim, mode, q), vals, el("div", {class: "row"}, ok));
+  ed.hidden = false;
+});
+
+// Vues enregistrées (partagées par l'agence)
+async function pvLoadViews() {
+  try { RP.views = (await Store.setting("pivot_views")) || []; } catch (e) { RP.views = []; handleAuth(e); }
+  pvRenderViews();
+}
+function pvRenderViews() {
+  $("pv-saved").replaceChildren(...(RP.views || []).map((v, i) => {
+    const b = el("button", {type: "button", class: "view", title: "Appliquer la vue « " + v.name + " »"}, v.name);
+    const x = el("span", {class: "x", role: "button", tabindex: "0", "aria-label": "Supprimer la vue " + v.name}, "✕");
+    x.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!window.confirm(`Supprimer la vue « ${v.name} » pour toute l'agence ?`)) return;
+      RP.views.splice(i, 1);
+      await Store.putSetting("pivot_views", RP.views);
+      pvRenderViews();
+    });
+    b.append(x);
+    b.addEventListener("click", () => { rpData().pivot = JSON.parse(JSON.stringify(v.spec)); saveSoon(); pvOpen(); });
+    return b;
+  }));
+}
+$("pv-save-view").addEventListener("click", async () => {
+  const name = (window.prompt("Nom de la vue (partagée avec l'agence) :", "") || "").trim();
+  if (!name) return;
+  const spec = JSON.parse(JSON.stringify(pvSpec()));
+  RP.views = [...(RP.views || []).filter((v) => v.name !== name), {name, spec}];
+  try { await Store.putSetting("pivot_views", RP.views); } catch (e) { $("pv-info").textContent = "Enregistrement impossible : " + e.message; return; }
+  pvRenderViews();
+});
 
 $("pv-dl").addEventListener("click", async () => {
   if (!pvLast) return;

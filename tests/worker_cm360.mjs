@@ -142,6 +142,11 @@ try {
   assert.equal((await api("PUT", "adserver/schedule/r1?adserver=adform", {adserver: "adform"})).status, 409);
   assert.equal((await api("POST", "contacts", {site: "Le Monde", emails: ["trafic@lemonde.fr", "pas-un-mail"]})).status, 200);
   assert.deepEqual((await api("GET", "contacts")).data.contacts, [{site: "Le Monde", email: "trafic@lemonde.fr"}]);
+  // Réglages partagés par l'agence
+  assert.deepEqual((await api("GET", "settings/site_map")).data, {value: null});
+  assert.equal((await api("PUT", "settings/site_map", {value: {"Facebook FR": "Meta"}})).status, 200);
+  assert.deepEqual((await api("GET", "settings/site_map")).data, {value: {"Facebook FR": "Meta"}});
+  assert.equal((await api("GET", "settings/inconnu")).status, 404);
   cookie = "";
   assert.equal((await api("GET", "adserver/status")).status, 401);                                // connexion requise
   console.log("OK : Worker + faux CM360 (jeton RS256, lecture, rapport asynchrone, programmation, pause / modification / suppression, carnet).");

@@ -24,7 +24,12 @@ const SCHEMA = [
   // Carnet d'adresses des régies (proposé lors de la programmation des reports)
   `CREATE TABLE IF NOT EXISTS contacts (agency_id TEXT NOT NULL, site TEXT NOT NULL, email TEXT NOT NULL,
      updated REAL NOT NULL, PRIMARY KEY (agency_id, site, email))`,
+  // Réglages partagés par l'agence (correspondance des régies, vues enregistrées du tableau croisé)
+  `CREATE TABLE IF NOT EXISTS agency_settings (agency_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
+     updated REAL NOT NULL, PRIMARY KEY (agency_id, key))`,
 ];
+const SETTING_KEYS = new Set(["site_map", "pivot_views"]);
+const MAX_SETTING_BYTES = 200_000;
 const EMAIL = /^[^\s@<>,;]+@[^\s@<>,;]+\.[a-z]{2,}$/i;
 let schemaReady = false;
 
@@ -242,6 +247,24 @@ async function api(request, env, url) {
   }
 
   // --- Carnet d'adresses des régies (par agence) ---
+  const sk = path.match(/^\/api\/settings\/([a-z_]+)$/);
+  if (sk) {
+    if (!SETTING_KEYS.has(sk[1])) return fail("Réglage inconnu.", 404);
+    if (method === "GET") {
+      const row = await db.prepare("SELECT value FROM agency_settings WHERE agency_id = ? AND key = ?").bind(user.agency_id, sk[1]).first();
+      return json({value: row ? JSON.parse(row.value) : null});
+    }
+    if (method === "PUT") {
+      const b = await body(request);
+      const value = JSON.stringify(b.value ?? null);
+      if (value.length > MAX_SETTING_BYTES) return fail("Réglage trop volumineux.", 413);
+      await db.prepare(`INSERT INTO agency_settings (agency_id, key, value, updated) VALUES (?, ?, ?, ?)
+        ON CONFLICT (agency_id, key) DO UPDATE SET value = excluded.value, updated = excluded.updated`)
+        .bind(user.agency_id, sk[1], value, now()).run();
+      return json({ok: true});
+    }
+  }
+
   if (path === "/api/contacts" && method === "GET") {
     const rows = await db.prepare("SELECT site, email FROM contacts WHERE agency_id = ? ORDER BY site, updated DESC")
       .bind(user.agency_id).all();
