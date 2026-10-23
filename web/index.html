@@ -298,11 +298,6 @@ table.pv.rz .pv-name { max-width: none; }
 .linkish { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 8px 4px; cursor: pointer; font: inherit; }
 .linkish:hover { color: var(--text); }
 .hero #empty-new { display: block; margin: 10px 0 0 8px; font-size: .9rem; }
-.feats { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 0; margin: 34px 0 0; max-width: 46rem; }
-.feats li { display: flex; gap: 12px; align-items: flex-start; font-size: .82rem; color: var(--muted); line-height: 1.45; }
-.feats strong { display: block; color: var(--text); font-size: .9rem; margin-bottom: 2px; }
-.f-ico { display: grid; place-items: center; width: 44px; height: 44px; flex: none; border-radius: 50%; background: var(--chip); color: var(--gold); }
-.f-ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .pm-left .lbl, .pm-left textarea, .pm-left details { text-align: left; }
 .pm-left .up-card .actions { justify-content: center; margin: 14px 0 18px; }
 .file-chip { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 14px; border: 1px solid var(--border);
@@ -334,7 +329,7 @@ table.pv.rz .pv-name { max-width: none; }
 #pm-step .orb { height: min(62vh, 560px); }
 #pm-step[data-state="ready"] .orb { height: 260px; }
 .orb canvas { position: absolute; inset: 0; display: block; }
-@media (max-width: 980px) { .hero, .pm-hero, #pm-step[data-state="ready"] { grid-template-columns: 1fr; } .orb { display: none; } .feats { grid-template-columns: 1fr; } }
+@media (max-width: 980px) { .hero, .pm-hero, #pm-step[data-state="ready"] { grid-template-columns: 1fr; } .orb { display: none; } }
 /* Coquille : connexion, barre latérale, tâches */
 body { overflow: hidden; }
 .login { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; overflow: auto; }
@@ -430,7 +425,7 @@ body { overflow: hidden; }
 .engine-pill.quiet { opacity: 0; transition: opacity 1s; }
 /* Tant que le PM n'est pas analysé, l'écran reste celui de la maquette : pas d'en-tête de tâche */
 #task-view[data-pm="idle"] .task-head, #task-view[data-pm="file"] .task-head, #task-view[data-pm="busy"] .task-head { display: none; }
-.hero[data-mode="reporting"] .up-card, .hero[data-mode="reporting"] .orb, .hero[data-mode="reporting"] .feats { display: none; }
+.hero[data-mode="reporting"] .up-card, .hero[data-mode="reporting"] .orb { display: none; }
 .hero[data-mode="reporting"] { grid-template-columns: 1fr; }
 .hero[data-mode="reporting"] #empty-new { text-decoration: none; background: var(--accent); color: var(--accent-text);
   padding: 12px 26px; border-radius: 12px; font-weight: 600; }
@@ -544,14 +539,6 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
         </div>
         <input id="hero-file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
         <button id="empty-new" type="button" class="linkish">ou créer une tâche vide</button>
-        <ul class="feats" aria-label="Ce que fait Umnia">
-          <li><span class="f-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg></span>
-            <span><strong>Traitement rapide</strong><span>Votre PM est analysé en quelques secondes.</span></span></li>
-          <li><span class="f-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6z"/></svg></span>
-            <span><strong>Données protégées</strong><span>Le fichier est lu dans votre navigateur, rien n'est envoyé à un tiers.</span></span></li>
-          <li><span class="f-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 20V11M12 20V5M18 20v-6"/></svg></span>
-            <span><strong>Suivi en temps réel</strong><span>Chaque étape de l'analyse s'affiche au fil de l'eau.</span></span></li>
-        </ul>
       </div>
       <div class="orb" data-flow aria-hidden="true"></div>
     </div>
