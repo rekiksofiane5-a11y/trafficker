@@ -536,7 +536,8 @@ def plan_targets(table_json: str, nomenclature_json: str = "", source: str = "")
                         "budget": camp.budget_eur or first.get("budget_eur", ""),
                         "impressions": first.get("objective_impressions", "")},
            "placements": [{"name": p.name, "site": p.site_name, "size": f"{p.width}x{p.height}" if p.width else "",
-                           "impressions": p.volume, "budget": p.budget, "start": camp.start, "end": camp.end}
+                           "impressions": p.volume, "budget": p.budget, "start": camp.start, "end": camp.end,
+                           "pricing": getattr(p, "pricing_type", "")}
                           for p in camp.placements.values()]}
     return json.dumps(out, ensure_ascii=False, default=str)
 

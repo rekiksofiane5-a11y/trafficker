@@ -153,6 +153,8 @@ a { color: var(--accent); }
 .pv-filter-editor .vals label { display: flex; justify-content: space-between; gap: 10px; font-weight: 400; margin: 0; font-size: .85rem; }
 .pv-filter-editor .vals label span.w, .sitemap .w { color: var(--muted); font-size: .75rem; }
 .pv-filter-editor .row, .sitemap .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#rp-check-table td.kpi { font-weight: 700; }
+.kpi.buys .v { font-size: 1rem; line-height: 1.5; }
 td.delta.up { color: var(--ok, #1a7f37); }
 td.delta.down { color: var(--err, #c62828); }
 .ag-nom { border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px 10px; margin: 0 0 8px; }
@@ -2293,11 +2295,14 @@ $("rp-refresh").addEventListener("click", () => rpRunCheck(true));
 $("rp-group").addEventListener("change", () => { rpData().group = $("rp-group").value; saveSoon(); rpRunCheck(); });
 
 const STATUS_UI = {"Données reçues": ["st-live", "✅"], "Aucune donnée": ["st-none", "⛔"],
-                   "Pas encore démarré": ["st-wait", "⏳"], "Partiel": ["st-part", "⚠️"],
+                   "Pas encore démarré": ["st-wait", "⏳"], "Partiel": ["st-part", "⚠️"], "Impressions sans clic": ["st-part", "⚠️"],
                    "Dans le rythme": ["st-live", "✅"], "En retard": ["st-none", "🐢"], "En avance": ["st-part", "⏩"],
                    "Actif": ["st-live", "●"], "En pause": ["st-wait", "⏸"]};
 const statusChip = (s) => el("span", {class: "st " + ((STATUS_UI[s] || [])[0] || "")}, `${(STATUS_UI[s] || [])[1] || ""} ${s}`);
 
+// Mode d'achat -> indicateur vérifié (CPM, dCPM… : impressions ; CPC : clics)
+const BUY_LABEL = (m) => (m === "?" || !m ? "non lu" : m.replace(/^D(?=CP)/, "d").replace(/^V(?=CPM)/, "v"));
+const KPI_FR = {impressions: "impr.", clicks: "clics"};
 function renderDashboard(c) {
   const k = c.kpis;
   const fr = (d) => d ? d.split("-").reverse().join("/") : "—";
@@ -2305,7 +2310,10 @@ function renderDashboard(c) {
   const kpis = el("div", {class: "kpis"},
     tile(fmtN(k.impressions), "Impressions"), tile(fmtN(k.clicks), "Clics"), tile(k.ctr.toFixed(2) + " %", "CTR"),
     tile(`${k.placements_live} / ${k.placements}`, "Emplacements avec données"),
-    tile(`${k.sites_live} / ${k.sites}`, "Régies avec données"), tile(fr(k.last), "Dernière donnée"));
+    tile(`${k.sites_live} / ${k.sites}`, "Régies avec données"), tile(fr(k.last), "Dernière donnée"),
+    ...(k.buys ? [el("div", {class: "kpi buys"}, el("div", {class: "v"}, Object.entries(k.buys).sort((a, b) => b[1] - a[1])
+                       .map(([m, n]) => `${n} ${BUY_LABEL(m)}`).join(" · ")),
+                     el("div", {class: "l"}, "Modes d'achat · CPM : impressions vérifiées, CPC : clics"))] : []));
   const max = Math.max(1, ...c.sites.map((s) => s.impressions));
   const bars = el("div", {class: "bars", role: "list", "aria-label": "Impressions par régie"}, ...c.sites.map((s) =>
     el("div", {class: "bar-row", role: "listitem", title: `${s.site} : ${fmtN(s.impressions)} impressions, ${fmtN(s.clicks)} clics, `
@@ -2322,10 +2330,12 @@ function renderDashboard(c) {
     const t2 = (v, l, sub) => el("div", {class: "kpi"}, el("div", {class: "v"}, v), el("div", {class: "l"}, l), sub || "");
     kpis.append(
       t2(pct(pk.pace), "Rythme : livré / prévu à date", el("div", {class: "s"}, statusChip(pk.pace_status || "—"))),
-      t2(pct(pk.projection_pct), "Projection fin de campagne", el("div", {class: "s hint"}, `objectif ${fmtN(pk.planned)} impr.`)),
+      t2(pct(pk.projection_pct), "Projection fin de campagne", el("div", {class: "s hint"}, "objectif "
+        + Object.entries(pk.by_kpi || {impressions: {planned: pk.planned}}).map(([u, v]) => `${fmtN(v.planned)} ${KPI_FR[u]}`).join(" + "))),
       t2(pk.budget ? eur(pk.spent) : "—", "Budget consommé (estimé)", el("div", {class: "s hint"}, pk.budget ? `sur ${eur(pk.budget)}` : "budget absent du plan")));
-    const head = ["Régie", "Prévu (total)", "Prévu à date", "Livré", "Rythme", "Statut", "Budget", "Consommé estimé"];
-    const srows = (pc.sites || []).map((s) => el("tr", {}, el("td", {}, s.site), el("td", {class: "num"}, fmtN(s.planned)),
+    const head = ["Régie", "Suivi", "Prévu (total)", "Prévu à date", "Livré", "Rythme", "Statut", "Budget", "Consommé estimé"];
+    const srows = (pc.sites || []).map((s) => el("tr", {}, el("td", {}, s.site), el("td", {}, s.kpi === "clicks" ? "clics" : "impressions"),
+      el("td", {class: "num"}, fmtN(s.planned)),
       el("td", {class: "num"}, fmtN(s.expected)), el("td", {class: "num"}, fmtN(s.delivered)), el("td", {class: "num"}, pct(s.pace)),
       el("td", {}, s.pace_status ? statusChip(s.pace_status) : "—"), el("td", {class: "num"}, s.budget ? eur(s.budget) : "—"),
       el("td", {class: "num"}, s.budget ? eur(s.spent) : "—")));
@@ -2340,19 +2350,25 @@ function renderDashboard(c) {
     pace.push(el("div", {class: "info"}, "ℹ️ " + pc.reason));
   }
   const missing = c.placements.filter((p) => p.status === "Aucune donnée");
-  const alert = missing.length
+  const noClick = c.placements.filter((p) => p.status === "Impressions sans clic");
+  const alert = el("div", {}, missing.length
     ? el("div", {class: "info"}, `⛔ ${missing.length} emplacement(s) sans donnée alors qu'ils devraient diffuser — régies concernées : `
         + [...new Set(missing.map((p) => p.site))].join(", ") + ".")
-    : el("div", {class: "info"}, "✅ Tous les emplacements démarrés remontent des données.");
+    : el("div", {class: "info"}, "✅ Tous les emplacements démarrés remontent des données."),
+    noClick.length ? el("div", {class: "info"}, `⚠️ ${noClick.length} emplacement(s) achetés au CPC diffusent sans aucun clic (tracker de clic ou URL à vérifier) : `
+        + noClick.slice(0, 5).map((p) => p.name).join(", ") + (noClick.length > 5 ? "…" : "") + ".") : "");
   const withPace = !!pc.available;
-  const head = ["Régie", "Emplacement", "ID", "Format", "Début", "Fin", "Impressions", "Clics", "CTR", "1re impr.", "Dernière impr.", "Statut",
+  const head = ["Régie", "Emplacement", "ID", "Format", "Achat", "Début", "Fin", "Impressions", "Clics", "CTR", "1re impr.", "Dernière impr.", "Statut",
                 ...(withPace ? ["Prévu à date", "Rythme"] : [])];
   const rows = c.placements.map((p) => el("tr", {},
-    el("td", {}, p.site), el("td", {}, p.name), el("td", {class: "pv-id"}, p.id.startsWith("plan:") ? "au plan, absent de l'export" : p.id), el("td", {}, p.size), el("td", {}, fr(p.start)),
-    el("td", {}, fr(p.end)), el("td", {class: "num"}, fmtN(p.impressions)), el("td", {class: "num"}, fmtN(p.clicks)),
+    el("td", {}, p.site), el("td", {}, p.name), el("td", {class: "pv-id"}, p.id.startsWith("plan:") ? "au plan, absent de l'export" : p.id), el("td", {}, p.size),
+    el("td", {title: p.kpi === "clicks" ? "Acheté au clic : les clics sont vérifiés" : "Acheté à l'impression : les impressions sont vérifiées"},
+       `${BUY_LABEL(p.buy)} → ${p.kpi === "clicks" ? "clics" : "impr."}`), el("td", {}, fr(p.start)),
+    el("td", {}, fr(p.end)), el("td", {class: "num" + (p.kpi !== "clicks" ? " kpi" : "")}, fmtN(p.impressions)),
+    el("td", {class: "num" + (p.kpi === "clicks" ? " kpi" : "")}, fmtN(p.clicks)),
     el("td", {class: "num"}, p.ctr.toFixed(2) + " %"), el("td", {}, fr(p.first)), el("td", {}, fr(p.last)),
     el("td", {}, statusChip(p.status)),
-    ...(withPace ? [el("td", {class: "num"}, p.pacing ? fmtN(p.pacing.expected) : "—"),
+    ...(withPace ? [el("td", {class: "num"}, p.pacing ? `${fmtN(p.pacing.expected)} ${KPI_FR[p.pacing.kpi] || ""}` : "—"),
                     el("td", {}, p.pacing && p.pacing.pace_status ? statusChip(`${p.pacing.pace_status}`) : "—")] : [])));
   const tbl = el("table", {class: "pv", id: "rp-check-table"}, el("thead", {}, el("tr", {}, ...head.map((h) => el("th", {}, h)))), el("tbody", {}, ...rows));
   return [kpis, alert, ...pace, el("h3", {}, "Impressions par régie"), bars, el("h3", {}, "Détail par emplacement"),

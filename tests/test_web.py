@@ -637,6 +637,8 @@ def test_nomenclature_dimensions_chart_and_editor_grouping(page):
     page.select_option("#rp-group", "editor")
     page.wait_for_function("document.getElementById('rp-dash').textContent.includes('LEMONDE')")
     assert "GRANDANGLE" in page.text_content("#rp-check-table")                # format lu dans la nomenclature
+    assert "CPM → impr." in page.text_content("#rp-check-table")               # mode d'achat : impressions vérifiées
+    assert "8 CPM · 1 dCPM" in page.text_content(".kpis")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
 

@@ -251,3 +251,33 @@ def test_agency_nomenclature_and_site_unification():
     assert m["TEADS"] == m["teads.fr"] == "Teads FR" and m["amnet.fr"] == m["AMNET FR"] == "AMNET"
     assert m["Viadeo"] == "ViadeoFR" and m["Amplifi Programmatic"] == "Amplifi Programmatic_New"
     assert m["Meta FR"] == "Meta FR" and m["Facebook FR"] == "Facebook FR"           # pas de fusion abusive
+
+
+def test_check_follows_buy_mode():
+    """CPM / dCPM : impressions suivies ; CPC : clics (statut, rythme) ; mode lu au plan, dans la nomenclature ou le nom."""
+    camp = {"name": "Achat", "start": "2026-10-01", "end": "2026-10-10"}
+    pls = [{"id": "1", "name": "R-NOTO-dCPM-LEMONDE-PAVE", "site": "Le Monde"},
+           {"id": "2", "name": "R-TRAFIC-CPC-AMNET-NATIVE", "site": "Amnet"},
+           {"id": "3", "name": "Search marque", "site": "Google", "nom": {"Achat": "CPC"}},
+           {"id": "4", "name": "Habillage", "site": "Teads"}]
+    dl = [{"date": "2026-10-0%d" % d, "placement_id": pid, "impressions": imp, "clicks": clk}
+          for d in range(1, 6) for pid, imp, clk in (("1", 10000, 5), ("2", 2000, 40), ("3", 500, 0), ("4", 100, 0))]
+    targets = {"source": "plan", "placements": [
+        {"name": "R-NOTO-dCPM-LEMONDE-PAVE", "impressions": 100000, "budget": 1000},
+        {"name": "R-TRAFIC-CPC-AMNET-NATIVE", "impressions": 400, "budget": 400},          # volume du plan = clics
+        {"name": "Habillage", "impressions": 1000, "budget": 0, "pricing": "PRICING_TYPE_CPC"}]}
+    c = reporting.check(camp, pls, dl, "2026-10-06", targets)
+    rows = {r["id"]: r for r in c["placements"]}
+    assert [(rows[i]["buy"], rows[i]["kpi"]) for i in "1234"] == [("DCPM", "impressions"), ("CPC", "clicks"),
+                                                                  ("CPC", "clicks"), ("CPC", "clicks")]
+    assert rows["3"]["status"] == reporting.NO_CLICK and rows["1"]["status"] == reporting.LIVE
+    assert rows["2"]["pacing"]["delivered"] == 200 and rows["2"]["pacing"]["kpi"] == "clicks"   # clics, pas impressions
+    assert rows["2"]["pacing"]["pace_status"] == reporting.ON_TRACK                           # 200 / (400 × 5/10)
+    k = c["pacing"]["kpis"]
+    assert k["mixed"] and k["by_kpi"]["clicks"]["planned"] == 1400 and k["by_kpi"]["impressions"]["planned"] == 100000
+    assert {(s["site"], s["kpi"]) for s in c["pacing"]["sites"]} == {("Le Monde", "impressions"), ("Amnet", "clicks"), ("Teads", "clicks")}
+    assert c["kpis"]["no_click"] == 2 and c["kpis"]["buys"] == {"DCPM": 1, "CPC": 3}
+    xlsx = reporting.export_check(camp, pls, dl, "2026-10-06", targets)
+    import io, openpyxl
+    ws = openpyxl.load_workbook(io.BytesIO(xlsx))["Emplacements"]
+    assert [c.value for c in ws[4]][4:6] == ["Achat", "Suivi"]

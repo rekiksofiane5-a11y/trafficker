@@ -22,6 +22,7 @@ from typing import Dict, List, Optional
 
 LIVE, NO_DATA, NOT_STARTED = "Données reçues", "Aucune donnée", "Pas encore démarré"
 LATE, ON_TRACK, AHEAD = "En retard", "Dans le rythme", "En avance"
+NO_CLICK = "Impressions sans clic"     # emplacement au CPC qui diffuse sans générer de clic
 PACE_LOW, PACE_HIGH = 90, 110          # % du prévu à date : en dessous = retard, au-dessus = sur-livraison
 
 
@@ -143,11 +144,13 @@ def pacing(campaign: Dict, placements: List[Dict], rows: List[Dict], targets: Op
         # Dates de diffusion : celles de l'ad server (emplacement puis campagne), sinon celles du plan
         start = _d(r.get("start")) or c_start or _d(t.get("start"))
         end = _d(r.get("end")) or c_end or _d(t.get("end"))
-        pc = _pace(planned, budget, r["impressions"], start, end, now)
-        pc["plan_name"] = t.get("name", "")
+        kpi = r.get("kpi") or "impressions"
+        pc = _pace(planned, budget, r[kpi], start, end, now)
+        pc["plan_name"], pc["kpi"] = t.get("name", ""), kpi
         per_pl[r["id"]] = pc
-        s = sites.setdefault(r["site"], {"site": r["site"], "planned": 0.0, "expected": 0.0, "delivered": 0,
-                                         "budget": 0.0, "spent": 0.0})
+        # une ligne par régie et par indicateur suivi (on n'additionne pas des clics et des impressions)
+        s = sites.setdefault((r["site"], kpi), {"site": r["site"], "kpi": kpi, "planned": 0.0, "expected": 0.0,
+                                                "delivered": 0, "budget": 0.0, "spent": 0.0})
         for k in ("planned", "expected", "delivered", "budget", "spent"):
             s[k] += pc[k]
     for s in sites.values():
@@ -159,10 +162,19 @@ def pacing(campaign: Dict, placements: List[Dict], rows: List[Dict], targets: Op
         tot = {k: sum(p[k] for p in per_pl.values()) for k in ("planned", "expected", "delivered", "budget", "spent")}
         elapsed = max(p["elapsed_days"] for p in per_pl.values())
         total_days = max(p["total_days"] for p in per_pl.values())
-        pace = round(tot["delivered"] / tot["expected"] * 100, 1) if tot["expected"] else None
-        kp = {**tot, "pace": pace, "pace_status": "" if pace is None else LATE if pace < PACE_LOW else AHEAD if pace > PACE_HIGH else ON_TRACK,
-              "projection_pct": round(sum(p["delivered"] / p["elapsed_days"] * p["total_days"] for p in per_pl.values()
-                                          if p["elapsed_days"]) / tot["planned"] * 100, 1) if tot["planned"] and elapsed else None,
+        kpis_used = {p["kpi"] for p in per_pl.values()}
+        if len(kpis_used) > 1:
+            pace = _pace_mix(list(per_pl.values()))
+            proj = _pace_mix([{**p, "pace": p["projection_pct"]} for p in per_pl.values()])
+        else:
+            pace = round(tot["delivered"] / tot["expected"] * 100, 1) if tot["expected"] else None
+            proj = None
+        by_kpi = {k: {f: int(round(sum(p[f] for p in per_pl.values() if p["kpi"] == k))) for f in ("planned", "expected", "delivered")}
+                  for k in sorted(kpis_used)}
+        kp = {**tot, "pace": pace, "by_kpi": by_kpi, "mixed": len(kpis_used) > 1, "pace_status": "" if pace is None else LATE if pace < PACE_LOW else AHEAD if pace > PACE_HIGH else ON_TRACK,
+              "projection_pct": (round(sum(p["delivered"] / p["elapsed_days"] * p["total_days"] for p in per_pl.values()
+                                          if p["elapsed_days"]) / tot["planned"] * 100, 1) if tot["planned"] and elapsed else None)
+              if len(kpis_used) == 1 else proj,
               "level": "emplacements", "elapsed_days": elapsed, "total_days": total_days}
     else:
         # Pas d'objectif par ligne : objectif global de la campagne (volume et budget du plan)
@@ -174,13 +186,57 @@ def pacing(campaign: Dict, placements: List[Dict], rows: List[Dict], targets: Op
         kp = _pace(planned, budget, sum(r["impressions"] for r in rows),
                    c_start or _d(camp_t.get("start")), c_end or _d(camp_t.get("end")), now)
         kp["level"] = "campagne"
+        kp["by_kpi"], kp["mixed"] = {"impressions": {f: kp[f] for f in ("planned", "expected", "delivered")}}, False
     for k in ("planned", "expected"):
         kp[k] = int(round(kp[k]))
     kp["budget"], kp["spent"] = round(kp["budget"], 2), round(kp["spent"], 2)
     names = {_key(t.get("name")) for t in matched.values()}
     return {"available": True, "source": targets.get("source", ""), "kpis": kp, "placements": per_pl,
-            "sites": sorted(sites.values(), key=lambda s: -s["planned"]),
+            "sites": sorted(sites.values(), key=lambda s: (s["kpi"] != "impressions", -s["planned"])),
             "matched": len(matched), "unmatched_plan": [t.get("name") for t in plan_pl if _key(t.get("name")) not in names]}
+
+
+# --- Mode d'achat : l'indicateur suivi dépend de ce qui est acheté ---------------------------
+# CPM / dCPM / vCPM / forfait : on vérifie les impressions ; CPC / dCPC : les clics.
+
+CLICK_BUYS = {"CPC", "DCPC"}
+BUY_MODES = ("DCPM", "VCPM", "CPM", "DCPC", "CPC", "CPCV", "CPV", "CPA", "CPL", "CPI", "FLAT", "FORFAIT")
+KPI_LABEL = {"impressions": "impressions", "clicks": "clics"}
+
+
+def buy_mode(placement: Dict, target: Optional[Dict] = None) -> str:
+    """Mode d'achat d'un emplacement : plan média lié, sinon nomenclature (Achat), sinon nom."""
+    plan = str((target or {}).get("pricing") or "")
+    # le plan passe d'abord, sauf son CPM par défaut (mode non renseigné) : le nom est alors plus sûr
+    default = plan.upper() in ("PRICING_TYPE_CPM", "")
+    cands = ([] if default else [plan]) + [str((placement.get("nom") or {}).get("Achat") or ""),
+                                           str(placement.get("pricing") or ""), str(placement.get("name") or ""), plan]
+    for c in cands:
+        toks = re.split(r"[^A-Z]+", _plain(c).upper().replace("PRICING_TYPE_", " "))
+        for mode in BUY_MODES:
+            if mode in toks:
+                return mode
+    return ""
+
+
+def kpi_of(mode: str) -> str:
+    return "clicks" if mode in CLICK_BUYS else "impressions"
+
+
+def _pace_mix(items: List[Dict]) -> Optional[float]:
+    """Rythme global d'emplacements suivis dans des unités différentes (impressions, clics) :
+    moyenne des rythmes pondérée par le budget, sinon par la part du prévu dans chaque unité."""
+    items = [p for p in items if p.get("pace") is not None]
+    if not items:
+        return None
+    if all(p.get("budget") for p in items):
+        w = [p["budget"] for p in items]
+    else:
+        unit_tot: Dict[str, float] = {}
+        for p in items:
+            unit_tot[p["kpi"]] = unit_tot.get(p["kpi"], 0) + p["expected"]
+        w = [p["expected"] / unit_tot[p["kpi"]] if unit_tot[p["kpi"]] else 0 for p in items]
+    return round(sum(p["pace"] * x for p, x in zip(items, w)) / sum(w), 1) if sum(w) else None
 
 
 # --- Check de mise en ligne -----------------------------------------------------------------
@@ -192,6 +248,7 @@ def check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: s
     now = _d(today)
     if targets and campaign.get("from_file"):
         placements = with_plan_placements(placements, targets)
+    plan_of = match_targets(placements, (targets or {}).get("placements") or []) if targets else {}
     by_pl: Dict[str, Dict] = {}
     days = set()
     for r in delivery:
@@ -216,7 +273,11 @@ def check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: s
         else:
             status = NO_DATA
         imp, clk = a.get("impressions", 0), a.get("clicks", 0)
-        rows.append({"site": p.get("site") or "Régie inconnue", "id": str(p.get("id", "")), "name": p.get("name", ""),
+        buy = buy_mode(p, plan_of.get(str(p.get("id"))))
+        kpi = kpi_of(buy)
+        if status == LIVE and kpi == "clicks" and imp and not clk:
+            status = NO_CLICK
+        rows.append({"buy": buy, "kpi": kpi, "site": p.get("site") or "Régie inconnue", "id": str(p.get("id", "")), "name": p.get("name", ""),
                      "size": p.get("size", ""), "start": p.get("start") or campaign.get("start", ""),
                      "end": p.get("end") or campaign.get("end", ""), "impressions": imp, "clicks": clk,
                      "ctr": _ctr(imp, clk), "first": a.get("first", ""), "last": a.get("last", ""), "status": status})
@@ -226,14 +287,15 @@ def check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: s
         s = sites.setdefault(r["site"], {"site": r["site"], "placements": 0, "live": 0, "waiting": 0,
                                          "impressions": 0, "clicks": 0})
         s["placements"] += 1
-        s["live"] += r["status"] == LIVE
+        s["live"] += r["status"] in (LIVE, NO_CLICK)
+        s["no_click"] = s.get("no_click", 0) + (r["status"] == NO_CLICK)
         s["waiting"] += r["status"] == NOT_STARTED
         s["impressions"] += r["impressions"]
         s["clicks"] += r["clicks"]
     for s in sites.values():
         s["ctr"] = _ctr(s["impressions"], s["clicks"])
         expected = s["placements"] - s["waiting"]
-        s["status"] = (NOT_STARTED if not expected else LIVE if s["live"] == expected
+        s["status"] = (NOT_STARTED if not expected else (NO_CLICK if s["no_click"] else LIVE) if s["live"] == expected
                        else NO_DATA if not s["live"] else "Partiel")
     imp = sum(r["impressions"] for r in rows)
     clk = sum(r["clicks"] for r in rows)
@@ -243,9 +305,13 @@ def check(campaign: Dict, placements: List[Dict], delivery: List[Dict], today: s
         r["pacing"] = pace.get("placements", {}).get(r["id"])
     for s in site_list:
         s["pacing"] = next((x for x in pace.get("sites", []) if x["site"] == s["site"]), None)
+    buys: Dict[str, int] = {}
+    for r in rows:
+        buys[r["buy"] or "?"] = buys.get(r["buy"] or "?", 0) + 1
     return {"campaign": campaign, "today": today, "pacing": pace,
-            "kpis": {"impressions": imp, "clicks": clk, "ctr": _ctr(imp, clk),
-                     "placements": len(rows), "placements_live": sum(r["status"] == LIVE for r in rows),
+            "kpis": {"impressions": imp, "clicks": clk, "ctr": _ctr(imp, clk), "buys": buys,
+                     "no_click": sum(r["status"] == NO_CLICK for r in rows),
+                     "placements": len(rows), "placements_live": sum(r["status"] in (LIVE, NO_CLICK) for r in rows),
                      "sites": len(site_list), "sites_live": sum(s["live"] > 0 for s in site_list),
                      "days": len(days), "first": min(days) if days else "", "last": max(days) if days else ""},
             "sites": site_list, "placements": rows}
@@ -271,13 +337,15 @@ def regie_report(campaign: Dict, placements: List[Dict], delivery: List[Dict], s
     clk = sum(r[5] for r in rows)
     return {"site": site, "campaign": campaign, "columns": REGIE_COLUMNS, "rows": rows,
             "total": ["Total", "", "", "", imp, clk, _ctr(imp, clk)],
-            "placements": len(pls), "placements_live": len({r[2] for r in rows if r[4]})}
+            # emplacement actif : impressions, ou clics s'il est acheté au CPC
+            "placements": len(pls), "placements_live": len({r[2] for r in rows
+                                                            if r[5 if kpi_of(buy_mode(pls[r[2]])) == "clicks" else 4]})}
 
 
 # --- Classeurs Excel ----------------------------------------------------------------------
 
 NAVY, CHAMPAGNE, GREEN, RED, GREY = "121A25", "EDE6D4", "D8EFDF", "F6D5D2", "ECE5D3"
-STATUS_FILL = {LIVE: GREEN, NO_DATA: RED, NOT_STARTED: GREY, "Partiel": "F7E6C4",
+STATUS_FILL = {LIVE: GREEN, NO_DATA: RED, NOT_STARTED: GREY, "Partiel": "F7E6C4", NO_CLICK: "F7E6C4",
                ON_TRACK: GREEN, LATE: RED, AHEAD: "F7E6C4"}
 
 
@@ -368,21 +436,23 @@ def export_check(campaign: Dict, placements: List[Dict], delivery: List[Dict], t
             for s in c["sites"]], [30, 14, 14, 16, 12, 10, 20], status_col=6,
            total=["Total", k["placements"], k["placements_live"], k["impressions"], k["clicks"], k["ctr"], ""])
     _sheet(wb.create_sheet("Emplacements"), head,
-           ["Régie", "Emplacement", "ID", "Format", "Début", "Fin", "Impressions", "Clics", "CTR (%)",
+           ["Régie", "Emplacement", "ID", "Format", "Achat", "Suivi", "Début", "Fin", "Impressions", "Clics", "CTR (%)",
             "1re impression", "Dernière impression", "Statut"],
-           [[r["site"], r["name"], r["id"], r["size"], _fr(r["start"]), _fr(r["end"]), r["impressions"],
-             r["clicks"], r["ctr"], _fr(r["first"]), _fr(r["last"]), r["status"]] for r in c["placements"]],
-           [24, 60, 12, 10, 12, 12, 14, 10, 9, 14, 16, 20], status_col=11)
+           [[r["site"], r["name"], r["id"], r["size"], r["buy"], KPI_LABEL[r["kpi"]], _fr(r["start"]), _fr(r["end"]),
+             r["impressions"], r["clicks"], r["ctr"], _fr(r["first"]), _fr(r["last"]), r["status"]] for r in c["placements"]],
+           [24, 60, 12, 10, 8, 12, 12, 12, 14, 10, 9, 14, 16, 20], status_col=13)
     if c["pacing"].get("available"):
         pc = c["pacing"]
         _sheet(wb.create_sheet("Rythme"), head + [f"Plan média lié : {pc.get('source', '')} · niveau : {pc['kpis']['level']}"],
-               ["Régie", "Emplacement", "Prévu (total)", "Prévu à date", "Livré", "Rythme", "Statut", "Projection fin",
+               ["Régie", "Emplacement", "Suivi", "Prévu (total)", "Prévu à date", "Livré", "Rythme", "Statut", "Projection fin",
                 "Budget (€)", "Consommé estimé (€)"],
-               [[r["site"], r["name"], r["pacing"]["planned"], r["pacing"]["expected"], r["pacing"]["delivered"],
+               [[r["site"], r["name"], KPI_LABEL[r["kpi"]], r["pacing"]["planned"], r["pacing"]["expected"], r["pacing"]["delivered"],
                  _pct(r["pacing"]["pace"]), r["pacing"]["pace_status"], _pct(r["pacing"]["projection_pct"]),
                  r["pacing"]["budget"], r["pacing"]["spent"]] for r in c["placements"] if r.get("pacing")],
-               [24, 60, 15, 15, 16, 12, 16, 16, 14, 20], status_col=6,
-               total=["Total", "", pc["kpis"]["planned"], pc["kpis"]["expected"], pc["kpis"]["delivered"],
+               [24, 60, 12, 15, 15, 16, 12, 16, 16, 14, 20], status_col=7,
+               total=["Total", "", "mixte" if pc["kpis"].get("mixed") else "",
+                      "" if pc["kpis"].get("mixed") else pc["kpis"]["planned"], "" if pc["kpis"].get("mixed") else pc["kpis"]["expected"],
+                      "" if pc["kpis"].get("mixed") else pc["kpis"]["delivered"],
                       _pct(pc["kpis"]["pace"]), pc["kpis"]["pace_status"], _pct(pc["kpis"]["projection_pct"]),
                       pc["kpis"]["budget"], pc["kpis"]["spent"]])
     pls = {str(p.get("id")): p for p in placements}
