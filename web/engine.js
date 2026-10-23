@@ -70,10 +70,15 @@ const COMMANDS = {
   export_adform: async ({type}) => bytesOf(api.export_adform(type)),
 };
 
+// Étapes de l'analyse remontées par le moteur Python (web_api._progress) vers la page
+let runningId = 0;
+self.umniaProgress = (stage) => self.postMessage({id: runningId, progress: String(stage)});
+
 self.onmessage = async (e) => {
   const {id, cmd, args} = e.data;
   try {
     await ready;
+    runningId = id;
     const result = await COMMANDS[cmd](args || {});
     const transfer = result instanceof Uint8Array ? [result.buffer] : [];
     self.postMessage({id, ok: true, result}, transfer);

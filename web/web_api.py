@@ -182,8 +182,18 @@ def _normalize(rows: list) -> list:
     return out
 
 
+def _progress(stage: str) -> None:
+    """Étape en cours, affichée dans la page pendant l'analyse (sans effet hors navigateur)."""
+    try:
+        import js                                   # Pyodide : fonction exposée par web/engine.js
+        js.umniaProgress(stage)
+    except Exception:
+        pass
+
+
 def _build(rows: list, nomenclature_json: str, creatives_dir: str, report: list) -> str:
     """Plan -> nomenclature -> contrôles -> aperçu. Partagé par l'analyse et l'édition."""
+    _progress("structure")
     plan, errors = plan_from_rows(rows, allow_incomplete=True)
     renames = []
     if not errors:
@@ -197,9 +207,11 @@ def _build(rows: list, nomenclature_json: str, creatives_dir: str, report: list)
             finally:
                 os.remove(tmp)
         # Nomenclature de base (OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT) si aucun fichier
+        _progress("nommage")
         plan, renames = apply_nomenclature(plan, naming_or_base(naming), log=lambda m: None)
         split_ads(plan, rows)
     from creative_specs import check_plan, spec_summary
+    _progress("controles")
     specs = check_plan(plan, creatives_dir) if not errors else []
     ctypes = sorted({c.ctype for camp in plan.values() for ad in camp.ads.values()
                      for c in ad["creatives"]})
@@ -208,6 +220,7 @@ def _build(rows: list, nomenclature_json: str, creatives_dir: str, report: list)
     first = rows[0] if rows else {}
     campaign = {f: first.get(f, "") for f in CAMPAIGN_FIELDS}
     columns = [{"key": k, "label": lbl} for k, lbl in TABLE_COLUMNS if k in ALWAYS or k in present]
+    _progress("apercu")
     return json.dumps({
         "rows": len(rows), "errors": errors, "renames": renames, "ingest": report,
         "campaigns": _summary(plan), "specs": specs, "to_complete": plan_gaps(plan),
@@ -423,6 +436,7 @@ def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
             nomenclature_json: str = "", creatives_dir: str = "", instructions: str = "") -> str:
     """Lit le plan déposé (CSV, XLSX, XLS, export CM360), le classe, le valide et
     applique les nomenclatures. Le fichier est supprimé après lecture."""
+    _progress("lecture")
     try:
         rows = load_rows_from_path(path, campaign_name, advertiser_name)
     except SystemExit as e:

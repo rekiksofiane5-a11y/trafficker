@@ -765,3 +765,34 @@ def test_pivot_period_comparison(page):
     assert page.input_value("#pv-cmp") == ""
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
+
+
+def test_home_import_flow_with_engine_stages(page):
+    """Accueil : « Importer mon PM » crée la tâche, puce du fichier, étapes réelles du moteur, « Votre PM est prêt »."""
+    page.click(".modes [data-mode=trafficking]")
+    page.evaluate("closeTask()")
+    assert page.is_visible("#empty-view") and "Un nouveau projet" in page.text_content("#empty-title")
+    page.set_input_files("#hero-file", os.path.join(ROOT, "plan_media_template.csv"))
+    page.wait_for_selector("#file-chip:not([hidden])")
+    assert page.text_content("#task-title") == "plan_media_template"            # tâche nommée d'après le fichier
+    assert page.text_content("#fc-name") == "plan_media_template.csv" and not page.is_visible("#drop")
+    page.wait_for_function("!document.getElementById('analyze').disabled", timeout=120000)
+    page.evaluate("""(() => { window.__stages = []; const o = engine.onmessage;
+                     engine.onmessage = (e) => { if (e.data.progress) __stages.push(e.data.progress); o(e); }; })()""")
+    page.click("#analyze")
+    page.wait_for_selector("#pm-progress:not([hidden])")
+    page.wait_for_selector("#pm-compact:not([hidden])", timeout=30000)
+    assert page.evaluate("__stages") == ["lecture", "structure", "nommage", "controles", "apercu"]
+    assert page.locator("#pm-stages li.done").count() == 5
+    assert "Votre PM est prêt" in page.text_content("#pm-compact")
+    assert "emplacement(s)" in page.text_content("#pm-compact-text") and page.is_visible("#result")
+    page.click("#pm-reopen")                                                    # importer un autre PM
+    assert page.is_visible("#drop") and not page.is_visible("#file-chip")
+    page.set_input_files("#file", os.path.join(ROOT, "plan_media_template.csv"))
+    page.click("#fc-clear")
+    assert page.is_visible("#drop")
+    page.click(".modes [data-mode=reporting]")
+    page.evaluate("closeTask()")
+    assert not page.is_visible("#hero-drop") and page.is_visible("#empty-new")   # reporting : pas de dépôt de PM
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []

@@ -10,6 +10,7 @@
   --bg: #ece5d3; --card: #f7f3ea; --text: #121a25; --muted: #5b564b; --border: #d3c8ae;
   --accent: #172233; --accent-text: #ede6d4; --ok: #1d6a43; --warn: #8a4a00; --err: #a3261e;
   --chip: #e2d9c3; --code: #e8e0cc; --gold: #685a38; --side: #e4dcc8;
+  --halo: rgba(255, 255, 255, .7); --orb-a: #ffffff; --orb-b: #b9cbe0; --orb-c: #e8d9bd;
 }
 /* Thème : auto (système) par défaut, ou forcé par data-theme sur <html> */
 @media (prefers-color-scheme: dark) {
@@ -17,12 +18,14 @@
   --bg: #0e1621; --card: #152031; --text: #ede6d4; --muted: #a8a08e; --border: #2b3749;
   --accent: #d9cdb3; --accent-text: #0e1621; --ok: #7fd3a6; --warn: #f0b45a; --err: #ff8a80;
   --chip: #1d293b; --code: #1a2535; --gold: #b5a27a; --side: #111b29;
+  --halo: rgba(120, 160, 205, .14); --orb-a: #e9f1fb; --orb-b: #5d7fa6; --orb-c: #2a3a52;
   }
 }
 :root[data-theme="dark"] { color-scheme: dark;
   --bg: #0e1621; --card: #152031; --text: #ede6d4; --muted: #a8a08e; --border: #2b3749;
   --accent: #d9cdb3; --accent-text: #0e1621; --ok: #7fd3a6; --warn: #f0b45a; --err: #ff8a80;
   --chip: #1d293b; --code: #1a2535; --gold: #b5a27a; --side: #111b29;
+  --halo: rgba(120, 160, 205, .14); --orb-a: #e9f1fb; --orb-b: #5d7fa6; --orb-c: #2a3a52;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text);
@@ -260,11 +263,74 @@ table.pv.rz .pv-name { max-width: none; }
 .col-grip::after { content: ""; position: absolute; top: 20%; bottom: 20%; right: 3px; width: 2px; border-radius: 2px; background: var(--border); }
 .col-grip:hover::after, .col-grip.on::after { background: var(--accent); }
 /* Plan déposé : la zone de dépôt se replie en une ligne après la production */
-#pm-step.collapsed { padding: 10px 18px; }
-#pm-step.collapsed > :not(#pm-compact) { display: none; }
-#pm-compact { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-#pm-compact .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#pm-compact button { padding: 6px 12px; }
+/* Accueil et carte du plan média : dépôt -> fichier -> analyse (étapes du moteur) -> prêt */
+.hero, .pm-hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); align-items: center; gap: 12px;
+  background: radial-gradient(circle at 78% 48%, var(--halo) 0, transparent 46%), var(--card);
+  border: 1px solid var(--border); border-radius: 22px; }
+.hero { max-width: none; margin: 4vh 0 0; padding: 7vh 4vw; text-align: left; min-height: 62vh; }
+.pm-hero { padding: 34px 4vw; min-height: 24rem; }
+.hero-main, .pm-left { max-width: 34rem; justify-self: center; width: 100%; text-align: center; }
+.hero h1, .pm-h { font-size: clamp(1.7rem, 3.4vw, 2.7rem); line-height: 1.12; letter-spacing: -.02em; margin: 0 0 6px; font-weight: 700; }
+.pm-hero .pm-h { font-size: clamp(1.4rem, 2.6vw, 2rem); margin-bottom: 6px; }
+.hero-sub { font-size: 1.15rem; color: var(--muted); margin: 0 0 22px; }
+.hero-drop { display: grid; justify-items: center; gap: 12px; padding: 30px 22px 24px; border: 1.5px dashed var(--border);
+  border-radius: 18px; background: color-mix(in srgb, var(--card) 70%, transparent); cursor: pointer;
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--card) 55%, transparent); transition: border-color .15s, background .15s; }
+.hero-drop:hover, .hero-drop.over, .hero-drop:focus-visible { border-color: var(--accent); }
+.hero-drop.over { background: var(--chip); }
+.hero-ico { display: grid; place-items: center; width: 74px; height: 74px; border-radius: 50%; background: var(--chip); }
+.hero-ico .ico { width: 30px; height: 30px; }
+.hero-btn { display: inline-flex; align-items: center; gap: 10px; padding: 12px 26px; border-radius: 12px;
+  background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.hero-btn .plus { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  border: 1.5px solid currentColor; font-size: .8rem; line-height: 1; }
+.hero-drop .hint { line-height: 1.5; }
+.linkish { background: none; border: 0; color: var(--muted); text-decoration: underline; padding: 6px; cursor: pointer; font: inherit; }
+.linkish:hover { color: var(--text); }
+.pm-left { text-align: center; }
+.pm-left .lbl, .pm-left textarea, .pm-left details { text-align: left; }
+.pm-left > div > .actions { justify-content: center; }
+.file-chip { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 4px 0 12px; border: 1px solid var(--border);
+  border-radius: 14px; background: var(--bg); text-align: left; }
+.fc-ico { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; background: var(--ok); color: var(--card); }
+.fc-ico .ico { width: 18px; height: 18px; }
+.fc-txt { flex: 1; min-width: 0; display: grid; }
+.fc-txt strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-ready .ok-badge { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--ok);
+  color: var(--card); font-weight: 700; margin-bottom: 8px; }
+.pm-ready .actions { justify-content: center; }
+#pm-step[data-state="ready"] { min-height: 0; padding-top: 22px; padding-bottom: 22px; }
+#pm-step[data-state="ready"] .orb { width: min(180px, 100%); }
+/* Étapes de l'analyse : numérotées, état écrit en plus de la couleur */
+.stepper { list-style: none; display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; margin: 26px 0 8px; padding: 0; counter-reset: st; }
+.stepper li { position: relative; display: grid; justify-items: center; align-content: start; gap: 4px; font-size: .8rem; color: var(--muted); }
+.stepper li::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: var(--border); z-index: 1;
+  box-shadow: 0 0 0 4px var(--card); }
+.stepper li::after { content: ""; position: absolute; top: 6px; left: calc(-50% + 8px); width: calc(100% - 16px); height: 2px; background: var(--border); }
+.stepper li:first-child::after { display: none; }
+.stepper li small { font-size: .68rem; opacity: .85; }
+.stepper li.done, .stepper li.on { color: var(--text); }
+.stepper li.done::before { background: var(--gold); }
+.stepper li.done::after, .stepper li.on::after { background: var(--gold); }
+.stepper li.on::before { background: var(--gold); box-shadow: 0 0 0 4px var(--card), 0 0 0 7px color-mix(in srgb, var(--gold) 35%, transparent); }
+.stepper li.on strong { text-decoration: underline; text-underline-offset: 4px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Sphère (décor) : calme au repos, plus vive pendant l'analyse, teinte verte quand c'est prêt */
+.orb { width: min(420px, 100%); aspect-ratio: 1; justify-self: center; }
+.orb svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.orb .ring { fill: none; stroke: var(--gold); stroke-width: .8; opacity: .45; }
+.orb .spin1 { transform-origin: 200px 200px; animation: orb-spin 38s linear infinite; }
+.orb .spin2 { transform-origin: 200px 200px; animation: orb-spin 56s linear infinite reverse; }
+.orb .core { transform-origin: 200px 200px; animation: orb-breathe 6s ease-in-out infinite; }
+.orb .spark { fill: var(--gold); opacity: .7; }
+[data-state="busy"] .orb .spin1 { animation-duration: 6s; } [data-state="busy"] .orb .spin2 { animation-duration: 9s; }
+[data-state="busy"] .orb .core { animation-duration: 1.6s; }
+[data-state="ready"] .orb .tint { opacity: .55; }
+.orb .tint { opacity: 0; transition: opacity .6s; }
+@keyframes orb-spin { to { transform: rotate(360deg); } }
+@keyframes orb-breathe { 50% { transform: scale(1.03); opacity: .92; } }
+@media (prefers-reduced-motion: reduce) { .orb * { animation: none !important; } }
+@media (max-width: 900px) { .hero, .pm-hero { grid-template-columns: 1fr; } .orb { display: none; } }
 /* Coquille : connexion, barre latérale, tâches */
 body { overflow: hidden; }
 .login { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; overflow: auto; }
@@ -344,9 +410,10 @@ body { overflow: hidden; }
 .history-foot { padding: 8px 16px 12px; font-size: .75rem; }
 #main { flex: 1; overflow: auto; padding: 0 24px 60px; position: relative; }
 .engine-pill { position: sticky; top: 0; text-align: right; margin: 0; padding: 8px 0; font-size: .75rem; z-index: 1; }
-.empty { max-width: 40rem; margin: 14vh auto 0; text-align: center; }
-.empty h1 { font-size: 1.7rem; margin-bottom: 6px; }
-.empty button { margin-top: 14px; }
+.hero[data-mode="reporting"] .hero-drop, .hero[data-mode="reporting"] .orb { display: none; }
+.hero[data-mode="reporting"] { grid-template-columns: 1fr; }
+.hero[data-mode="reporting"] #empty-new { text-decoration: none; background: var(--accent); color: var(--accent-text);
+  padding: 12px 26px; border-radius: 12px; font-weight: 600; }
 .task-view { max-width: 120rem; margin: 0 auto; }
 .task-view > .card:first-of-type { max-width: 60rem; }
 .task-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
@@ -441,10 +508,19 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
   <main id="main">
     <p id="engine" class="status engine-pill" role="status">Chargement du moteur Python… (≈ 10 Mo la première fois)</p>
 
-    <div id="empty-view" class="empty">
-      <h1 id="empty-title">Que voulez-vous trafficker aujourd'hui ?</h1>
-      <p class="hint" id="empty-sub">Créez une tâche, déposez le plan média avec les cases à lire surlignées en jaune, puis lancez la production.</p>
-      <button id="empty-new">＋ Créer une tâche</button>
+    <div id="empty-view" class="empty hero">
+      <div class="hero-main">
+        <h1 id="empty-title">Un nouveau projet ?</h1>
+        <p class="hero-sub" id="empty-sub">Partagez-moi votre PM.</p>
+        <div id="hero-drop" class="hero-drop" tabindex="0" role="button" aria-label="Importer mon plan média (Excel ou CSV)">
+          <span class="hero-ico"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M12 17v-6"/><path d="m9.5 13.5 2.5-2.5 2.5 2.5"/></svg></span>
+          <span class="hero-btn"><span class="plus" aria-hidden="true">＋</span>Importer mon PM</span>
+          <span class="hint">Glissez votre fichier ici<br>Excel (.xls, .xlsx) ou CSV</span>
+        </div>
+        <input id="hero-file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
+        <button id="empty-new" type="button" class="linkish">ou créer une tâche vide</button>
+      </div>
+      <div class="orb" data-orb aria-hidden="true"></div>
     </div>
 
     <div id="task-view" class="task-view" hidden>
@@ -464,41 +540,64 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
         </div>
       </div>
 
-      <section class="card" id="pm-step" aria-labelledby="t-plan">
-        <div id="pm-compact" hidden>
-          <span class="t" id="pm-compact-text"></span>
-          <button type="button" id="pm-reopen" class="secondary">Modifier le plan ou relancer</button>
-        </div>
-        <h2 id="t-plan">Plan média</h2>
-        <div id="drop" class="drop" tabindex="0" role="button" aria-describedby="drop-hint">
-          <strong>Déposez le plan média ici</strong> ou cliquez pour choisir un fichier
-          <div id="drop-hint" class="hint">CSV, XLSX, XLS. Surlignez en <mark>jaune fluo</mark> les cellules à lire :
-            elles guident Umnia, le reste est ignoré.</div>
-          <div id="file-name" class="hint"></div>
-        </div>
-        <input id="file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
-        <label for="instructions" class="lbl">Instructions supplémentaires pour Umnia <span class="hint">(facultatif)</span></label>
-        <textarea id="instructions" rows="3" placeholder="Une par ligne, par exemple :&#10;Période : du 02/11 au 15/12/2026&#10;URL : https://www.annonceur.fr&#10;Régie : Teads"></textarea>
-        <details class="more">
-          <summary>Options : nomenclature client, fichiers créatifs</summary>
-          <div class="grid">
-            <div>
-              <label for="nomen">Nomenclatures (JSON)</label>
-              <input id="nomen" type="file" accept=".json">
-              <div class="hint">Sans fichier : OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT</div>
-            </div>
-            <div>
-              <label for="creas">Fichiers créatifs</label>
-              <input id="creas" type="file" multiple accept=".gif,.jpg,.jpeg,.png,.wbmp,.zip,.adz,.mp4,.mov,.m4v,.avi,.mpeg,.mpg,.webm,.wmv,.mp3,.ogg,.oga">
-              <div class="hint">Contrôlés selon les specs CM360</div>
+      <section class="card pm-hero" id="pm-step" aria-labelledby="t-plan" data-state="idle">
+        <div class="pm-left">
+          <div id="pm-compact" class="pm-ready" hidden>
+            <span class="ok-badge" aria-hidden="true">✓</span>
+            <h2 class="pm-h">Votre PM est prêt</h2>
+            <p class="hint" id="pm-compact-text"></p>
+            <div class="actions">
+              <button type="button" id="pm-see">Voir la campagne <span aria-hidden="true">→</span></button>
+              <button type="button" id="pm-reopen" class="linkish">Importer un autre PM</button>
             </div>
           </div>
-        </details>
-        <input id="camp" type="hidden"><input id="adv" type="hidden">
-        <div class="actions">
-          <button id="analyze" disabled>🚀 Lancer la production</button>
-          <span class="hint"><a href="exemples/plan_media_template.csv" download>Plan exemple</a></span>
+          <div id="pm-input">
+            <h2 id="t-plan" class="pm-h">Un nouveau projet ?</h2>
+            <p class="hero-sub">Partagez-moi votre PM.</p>
+            <div id="drop" class="hero-drop" tabindex="0" role="button" aria-describedby="drop-hint">
+              <span class="hero-ico"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M12 17v-6"/><path d="m9.5 13.5 2.5-2.5 2.5 2.5"/></svg></span>
+              <span class="hero-btn"><span class="plus" aria-hidden="true">＋</span>Importer mon PM</span>
+              <span id="drop-hint" class="hint">Glissez votre fichier ici · Excel (.xls, .xlsx) ou CSV<br>
+                Surlignez en <mark>jaune fluo</mark> les cases à lire : elles guident Umnia.</span>
+            </div>
+            <div id="file-chip" class="file-chip" hidden>
+              <span class="fc-ico" aria-hidden="true"><svg class="ico" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12h6M9 16h6"/></svg></span>
+              <span class="fc-txt"><strong id="fc-name"></strong><span class="hint" id="fc-size"></span></span>
+              <button type="button" id="fc-clear" class="icon-btn" aria-label="Retirer le fichier">✕</button>
+            </div>
+            <div id="file-name" class="hint"></div>
+            <input id="file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
+            <label for="instructions" class="lbl">Consignes pour Umnia <span class="hint">(facultatif)</span></label>
+            <textarea id="instructions" rows="2" placeholder="Une par ligne, par exemple :&#10;Période : du 02/11 au 15/12/2026&#10;URL : https://www.annonceur.fr&#10;Régie : Teads"></textarea>
+            <details class="more">
+              <summary>Options : nomenclature client, fichiers créatifs</summary>
+              <div class="grid">
+                <div>
+                  <label for="nomen">Nomenclatures (JSON)</label>
+                  <input id="nomen" type="file" accept=".json">
+                  <div class="hint">Sans fichier : OBJECTIF-AUDIENCE-RÉGIE-CIBLAGE-FORMAT</div>
+                </div>
+                <div>
+                  <label for="creas">Fichiers créatifs</label>
+                  <input id="creas" type="file" multiple accept=".gif,.jpg,.jpeg,.png,.wbmp,.zip,.adz,.mp4,.mov,.m4v,.avi,.mpeg,.mpg,.webm,.wmv,.mp3,.ogg,.oga">
+                  <div class="hint">Contrôlés selon les specs CM360</div>
+                </div>
+              </div>
+            </details>
+            <input id="camp" type="hidden"><input id="adv" type="hidden">
+            <div class="actions">
+              <button id="analyze" disabled>Analyser mon PM <span aria-hidden="true">→</span></button>
+              <span class="hint"><a href="exemples/plan_media_template.csv" download>Plan exemple</a></span>
+            </div>
+          </div>
+          <div id="pm-progress" hidden>
+            <h2 class="pm-h">Analyse en cours…</h2>
+            <p class="hint">Umnia lit et structure votre plan média.</p>
+            <ol class="stepper" id="pm-stages" aria-label="Étapes de l'analyse"></ol>
+            <p id="pm-stage-live" class="sr-only" role="status" aria-live="polite"></p>
+          </div>
         </div>
+        <div class="orb" data-orb aria-hidden="true"></div>
       </section>
 
       <section id="result" class="card hidden" aria-labelledby="t-res" aria-live="polite">
@@ -815,18 +914,19 @@ const engine = new Worker("engine.js");
 let nextId = 1, engineReady = false;
 const pending = new Map();
 engine.onmessage = (e) => {
-  const {id, ok, result, error} = e.data;
+  const {id, ok, result, error, progress} = e.data;
   if (id === 0) { setStatus("Le moteur n'a pas pu se charger : " + error, true); return; }
   const p = pending.get(id);
   if (!p) return;
+  if (progress !== undefined) { if (p.onProgress) p.onProgress(progress); return; }
   pending.delete(id);
   ok ? p.resolve(result) : p.reject(new Error(error));
 };
 engine.onerror = (e) => setStatus("Le moteur s'est arrêté : " + (e.message || "erreur inconnue"), true);
-function call(cmd, args = {}, transfer = []) {
+function call(cmd, args = {}, transfer = [], onProgress = null) {
   return new Promise((resolve, reject) => {
     const id = nextId++;
-    pending.set(id, {resolve, reject});
+    pending.set(id, {resolve, reject, onProgress});
     engine.postMessage({id, cmd, args}, transfer);
   });
 }
@@ -853,9 +953,56 @@ async function boot() {
 
 function pickFile(f) {
   planFile = f || null;
-  if (f) collapsePlan(false);
-  $("file-name").textContent = f ? "Fichier : " + f.name : "";
+  if (f) { $("file-name").textContent = ""; $("fc-name").textContent = f.name; $("fc-size").textContent = fmtSize(f.size); }
+  pmState(f ? "file" : "idle");
   $("analyze").disabled = !(planFile && engineReady);
+  if (f) $("analyze").focus();
+}
+const fmtSize = (n) => (n >= 1048576 ? (n / 1048576).toLocaleString("fr-FR", {maximumFractionDigits: 1}) + " Mo"
+  : Math.max(1, Math.round(n / 1024)) + " Ko");
+// Carte du plan média : idle (dépôt) -> file (fichier choisi) -> busy (étapes du moteur) -> ready
+function pmState(st) {
+  $("pm-step").dataset.state = st;
+  $("pm-compact").hidden = st !== "ready";
+  $("pm-input").hidden = st === "busy" || st === "ready";
+  $("pm-progress").hidden = st !== "busy";
+  $("drop").hidden = st === "file";
+  $("file-chip").hidden = st !== "file";
+}
+$("fc-clear").addEventListener("click", () => { $("file").value = ""; pickFile(null); $("drop").focus(); });
+
+// Étapes réelles de l'analyse (web_api._progress) : affichées au fil de l'eau, 0,35 s minimum chacune
+const PM_STAGES = [["lecture", "Lecture", "fichier, cases jaunes"], ["structure", "Structure", "colonnes, consignes"],
+                   ["nommage", "Nommage", "nomenclature"], ["controles", "Contrôles", "specs, champs à compléter"],
+                   ["apercu", "Aperçu", "CM360 · Adform"]];
+let stageQueue = [], stageTimer = null, stageShown = -1;
+function stagesReset() {
+  stageQueue = []; clearTimeout(stageTimer); stageTimer = null; stageShown = -1;
+  $("pm-stages").replaceChildren(...PM_STAGES.map(([k, label, sub]) =>
+    el("li", {"data-stage": k}, el("strong", {}, label), el("small", {}, sub))));
+}
+function stageShow(i) {
+  stageShown = i;
+  [...$("pm-stages").children].forEach((li, j) => { li.className = j < i ? "done" : j === i ? "on" : ""; });
+  if (PM_STAGES[i]) $("pm-stage-live").textContent = `Étape ${i + 1} sur ${PM_STAGES.length} : ${PM_STAGES[i][1]}`;
+}
+function stagePump() {
+  if (stageTimer || !stageQueue.length) return;
+  stageShow(stageQueue.shift());
+  stageTimer = setTimeout(() => { stageTimer = null; stagePump(); }, 350);
+}
+function stageProgress(key) {
+  const i = PM_STAGES.findIndex(([k]) => k === key);
+  const last = stageQueue.length ? stageQueue[stageQueue.length - 1] : stageShown;
+  for (let j = last + 1; j <= i; j++) stageQueue.push(j);           // une étape n'est jamais sautée à l'écran
+  stagePump();
+}
+function stagesDone() {
+  stageProgress(PM_STAGES[PM_STAGES.length - 1][0]);
+  return new Promise((resolve) => {
+    const wait = () => (stageTimer || stageQueue.length ? setTimeout(wait, 60) : (stageShow(PM_STAGES.length), resolve()));
+    wait();
+  });
 }
 $("drop").addEventListener("click", () => $("file").click());
 $("drop").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
@@ -1398,6 +1545,9 @@ function renderAdform(pa) {
 
 $("analyze").addEventListener("click", async () => {
   const btn = $("analyze"); const done = ticking(btn, "Analyse…");
+  stagesReset();
+  pmState("busy");
+  let ok = false;
   try {
     const ext = planFile.name.toLowerCase().match(/\.(csv|xlsx|xlsm|xls)$/);
     if (!ext) throw new Error("Format non pris en charge (CSV, XLSX ou XLS).");
@@ -1410,7 +1560,9 @@ $("analyze").addEventListener("click", async () => {
     const d = JSON.parse(await call("analyze", {
       name: planFile.name, bytes, camp: $("camp").value.trim(), adv: $("adv").value.trim(), nomen, creas,
       instructions: $("instructions").value,
-    }, [bytes, ...creas.map((c) => c.bytes)]));
+    }, [bytes, ...creas.map((c) => c.bytes)], stageProgress));
+    if (!d.fatal) await stagesDone();
+    ok = !d.fatal;
     $("result").classList.remove("hidden");
     step = 1;
     selected.clear(); edSel.clear();
@@ -1433,12 +1585,16 @@ $("analyze").addEventListener("click", async () => {
       current.status = "produit";
       saveSoon(0);
     }
-    $("result").scrollIntoView({behavior: "smooth", block: "start"});
   } catch (e) {
     $("result").classList.remove("hidden");
     $("summary").replaceChildren(el("p", {class: "err"}, "Erreur : " + e.message));
-  } finally { done(); }
+  } finally {
+    done();
+    clearTimeout(stageTimer); stageTimer = null;
+    if (!ok) pmState(planFile ? "file" : "idle");                     // erreur : on reste sur le fichier
+  }
 });
+$("pm-see").addEventListener("click", () => $("result").scrollIntoView({behavior: "smooth", block: "start"}));
 
 $("demo").addEventListener("click", async () => {
   let d;
@@ -1608,10 +1764,12 @@ function setTabs(sel, attr, value) {
 function setMode(m) {
   mode = m;
   setTabs(".modes button", "mode", m);
-  $("empty-title").textContent = m === "reporting" ? "Quel reporting voulez-vous lancer ?" : "Que voulez-vous trafficker aujourd'hui ?";
+  $("empty-view").dataset.mode = m;
+  $("empty-title").textContent = m === "reporting" ? "Quel reporting voulez-vous lancer ?" : "Un nouveau projet ?";
   $("empty-sub").textContent = m === "reporting"
-    ? "Créez une tâche, choisissez l'annonceur et la campagne dans l'ad server, puis le template : check de mise en ligne ou report d'envoi aux régies."
-    : "Créez une tâche, déposez le plan média avec les cases à lire surlignées en jaune, puis lancez la production.";
+    ? "Choisissez la campagne dans l'ad server ou importez un export, puis le template : check de mise en ligne, report aux régies, tableau croisé."
+    : "Partagez-moi votre PM.";
+  $("empty-new").textContent = m === "reporting" ? "＋ Créer une tâche" : "ou créer une tâche vide";
   if (current && current.mode !== m) closeTask();
   refreshList();
 }
@@ -1717,6 +1875,45 @@ function openCreate() {
 }
 $("new-task").addEventListener("click", openCreate);
 $("empty-new").addEventListener("click", openCreate);
+// Accueil Trafficking : déposer le PM crée la tâche (nommée d'après le fichier) et le prépare à l'analyse
+async function heroImport(f) {
+  if (!f) return;
+  try {
+    const id = await Store.create({mode: "trafficking", name: f.name.replace(/\.[^.]+$/, ""), advertiser: "", adserver: "cm360",
+                                   campaign: "", agency_id: me.agency_id || ""});
+    await openTask(id);
+    pickFile(f);
+    refreshList();
+  } catch (e) { setStatus("Création de la tâche impossible : " + e.message, true); handleAuth(e); }
+}
+$("hero-drop").addEventListener("click", () => $("hero-file").click());
+$("hero-drop").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("hero-file").click(); } });
+$("hero-file").addEventListener("change", (e) => { heroImport(e.target.files[0]); e.target.value = ""; });
+for (const ev of ["dragenter", "dragover"])
+  $("hero-drop").addEventListener(ev, (e) => { e.preventDefault(); $("hero-drop").classList.add("over"); });
+for (const ev of ["dragleave", "drop"])
+  $("hero-drop").addEventListener(ev, (e) => { e.preventDefault(); $("hero-drop").classList.remove("over"); });
+$("hero-drop").addEventListener("drop", (e) => heroImport(e.dataTransfer.files[0]));
+
+// Sphère décorative (SVG, un jeu de dégradés par instance)
+document.querySelectorAll("[data-orb]").forEach((box, n) => {
+  const g = (id) => `${id}${n}`;
+  const sparks = [[92, 120, 2.4], [318, 96, 2], [342, 236, 2.6], [70, 260, 1.6], [250, 46, 1.8], [150, 350, 2.2], [300, 330, 1.5]];
+  box.innerHTML = `<svg viewBox="0 0 400 400"><defs>
+    <radialGradient id="${g("oc")}" cx="46%" cy="44%" r="58%"><stop offset="0" style="stop-color:var(--orb-a)"/>
+      <stop offset=".35" style="stop-color:var(--orb-b);stop-opacity:.75"/><stop offset=".8" style="stop-color:var(--orb-c);stop-opacity:.45"/>
+      <stop offset="1" style="stop-color:var(--orb-c);stop-opacity:.15"/></radialGradient>
+    <radialGradient id="${g("og")}" r="50%"><stop offset=".45" style="stop-color:var(--orb-a);stop-opacity:.55"/>
+      <stop offset="1" style="stop-color:var(--orb-a);stop-opacity:0"/></radialGradient>
+    <radialGradient id="${g("ot")}" r="50%"><stop offset="0" stop-color="#7fd3b0"/><stop offset="1" stop-color="#7fd3b0" stop-opacity="0"/></radialGradient></defs>
+    <circle cx="200" cy="200" r="196" fill="url(#${g("og")})"/>
+    <g class="spin1"><ellipse class="ring" cx="200" cy="200" rx="186" ry="64" transform="rotate(-18 200 200)"/><circle class="spark" cx="386" cy="200" r="3" transform="rotate(-18 200 200)"/></g>
+    <g class="spin2"><ellipse class="ring" cx="200" cy="200" rx="150" ry="150" stroke-dasharray="2 6"/><ellipse class="ring" cx="200" cy="200" rx="170" ry="110" transform="rotate(32 200 200)"/></g>
+    <g class="core"><circle cx="200" cy="200" r="112" fill="url(#${g("oc")})" style="stroke:var(--orb-a);stroke-opacity:.6"/>
+      <circle class="tint" cx="200" cy="200" r="112" fill="url(#${g("ot")})"/>
+      <circle cx="186" cy="188" r="16" style="fill:var(--orb-a)" opacity=".9"/></g>
+    ${sparks.map(([x, y, r]) => `<circle class="spark" cx="${x}" cy="${y}" r="${r}"/>`).join("")}</svg>`;
+});
 $("cd-cancel").addEventListener("click", () => $("create-dialog").close());
 $("create-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -1733,18 +1930,21 @@ $("create-form").addEventListener("submit", async (e) => {
 
 // Après la production, la zone de dépôt se replie en une ligne (rouvrable pour relancer)
 function collapsePlan(on) {
-  $("pm-step").classList.toggle("collapsed", on);
-  $("pm-compact").hidden = !on;
-  if (!on) return;
+  if (!on) { pmState(planFile ? "file" : "idle"); return; }
+  pmState("ready");
   const name = (planFile && planFile.name) || (current && current.data.file_name) || "plan média";
   const n = $("instructions").value.split("\n").filter((l) => l.trim()).length;
-  $("pm-compact-text").textContent = `📄 ${name}` + (n ? ` · ${n} instruction(s)` : "");
+  const d = lastResult || {};
+  const pl = (d.campaigns || []).reduce((a, c) => a + (c.placements || []).length, 0);
+  const gaps = (d.to_complete || []).length;
+  $("pm-compact-text").textContent = `Umnia a analysé ${name}` + (pl ? ` : ${pl} emplacement(s)` : "")
+    + (gaps ? `, ${gaps} champ(s) à compléter` : "") + (n ? ` · ${n} consigne(s)` : "") + ".";
 }
-$("pm-reopen").addEventListener("click", () => { collapsePlan(false); $("drop").focus(); });
+$("pm-reopen").addEventListener("click", () => { $("file").value = ""; pickFile(null); $("drop").focus(); });
 
 function resetWork() {
-  collapsePlan(false);
   planFile = null;
+  pmState("idle");
   $("file").value = ""; $("nomen").value = ""; $("creas").value = "";
   $("file-name").textContent = "";
   $("analyze").disabled = true;
