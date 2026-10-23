@@ -810,6 +810,10 @@ def test_home_import_flow_with_engine_stages(page):
     assert page.locator("#pm-stages li.done").count() == 5
     assert "Votre PM est prêt" in page.text_content("#pm-compact")
     assert "emplacement(s)" in page.text_content("#pm-compact-text") and page.is_visible("#result")
+    assert "emplacements" in page.text_content("#pm-stats") and page.is_visible("#adserver")    # carte « prêt »
+    assert page.locator("#checks-list li").count() >= 1                                 # points à vérifier
+    assert "politique dans l'UE" in page.text_content("#checks-list")                   # contrôle CM360 remonté
+    assert not page.is_visible("#cm360-sheet")                                          # détail replié
     page.click("#pm-reopen")                                                    # importer un autre PM
     assert page.is_visible("#drop") and not page.is_visible("#file-chip")
     page.set_input_files("#file", os.path.join(ROOT, "plan_media_template.csv"))
