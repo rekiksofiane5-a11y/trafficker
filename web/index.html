@@ -1609,7 +1609,9 @@ $("analyze").addEventListener("click", async () => {
         renderCampaignForm({...(d.campaign || {}), ...force});
         scheduleRebuild(0);
       }
-      Object.assign(current.data, {file_name: planFile.name, nomen, instructions: $("instructions").value});
+      // nomenclature lue dans le classeur (trafficking sheet d'agence) : gardée pour la réouverture
+      Object.assign(current.data, {file_name: planFile.name, nomen: nomen || d.nomenclature_auto || "",
+                                   instructions: $("instructions").value});
       current.status = "produit";
       saveSoon(0);
     }

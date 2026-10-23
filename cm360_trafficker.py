@@ -131,6 +131,16 @@ def load_rows_from_path(path: str, campaign_name: str = "",
     grids = plan_agent.read_grids(path)
     if not any(any(any(c for c in r) for r in g) for _, g in grids):
         sys.exit("Le fichier est vide.")
+    # Trafficking sheet d'agence (nomenclature et listes dans le classeur) : lecture dédiée
+    import agency_sheet
+    conv = agency_sheet.read_convention(path)
+    if conv:
+        out, report = agency_sheet.build_rows(path, grids, conv)
+        if out:
+            res = ingest.IngestedRows(out)
+            res.ingest_report = report
+            res.nomenclature = agency_sheet.nomenclature_json(conv)
+            return res
     # Cases surlignées en jaune : l'agent ne lit que celles-ci
     highlights = plan_agent.read_highlights(path)
     if highlights:
@@ -309,6 +319,7 @@ class PlacementSpec:
     final_name: str = ""     # nom imposé à la main (aperçu / tableau), prioritaire
     budget: str = ""         # budget de la ligne du plan (line item Adform)
     volume: str = ""         # volume d'impressions de la ligne
+    extra: Dict[str, str] = field(default_factory=dict)   # jetons de nomenclature d'agence (partner, buy…)
 
 @dataclass
 class CampaignSpec:
@@ -541,6 +552,7 @@ def plan_from_rows(rows: List[Dict[str, str]], allow_incomplete: bool = False
                 targeting=get("targeting"), format_label=get("format_label"),
                 package=get("package"), device=get("device"),
                 budget=get("line_budget_eur"), volume=get("line_volume"),
+                extra={k: get(k) for k in EXTRA_TOKENS if get(k)},
             )
         pl_spec = camp.placements[placement_name]
         pl_spec.rows.append(idx)
@@ -713,6 +725,11 @@ def _apply_nomenclature_options(value: str, opts: dict) -> str:
     return value
 
 
+# Jetons supplémentaires des nomenclatures d'agence (trafficking sheet) : lus tels quels dans le plan
+EXTRA_TOKENS = ("placement_type", "buy", "partner", "targeting_type", "targeting_detail", "asset_type",
+                "tracking_type", "device", "info", "description")
+
+
 def _pattern_context(camp: CampaignSpec, p: Optional[PlacementSpec] = None,
                      ad_name: str = "",
                      c: Optional[CreativeSpec] = None) -> dict:
@@ -738,7 +755,10 @@ def _pattern_context(camp: CampaignSpec, p: Optional[PlacementSpec] = None,
             "audience": p.audience,
             "targeting": p.targeting,
             "format": p.format_label or f"{p.width}x{p.height}",
+            "format_label": p.format_label or f"{p.width}x{p.height}",
+            "device": p.device,
         })
+        ctx.update({k: v for k, v in p.extra.items() if k not in ctx or not ctx[k]})
     if ad_name:
         ctx["ad_name"] = ad_name
     if c is not None:
@@ -866,6 +886,7 @@ def apply_nomenclature(plan: Dict[str, CampaignSpec], naming: dict,
         new_ads: Dict[str, dict] = {}
         used_ads: set = set()
         used_creas: set = set()
+        crea_sig: Dict[str, tuple] = {}         # nom -> fichier / tag : même asset = même créative partagée
         renamed_creas: Dict[int, str] = {}
         for ad_name, ad in camp.ads.items():
             if placement_map:
@@ -884,8 +905,13 @@ def apply_nomenclature(plan: Dict[str, CampaignSpec], naming: dict,
                     if id(c) in renamed_creas:
                         continue          # même créative partagée par plusieurs annonces
                     ctx = _pattern_context(camp, p=p0, ad_name=ad_name, c=c)
-                    new_c_name = _unique(c.final_name or _apply_pattern(rules["creative"], ctx, opts)
-                                         or c.name, used_creas)
+                    wanted = c.final_name or _apply_pattern(rules["creative"], ctx, opts) or c.name
+                    sig = (c.ctype, c.path, c.snippet)
+                    if wanted in crea_sig and crea_sig[wanted] == sig and not c.path and not c.snippet:
+                        new_c_name = wanted          # même message, sans fichier propre : une seule créative partagée
+                    else:
+                        new_c_name = _unique(wanted, used_creas)
+                        crea_sig.setdefault(new_c_name, sig)
                     renamed_creas[id(c)] = new_c_name
                     if new_c_name and new_c_name != c.name:
                         renames.append(f"Créative : « {c.name} » -> « {new_c_name} »")

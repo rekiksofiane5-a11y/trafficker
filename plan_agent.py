@@ -625,16 +625,20 @@ LINE_FIELDS = {"package", "placement_name", "size", "ad_name", "creative_name", 
                "creative_type", "creative_category", "placement_category"}
 
 
+HEADER_SCAN = 150          # lignes examinées pour trouver l'en-tête du tableau
+
+
 def find_table(grids: List[Tuple[str, Grid]]) -> Tuple[str, Grid, int]:
     """(feuille, grille, index de la ligne d'en-tête). Choix : meilleure ligne
     d'en-tête (vocabulaire reconnu), puis nombre de lignes de données."""
     best = None
     for name, grid in grids:
-        for i, row in enumerate(grid[:40]):
+        # en-tête cherché assez bas : les PM d'agence ont souvent un long bloc budget au-dessus
+        for i, row in enumerate(grid[:HEADER_SCAN]):
             s = _header_score(row)
             if s >= 2:
                 data = sum(1 for r in grid[i + 1:] if sum(1 for c in r if c) >= 2)
-                key = (s, data)
+                key = (data > 0, s, data)                # une feuille modèle sans données ne gagne pas
                 if best is None or key > best[0]:
                     best = (key, name, grid, i)
     if best:
@@ -882,6 +886,17 @@ def extract(grids: List[Tuple[str, Grid]], campaign_name: str = "",
                       "(plus les libellés d'en-tête), le reste du fichier est ignoré.")
     report.append(f"Feuille « {sheet} », en-tête ligne {h + 1}, {len(data)} ligne(s) de données.")
     cols, prov, ignored = map_columns(headers, data)
+    # « Emplacements » identique sur toutes les lignes (ex. « RG ciblée ») : c'est un type
+    # d'emplacement, pas un nom — sinon toutes les lignes fusionneraient en un seul emplacement
+    for i, f in list(cols.items()):
+        vals = [r[i].strip() for r in data if i < len(r) and r[i].strip() and not _is_total(r)]
+        if f == "placement_name" and len(vals) >= 3 and len(set(vals)) == 1:
+            cols[i] = "placement_category" if "placement_category" not in cols.values() else None
+            if cols[i] is None:
+                del cols[i]
+            prov = [l for l in prov if not l.startswith("placement_name ←")]
+            prov.append(f"« {headers[i]} » vaut « {vals[0]} » sur toutes les lignes : lu comme type d'emplacement, "
+                        "pas comme nom (les noms sont générés par la nomenclature).")
     report += prov
     for k, (v, where) in context.items():
         if k != "period":

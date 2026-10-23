@@ -155,7 +155,7 @@ def _normalize(rows: list) -> list:
         for f in ("campaign_start", "campaign_end"):
             if r.get(f):
                 r[f] = plan_agent.parse_date(r[f]) or r[f]
-        if not plan_agent.RE_SIZE.search(r.get("size", "")) and r.get("size", "") != "1x1":
+        if not plan_agent.RE_SIZE.search(r.get("size", "")) and r.get("size", "") not in ("1x1", "0x0"):   # 0x0 : VAST
             label = r.get("format_label") or r.get("size", "")
             r["size"] = plan_agent.size_from_name(label) or (r.get("size") or "")
             if label and not r["size"]:
@@ -450,10 +450,15 @@ def analyze(path: str, campaign_name: str = "", advertiser_name: str = "",
             pass
     _STATE.clear()
     report = list(getattr(rows, "ingest_report", []))
+    # Nomenclature portée par le classeur (trafficking sheet d'agence), sauf fichier fourni
+    auto_nomen = json.dumps(rows.nomenclature, ensure_ascii=False) if getattr(rows, "nomenclature", None) else ""
     rows = [dict(r) for r in rows]
     apply_instructions(rows, instructions, report)
     _STATE["report"] = report
-    return _build(rows, nomenclature_json, creatives_dir, report)
+    out = json.loads(_build(rows, nomenclature_json or auto_nomen, creatives_dir, report))
+    if auto_nomen and not nomenclature_json:
+        out["nomenclature_auto"] = auto_nomen
+    return json.dumps(out, ensure_ascii=False, default=str)
 
 
 def rebuild(table_json: str) -> str:
