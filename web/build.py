@@ -35,7 +35,7 @@ def main() -> None:
     shutil.copy(os.path.join(WEB, "demo_adserver.json"), DIST)
     shutil.copy(os.path.join(WEB, "cm_prompt.js"), DIST)
     shutil.copy(os.path.join(WEB, "pivot.js"), DIST)
-    shutil.copy(os.path.join(WEB, "ring.js"), DIST)
+    shutil.copy(os.path.join(WEB, "flow.js"), DIST)
     shutil.copytree(os.path.join(WEB, "assets"), os.path.join(DIST, "assets"))   # sphères, polices
     shutil.copy(os.path.join(WEB, "exemple_export_cm360.csv"), os.path.join(DIST, "exemples"))
     shutil.copy(os.path.join(WEB, "exemple_export_cm360_une_campagne.xlsx"), os.path.join(DIST, "exemples"))

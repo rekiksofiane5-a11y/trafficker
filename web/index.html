@@ -329,8 +329,10 @@ table.pv.rz .pv-name { max-width: none; }
 .stepper li.on::before { box-shadow: 0 0 0 4px var(--paper), 0 0 0 8px color-mix(in srgb, var(--gold) 30%, transparent); }
 .stepper li.on strong { color: var(--gold); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-/* Anneau de particules (web/ring.js) : canvas animé, réagit à la souris et à l'état (data-state) */
-.orb { position: relative; width: min(640px, 100%); aspect-ratio: 1; justify-self: center; }
+/* Arbre de lignes qui se divisent (web/flow.js) : canvas animé, réagit à la souris et à l'état (data-state) */
+.orb { position: relative; width: 100%; height: min(78vh, 760px); justify-self: stretch; align-self: stretch; }
+#pm-step .orb { height: min(62vh, 560px); }
+#pm-step[data-state="ready"] .orb { height: 260px; }
 .orb canvas { position: absolute; inset: 0; display: block; }
 @media (max-width: 980px) { .hero, .pm-hero, #pm-step[data-state="ready"] { grid-template-columns: 1fr; } .orb { display: none; } .feats { grid-template-columns: 1fr; } }
 /* Coquille : connexion, barre latérale, tâches */
@@ -551,7 +553,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             <span><strong>Suivi en temps réel</strong><span>Chaque étape de l'analyse s'affiche au fil de l'eau.</span></span></li>
         </ul>
       </div>
-      <div class="orb" data-ring aria-hidden="true"></div>
+      <div class="orb" data-flow aria-hidden="true"></div>
     </div>
 
     <div id="task-view" class="task-view" hidden>
@@ -632,7 +634,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             </div>
           </div>
         </div>
-        <div class="orb" data-ring aria-hidden="true"></div>
+        <div class="orb" data-flow aria-hidden="true"></div>
       </section>
 
       <section id="result" class="card hidden" aria-labelledby="t-res" aria-live="polite">
@@ -3599,6 +3601,6 @@ if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEven
 boot();
 start();
 </script>
-<script src="ring.js"></script>
+<script src="flow.js"></script>
 </body>
 </html>
