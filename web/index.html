@@ -155,6 +155,13 @@ a { color: var(--accent); }
 .pv-filter-editor .row, .sitemap .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 td.delta.up { color: var(--ok, #1a7f37); }
 td.delta.down { color: var(--err, #c62828); }
+.ag-nom { border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px 10px; margin: 0 0 8px; }
+.ag-nom legend { font-weight: 600; font-size: .85rem; padding: 0 4px; }
+.ag-nom .ex { font-size: .75rem; word-break: break-all; margin-bottom: 6px; }
+.ag-nom .pos { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 6px; }
+.ag-nom label { display: grid; gap: 2px; font-size: .8rem; }
+.ag-nom label span { font-size: .7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-nom label.todo input { border-color: var(--warn); }
 .row-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0; }
 .row-form label { flex: 1 1 12rem; }
 #agency-dialog { width: min(760px, 96vw); }
@@ -172,6 +179,11 @@ td.delta.down { color: var(--err, #c62828); }
 .pv-chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .pv-chart .dot { fill: var(--accent); stroke: var(--card); stroke-width: 2; }
 .pv-chart .hit { fill: transparent; }
+.pv-chart .mark-b { fill: var(--muted); opacity: .55; }
+.pv-chart text.up { fill: var(--ok); } .pv-chart text.down { fill: var(--err); }
+.pv-chart .legend { font-weight: 400; color: var(--muted); font-size: .8rem; margin-left: 10px; }
+.pv-chart .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 8px; background: var(--accent); vertical-align: -1px; }
+.pv-chart .sw.b { background: var(--muted); opacity: .55; }
 .pv-chart .hit:hover + .dot, .pv-chart .bar:hover .mark { opacity: .75; }
 table.pivot th { cursor: pointer; white-space: nowrap; }
 table.pivot th[aria-sort="ascending"]::after { content: " ▲"; } table.pivot th[aria-sort="descending"]::after { content: " ▼"; }
@@ -729,6 +741,11 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
       <label>Régie retenue<input id="ag-map-to" required></label>
       <button type="submit" class="secondary">Ajouter la règle</button>
     </form>
+  </section>
+  <section aria-labelledby="ag-nom-title">
+    <h3 id="ag-nom-title">Gabarits de nommage des emplacements</h3>
+    <p class="hint">Positions lues dans les noms d'emplacements de l'export ouvert. Renomme une position (ex. « Partie 9 » → « Zone ») : le nom est gardé pour les prochains imports.</p>
+    <div id="ag-nom"></div>
   </section>
   <section aria-labelledby="ag-views-title">
     <h3 id="ag-views-title">Vues enregistrées du tableau croisé</h3>
@@ -1896,7 +1913,7 @@ async function agSave(key, value, done) {
   return true;
 }
 function agRefreshImport() {
-  const f = typeof rpFile === "function" ? rpFile() : null;
+  const f = current && current.mode === "reporting" ? rpData().file : null;
   if (f && f.parsed) rpApplyFile(f);
 }
 function agRenderMap() {
@@ -1920,6 +1937,39 @@ function agRenderMap() {
       });
       return el("tr", {}, el("td", {}, k), el("td", {}, to), el("td", {}, rm));
     }) : [el("tr", {}, el("td", {colspan: "3", class: "hint"}, "Aucune règle : les régies sont gardées telles qu'elles sont lues."))])));
+}
+function agRenderNom() {
+  const f = current && current.mode === "reporting" ? rpData().file : null;
+  const T = nomTemplates(f && f.parsed);
+  const o = RP.nomLabels || {};
+  const saveLabel = (key, value) => {
+    const next = {...o};
+    if (value) next[key] = value; else delete next[key];
+    agSave("nom_labels", next, () => { RP.nomLabels = next; agRenderNom(); agRefreshImport(); });
+  };
+  // exemple de nom par gabarit (pour reconnaître chaque position)
+  const names = [...new Set(((f && f.parsed.placements) || []).map((pl) => pl.name))];
+  const blocks = T.map((t) => {
+    const learned = Object.fromEntries(t.fields);
+    const ex = (names.find((n) => String(n).split(t.sep).length === t.length) || "").split(t.sep);
+    return el("fieldset", {class: "ag-nom"},
+      el("legend", {}, `${t.length} segments · ${Math.round((t.coverage || 0) * 100)} % des noms`),
+      ex.length > 1 ? el("div", {class: "hint ex"}, "ex. " + ex.join(t.sep)) : "",
+      el("div", {class: "pos"}, ...t.fields.map(([i]) => {
+        const key = `${t.length}:${i + 1}`;
+        const inp = el("input", {value: o[key] || "", placeholder: learned[i], "aria-label": `Nom de la position ${i + 1} (${t.length} segments)`});
+        inp.addEventListener("change", () => saveLabel(key, inp.value.trim() && inp.value.trim() !== learned[i] ? inp.value.trim() : ""));
+        return el("label", {class: /^Partie /.test(learned[i]) && !o[key] ? "todo" : ""},
+          el("span", {class: "hint"}, `${i + 1} · ${(ex[i] || "").slice(0, 18) || "—"}`), inp);
+      })));
+  });
+  const others = Object.keys(o).filter((k) => !T.some((t) => k.startsWith(t.length + ":")));
+  if (others.length) blocks.push(el("div", {class: "hint"}, "Autres noms gardés : ", ...others.map((k) => {
+    const x = el("button", {type: "button", class: "secondary sm", "aria-label": `Oublier ${k} = ${o[k]}`}, `${k} = ${o[k]} ✕`);
+    x.addEventListener("click", () => saveLabel(k, ""));
+    return x;
+  })));
+  $("ag-nom").replaceChildren(...(blocks.length ? blocks : [el("p", {class: "hint"}, "Ouvre une tâche Reporting avec un export importé pour voir ses gabarits.")]));
 }
 function agRenderViews() {
   const views = RP.views || [];
@@ -1947,6 +1997,7 @@ $("open-agency").addEventListener("click", async () => {
   $("ag-msg").textContent = "";
   await Promise.all([rpLoadSiteMap(), (async () => { try { RP.views = (await Store.setting("pivot_views")) || []; } catch (e) { RP.views = []; handleAuth(e); } })()]);
   agRenderMap();
+  agRenderNom();
   agRenderViews();
   $("agency-dialog").showModal();
 });
@@ -2223,7 +2274,7 @@ async function rpRunCheck(force = false) {
     $("rp-group-box").hidden = !hasEditor;
     $("rp-group").value = hasEditor && rpData().group === "editor" ? "editor" : "site";
     const placements = $("rp-group").value === "editor"
-      ? RP.placements.map((p) => ({...p, site: p.editor || `${p.site} (hors nomenclature)`})) : RP.placements;
+      ? RP.placements.map((p) => ({...p, site: p.editor || p.site + NOM_SITE})) : RP.placements;
     const c = JSON.parse(await call("report_check", {campaign: RP.campaign, placements, delivery, today: isoToday(), targets}));
     $("rp-check-status").textContent = RP.source === "file"
       ? `Données de l'export ${(rpData().file || {}).name || ""} (jusqu'au ${(c.kpis.last || "").split("-").reverse().join("/") || "—"}).`
@@ -2678,6 +2729,7 @@ async function rpRefilter(file, campaign, keyword) {
 // Correspondance des régies de l'agence : {nom lu dans l'export: régie retenue}
 async function rpLoadSiteMap() {
   try { RP.siteMap = (await Store.setting("site_map")) || {}; } catch (e) { RP.siteMap = {}; handleAuth(e); }
+  try { RP.nomLabels = (await Store.setting("nom_labels")) || {}; } catch (e) { RP.nomLabels = {}; }
 }
 function siteColumn(p, table) {
   return p.columns && p.columns.site ? table.columns.findIndex((c) => c.label === p.columns.site) : -1;
@@ -2691,6 +2743,43 @@ function applySiteMap(p, table, placements) {
           placements: placements.map((pl) => ({...pl, site: to(pl.site)}))};
 }
 
+// Nomenclature des emplacements recalculée dans la page : libellés renommés par l'agence
+// (« 12:9 » = gabarit à 12 segments, 9e position), colonne Gabarit, et pour les noms hors gabarit
+// l'éditeur repris du site CM360 (marqué « (site CM360) ») au lieu d'un « hors nomenclature » muet.
+const NOM_OUT = "(hors nomenclature)", NOM_SITE = " (site CM360)";
+function nomTemplates(p) { const n = p && p.nomenclature; return !n ? [] : Array.isArray(n) ? n : [n]; }
+function nomFields(t) {
+  const o = RP.nomLabels || {};
+  return t.fields.map(([i, l]) => [i, String(o[`${t.length}:${i + 1}`] || "").trim() || l]);
+}
+function nomSplit(T, name) {
+  const parts = String(name || "").split((T[0] || {}).sep || "-");
+  const t = T.find((x) => x.length === parts.length);
+  return t ? {t, parts: Object.fromEntries(nomFields(t).map(([i, l]) => [l, parts[i] || ""]))} : null;
+}
+function applyNomenclature(p, table, placements) {
+  const T = nomTemplates(p);
+  const pi = p.columns && p.columns.placement ? table.columns.findIndex((c) => c.label === p.columns.placement) : -1;
+  if (!T.length || pi < 0) return {table, placements};
+  const si = siteColumn(p, table);
+  const keep = table.columns.map((c, j) => (c.nomenclature ? -1 : j)).filter((j) => j >= 0);
+  const labels = [];
+  for (const t of T) for (const [, l] of nomFields(t)) if (!labels.includes(l)) labels.push(l);
+  const dim = (label) => ({label, kind: "dimension", rate: false, derived: true, nomenclature: true});
+  const columns = [...keep.map((j) => table.columns[j]), ...labels.map(dim), dim("Gabarit")];
+  const fallback = (label, site) => (label === "Éditeur" && site ? site + NOM_SITE : NOM_OUT);
+  const rows = table.rows.map((r) => {
+    const m = nomSplit(T, r[pi]);
+    const site = si >= 0 ? r[si] : "";
+    return [...keep.map((j) => r[j]), ...labels.map((l) => (m && m.parts[l]) || fallback(l, site)),
+            m ? `${m.t.length} segments` : "hors nomenclature"];
+  });
+  return {table: {columns, rows}, placements: placements.map((pl) => {
+    const m = nomSplit(T, pl.name);
+    return {...pl, nom: m ? m.parts : {}, editor: (m && m.parts["Éditeur"]) || "", format: (m && m.parts.Format) || pl.format || ""};
+  })};
+}
+
 function rpApplyFile(file) {
   const p = file.parsed;
   rpReset();
@@ -2698,7 +2787,8 @@ function rpApplyFile(file) {
   RP.campaign = {...p.campaign, ...(file.dates || {})};
   const raw = unpackTable(p);
   RP.rawTable = raw;
-  const mapped = applySiteMap(p, raw || {columns: [], rows: []}, p.placements);
+  const sm = applySiteMap(p, raw || {columns: [], rows: []}, p.placements);
+  const mapped = raw ? applyNomenclature(p, sm.table, sm.placements) : sm;
   RP.placements = mapped.placements;
   RP.table = raw ? mapped.table : null;
   RP.fileDelivery = RP.table ? deliveryFromTable(p, RP.table)
@@ -2924,7 +3014,7 @@ function pvRender() {
   const body = r.rows.slice(0, MAX).map((row) => el("tr", {}, ...row.map((v, k) => cell(v, k))));
   const tot = el("tr", {class: "total"}, ...r.total.map((v, k) => cell(v, k, true)));
   $("pv-out").replaceChildren(el("table", {class: "pv pivot", id: "pv-table"}, el("thead", {}, head), el("tbody", {}, ...body, tot)));
-  if (r.compare) $("pv-chart").hidden = true; else pvChart(r, sp);
+  if (r.compare) pvChartCompare(r); else pvChart(r, sp);
   $("pv-info").textContent = (r.compare ? `A : ${frDay(r.periods.a[0])} → ${frDay(r.periods.a[1])} · B : ${frDay(r.periods.b[0])} → ${frDay(r.periods.b[1])}`
     + (r.periods.a[1] > r.periods.last ? ` (données jusqu'au ${frDay(r.periods.last)})` : "") + " · " : "") + `${r.groups.toLocaleString("fr-FR")} ligne(s) croisée(s) à partir de ${r.sourceRows.toLocaleString("fr-FR")} ligne(s) de l'export`
     + (sp.col ? ` · valeur affichée : ${valLabel} (une seule valeur quand des colonnes sont choisies)` : "")
@@ -2986,6 +3076,35 @@ function pvChart(r, sp) {
       }).join("") + "</svg>";
   }
   fig.innerHTML = `<figcaption>${esc(metric)} par ${esc(dimLabel)}${temporal ? "" : r.rows.length > 12 ? " — 12 premiers" : ""}</figcaption>` + svg;
+  fig.hidden = false;
+}
+
+// Comparaison : barres A et B côte à côte (première valeur, 12 premiers selon A), variation en bout de ligne
+function pvChartCompare(r) {
+  const fig = $("pv-chart");
+  const nd = r.rowDims, metric = r.values[0];
+  if (!r.rows.length || !nd || !metric) { fig.hidden = true; return; }
+  const ia = nd, ib = nd + 1, idl = nd + 2, isRate = r.rateCols[ia], unit = r.deltaCols[idl];
+  const fmt = (v) => pvFmt(v, isRate, metric);
+  const dl = (v) => (v === null || v === undefined ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "")
+    + Math.abs(v).toLocaleString("fr-FR", {maximumFractionDigits: unit === "pts" ? 2 : 1}) + (unit === "pts" ? " pt" : " %"));
+  const rows = [...r.rows].sort((a, b) => (Number(b[ia]) || 0) - (Number(a[ia]) || 0)).slice(0, 12);
+  const W = 800, rowH = 34, T = 6, L = 230, R = 150, H = T + rows.length * rowH + 4;
+  const max = Math.max(...rows.flatMap((row) => [Number(row[ia]) || 0, Number(row[ib]) || 0]), 0) || 1;
+  const name = (row) => row.slice(0, nd).filter((v) => v !== "").join(" · ");
+  const bar = (cls, y, v) => { const w = Math.max(2, (W - L - R) * v / max); return `<rect class="${cls}" x="${L}" y="${y}" width="${w}" height="11" rx="3"/>`; };
+  const P = r.periods, d = (x) => frDay(x).slice(0, 5);
+  const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(metric)} : période A contre période B, 12 premiers">`
+    + rows.map((row, i) => {
+      const a = Number(row[ia]) || 0, b = Number(row[ib]) || 0, y = T + i * rowH, n = name(row), dv = row[idl];
+      return `<g class="bar"><title>${esc(n)} : A ${esc(fmt(a))} · B ${esc(fmt(b))} · ${esc(dl(dv))}</title>`
+        + `<text class="lbl" x="${L - 10}" y="${y + 18}" text-anchor="end">${esc(n.length > 34 ? n.slice(0, 33) + "…" : n)}</text>`
+        + bar("mark", y + 3, a) + bar("mark-b", y + 16, b)
+        + `<text x="${W - R + 10}" y="${y + 13}">${esc(fmt(a))}</text>`
+        + `<text class="${dv > 0 ? "up" : dv < 0 ? "down" : ""}" x="${W - R + 10}" y="${y + 27}">${esc(dl(dv))}</text></g>`;
+    }).join("") + "</svg>";
+  fig.innerHTML = `<figcaption>${esc(metric)} : A contre B${r.rows.length > 12 ? " — 12 premiers" : ""}`
+    + ` <span class="legend"><span class="sw a"></span>A ${d(P.a[0])}→${d(P.a[1])} <span class="sw b"></span>B ${d(P.b[0])}→${d(P.b[1])}</span></figcaption>` + svg;
   fig.hidden = false;
 }
 

@@ -681,12 +681,13 @@ def learn_nomenclature(names: List[str], sep: str = "-") -> Optional[Dict]:
     if length < 4 or count < 0.3 * len(names):
         return None
     parts = [n.split(sep) for n in names if len(n.split(sep)) == length]     # gabarit dominant seulement
-    labels = []
+    labels, roles = [], []
     for i in range(length):
         col = [p[i] for p in parts]
         distinct = {c for c in col if c}
         prefix = i == 0 and len(distinct) <= 3 and all(len(c) <= 2 for c in distinct)      # « R- » d'agence
-        labels.append("" if (len(distinct) <= 1 and i < length - 1) or prefix else _nom_label(col))
+        roles.append("" if prefix else _nom_label(col))        # rôle même si constant (CPM partout -> Achat)
+        labels.append("" if (len(distinct) <= 1 and i < length - 1) or not distinct or prefix else roles[-1])
     known = [l for l in labels if l]
     if len(set(known)) < 2:
         return None
@@ -696,9 +697,9 @@ def learn_nomenclature(names: List[str], sep: str = "-") -> Optional[Dict]:
             continue
         col = [p[i] for p in parts if i < len(p)]
         distinct = {c for c in col if c}
-        if (len(distinct) <= 1 and i < length - 1) or (i == 0 and len(distinct) <= 3 and all(len(c) <= 2 for c in distinct)):
+        if not distinct or (len(distinct) <= 1 and i < length - 1) or (i == 0 and len(distinct) <= 3 and all(len(c) <= 2 for c in distinct)):
             continue
-        prev = labels[i - 1] if i else ""
+        prev = (labels[i - 1] or roles[i - 1]) if i else ""
         if prev == "Achat" and "Éditeur" not in labels:
             labels[i] = "Éditeur"
         elif prev == "Ciblage" and "Audience" not in labels:

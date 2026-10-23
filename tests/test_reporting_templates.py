@@ -240,6 +240,11 @@ def test_agency_nomenclature_and_site_unification():
     assert (p2["Éditeur"], p2["Format"], p2["Pays"], p2["Objectif"]) == ("RTBHOUSE", "CARROUSEL", "FR", "CONVERSION")
     assert reporting.split_name(noms, names[0])["Éditeur"] == "LEMONDE"
     assert reporting.split_name(noms, "Mon Espace Santé") == {}
+    # mode d'achat constant (CPM partout) : la position suivante reste l'éditeur
+    same = [f"R-NOTORIETE-CPM-{e}--{c}-Seg{k}-{f}-1x1-Multidevice-NA" for k, (e, c, f) in
+            enumerate([("LEMONDE", "CUSTOM", "PAVE"), ("YOUTUBE", "SOCIODEMO", "BUMPER"), ("AMNET", "CUSTOM", "NATIVE"),
+                       ("TEADS", "RETARGETING", "INSTREAM")])]
+    assert (3, "Éditeur") in reporting.learn_nomenclature(same)["fields"]
     m = reporting.unify_sites({"Teads FR": 50, "TEADS": 5, "teads.fr": 1, "AMNET": 90, "AMNET FR": 10, "amnet.fr": 1,
                                "Viadeo": 3, "ViadeoFR": 9, "Amplifi Programmatic_New": 40, "Amplifi Programmatic": 2,
                                "Meta FR": 7, "Facebook FR": 8})

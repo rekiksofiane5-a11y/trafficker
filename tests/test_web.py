@@ -686,8 +686,46 @@ def test_site_mapping_filters_and_saved_views(page):
     assert stored == {"Facebook FR": "Meta", "Teads FR": "Teads"}
     page.click("#agency-dialog [data-close]")
     regies = page.locator("#pv-table tbody tr:not(.total) td:first-child").all_text_contents()
-    assert "Youtube FR" in regies or "Google" not in regies                   # import réappliqué sans la règle supprimée
+    assert "Youtube FR" in regies and "Google" not in regies                  # import réappliqué sans la règle supprimée
     page.evaluate("localStorage.removeItem('umnia_set_site_map'); localStorage.removeItem('umnia_set_pivot_views')")
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []
+
+
+def test_nomenclature_labels_and_site_fallback(page, tmp_path):
+    """Hors gabarit : éditeur repris du site CM360 ; position renommée dans les réglages, gardée pour l'agence."""
+    from fixtures import make_cm360_export
+    eds = [("LEMONDE", "GRANDANGLE", "CUSTOM"), ("YOUTUBE", "BUMPER", "SOCIODEMO"), ("AMNET", "NATIVE", "COMPORTEMENTAL"),
+           ("TEADS", "INSTREAM", "CUSTOM"), ("LEFIGARO", "PAVE", "SOCIODEMO"), ("M6", "PREROLL", "CUSTOM")]
+    data = [("2026-10-01", "DV360", f"R-NOTORIETE-CPM-{e}--{c}-Seg{k}-{f}-1x1-Multidevice-NA", str(100 + k), 1000 * (k + 1), 5, 0.5)
+            for k, (e, f, c) in enumerate(eds)]
+    data += [("2026-10-01", "Doctolib", "Mon Espace Santé", "900", 4000, 9, 0.22), ("2026-10-02", "Doctolib", "Mon Espace Santé", "900", 3000, 6, 0.2)]
+    path = str(tmp_path / "gabarits.xlsx")
+    make_cm360_export.build(path, data=data)
+    page.click(".modes [data-mode=reporting]")
+    _create_task(page, "Lotus gabarits")
+    page.set_input_files("#rp-file", path)
+    page.wait_for_selector("#pv-table")
+    page.click("#pv-presets button:has-text('Par éditeur')")
+    eds = page.locator("#pv-table tbody tr:not(.total) td:first-child").all_text_contents()
+    assert "(hors nomenclature)" not in eds and "Doctolib (site CM360)" in eds
+    page.select_option("#pv-r1", "Gabarit")
+    gab = page.locator("#pv-table tbody tr:not(.total) td:first-child").all_text_contents()
+    assert "hors nomenclature" in gab and any(g.endswith("segments") for g in gab)
+    page.click("#account-btn")
+    page.click("#open-agency")
+    inp = page.locator("#ag-nom input").first
+    learned = inp.get_attribute("placeholder")
+    inp.fill("Annonceur ciblé")
+    inp.dispatch_event("change")
+    page.wait_for_function("(JSON.parse(localStorage.getItem('umnia_set_nom_labels') || '{}'))")
+    stored = page.evaluate("JSON.parse(localStorage.getItem('umnia_set_nom_labels'))")
+    assert list(stored.values()) == ["Annonceur ciblé"]
+    page.click("#agency-dialog [data-close]")
+    page.wait_for_function("[...document.querySelectorAll('#pv-r1 option')].some((o) => o.value === 'Annonceur ciblé')", timeout=5000)
+    dims = page.locator("#pv-r1 option").all_text_contents()
+    assert "Annonceur ciblé" in dims and learned not in dims
+    page.evaluate("localStorage.removeItem('umnia_set_nom_labels')")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
 
@@ -704,7 +742,8 @@ def test_pivot_period_comparison(page):
     head = page.locator("#pv-table thead th").all_text_contents()
     assert head[1:4] == ["Impressions · A", "Impressions · B", "Δ Impressions (%)"]
     assert "Δ Click Rate (pts)" in head
-    assert "A : " in page.text_content("#pv-info") and not page.is_visible("#pv-chart")
+    assert "A : " in page.text_content("#pv-info")
+    assert page.locator("#pv-chart rect.mark").count() == page.locator("#pv-chart rect.mark-b").count() >= 1   # barres A et B
     deltas = page.locator("#pv-table tr.total td.delta").all_text_contents()
     assert deltas and all(d == "—" or d[0] in "+−0" or d.endswith(("%", "pt")) for d in deltas)
     page.select_option("#pv-cmp", "custom")
