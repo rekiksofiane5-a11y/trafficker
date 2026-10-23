@@ -68,13 +68,32 @@ def _open_task(page, name):
 
 
 def _create_task(page, name, **fields):
-    _history(page)
-    page.click("#new-task")
+    page.evaluate("openCreate()")                          # plus de bouton dans l'historique
     page.fill("#cd-name", name)
     for key, value in fields.items():
         page.fill("#cd-" + key, value)
     page.click("#cd-submit")
     page.wait_for_selector("#task-view:not([hidden])")
+
+
+def _report_space(page, advertiser):
+    """Accueil Reporting : annonceur choisi dans la liste -> « Espace report »."""
+    if not page.is_visible("#rp-home"):
+        page.click(".modes [data-mode=reporting]")
+    page.wait_for_function("document.querySelectorAll('#rp-home-adv option').length > 1")
+    label = next(o for o in page.locator("#rp-home-adv option").all_text_contents() if advertiser in o)
+    page.select_option("#rp-home-adv", label=label)
+    page.click("#rp-home-go")
+    page.wait_for_selector("#rp-template:not([hidden])")
+
+
+def _scope(page, campaign):
+    """Après le template : campagne puis dates (pré-remplies), Valider -> la section se réduit."""
+    page.wait_for_function("document.querySelectorAll('#rp-camp-sel option').length > 1")
+    label = next(o for o in page.locator("#rp-camp-sel option").all_text_contents() if campaign in o)
+    page.select_option("#rp-camp-sel", label=label)
+    page.click("#rp-validate")
+    page.wait_for_selector("#rp-scope-compact:not([hidden])")
 
 
 def _analyze(page, path, validate=True):
@@ -108,8 +127,8 @@ def test_template_plan_end_to_end(page):
                                             ("#dl-adform", "adform_bulk.xlsx", "Campaigns")])
 def test_exports_download_valid_xlsx(page, tmp_path, btn, name, sheet):
     openpyxl = pytest.importorskip("openpyxl")
-    page.select_option("#adserver", "adform" if "adform" in btn else "cm360")
     _analyze(page, os.path.join(ROOT, "plan_media_template.csv"))
+    page.select_option("#adserver", "adform" if "adform" in btn else "cm360")   # choix dans la carte « prêt »
     with page.expect_download() as dl:
         page.click(btn)
     page.select_option("#adserver", "cm360")
@@ -335,9 +354,10 @@ def test_tasks_are_saved_restored_and_reporting_mode(page):
     page.click(".scopes [data-scope=agency]")
     page.wait_for_selector("#task-list .task-item")
     page.click(".modes [data-mode=reporting]")
-    assert page.is_visible("#empty-view")
-    _create_task(page, "Bilan mi-parcours")
+    assert page.is_visible("#empty-view") and page.is_visible("#rp-home") and not page.is_visible("#empty-new")
+    _report_space(page, "UPSA")
     assert page.is_visible("#rp-view") and not page.is_visible("#pm-step")
+    assert "Report UPSA" in page.text_content("#task-title") or "UPSA" in page.text_content("#rp-adv-label")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
 
@@ -400,15 +420,14 @@ def test_reporting_check_and_scheduled_reports(page):
     (tableau de bord + Excel) puis report d'envoi par régie (carnet d'adresses, aperçu, programmation)."""
     openpyxl = pytest.importorskip("openpyxl")
     page.click(".modes [data-mode=reporting]")
-    _create_task(page, "Check SUV")
+    assert "démonstration" in page.text_content("#rp-home-src")
+    _report_space(page, "Automobiles Démo")
     assert "démonstration" in page.text_content("#rp-source")
-    page.fill("#rp-adv-q", "auto")
-    page.click("#rp-adv-list button:has-text('Automobiles Démo')")
-    page.click("#rp-camp-list button:has-text('Lancement SUV')")
-    page.wait_for_selector("#rp-template:not([hidden])")
-    assert "4 régie(s)" in page.text_content("#rp-selected")
     page.click(".tpl[data-tpl=check]")
+    assert not page.is_visible(".kpis")                            # tableau de bord après campagne et dates
+    _scope(page, "Lancement SUV")
     page.wait_for_selector(".kpis")
+    assert "4 régie(s)" in page.text_content("#rp-selected") and "Lancement SUV" in page.text_content("#rp-scope-text")
     dash = page.text_content("#rp-dash")
     assert "Régies avec données" in dash and "Aucune donnée" in dash and "Données reçues" in dash
     assert page.locator("#rp-check-table tbody tr").count() == 7
@@ -436,7 +455,7 @@ def test_reporting_check_and_scheduled_reports(page):
     page.wait_for_selector("#rp-send-msg.ok")
     assert page.locator("#rp-scheduled tbody tr").count() == 2
     assert "trafic@lemonde.fr" in page.text_content(".rp-regie .sugg")                # carnet d'adresses
-    _open_task(page, "Check SUV")                                   # réouverture
+    _open_task(page, "Report Automobiles Démo")                     # réouverture
     page.wait_for_selector("#rp-template:not([hidden])")
     assert page.locator(".tpl.on").get_attribute("data-tpl") == "regies"
     page.click(".modes [data-mode=trafficking]")
@@ -453,11 +472,9 @@ def test_pacing_from_linked_plan_and_manage_scheduled_reports(page, tmp_path):
     page.fill("#instructions", "Régie : DV360 Open Market")       # noms finaux = ceux de la campagne (démo)
     _analyze(page, str(path), validate=False)
     page.wait_for_function("document.getElementById('task-chips').textContent.includes('produit')")
-    page.click(".modes [data-mode=reporting]")
-    _create_task(page, "UPSA check")
-    page.click("#rp-adv-list button:has-text('UPSA')")
-    page.click("#rp-camp-list button:has-text('Citrate')")
+    _report_space(page, "UPSA")
     page.click(".tpl[data-tpl=check]")
+    _scope(page, "Citrate")
     page.wait_for_selector("#rp-pace-table")
     assert "UPSA Citrate — trafficking" in page.locator("#rp-plan option:checked").text_content()   # proposé seul
     dash = page.text_content("#rp-dash")
@@ -491,7 +508,7 @@ def test_cm360_prompt_without_api(page):
     """Sans accès API : demande en français -> questions -> prompt complet pour « Generate report »."""
     page.click(".modes [data-mode=reporting]")
     _create_task(page, "Prompt visibilité")
-    assert page.is_disabled(".tpl[data-tpl=check]") and not page.is_disabled(".tpl[data-tpl=prompt]")
+    assert not page.is_disabled(".tpl[data-tpl=prompt]")
     page.click(".tpl[data-tpl=prompt]")
     page.fill("#pp-input", "visibilité")
     page.click("#pp-go")
@@ -821,7 +838,8 @@ def test_home_import_flow_with_engine_stages(page):
     assert page.is_visible("#drop")
     page.click(".modes [data-mode=reporting]")
     page.evaluate("closeTask()")
-    assert not page.is_visible("#hero-drop") and page.is_visible("#empty-new")   # reporting : pas de dépôt de PM
+    assert not page.is_visible("#hero-drop") and not page.is_visible("#empty-new")   # reporting : pas de dépôt de PM
+    assert page.is_visible("#rp-home") and page.is_disabled("#rp-home-go")         # annonceur à choisir
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
 
@@ -844,4 +862,42 @@ def test_agency_sheet_sites_resolved_against_adserver(page, tmp_path):
     names = page.evaluate("table.filter((r) => r.site_name === 'Facebook').map((r) => r.partner)")
     assert names and set(names) == {"Meta"}                                          # le nom garde le diffuseur
     page.wait_for_function("document.getElementById('preview-pane').innerText.includes('R-Notoriete-CPM-TF1-Seniors')", timeout=15000)
+    assert page.errors == []
+
+
+def test_reporting_home_advertiser_request_bell_and_agency_templates(page):
+    """Annonceur absent : demande -> cloche de l'admin -> Ajouter -> proposé dans la liste ;
+    template d'agence créé par l'admin, proposé après les 3 templates par défaut."""
+    page.click(".modes [data-mode=reporting]")
+    page.wait_for_function("document.querySelectorAll('#rp-home-adv option').length > 1")
+    assert page.is_disabled("#rp-home-go") and not page.is_visible("#notif-count")
+    page.click("#rp-req-open")
+    page.fill("#rp-req-name", "Boulangerie Test")
+    page.select_option("#rp-req-adserver", "adform")
+    page.click("#rp-req-send")
+    page.wait_for_selector("#rp-req-msg.ok")
+    page.wait_for_selector("#notif-count:not([hidden])")
+    page.click("#notif-btn")
+    assert "Boulangerie Test" in page.text_content("#notif-panel")
+    page.click("#notif-panel button:has-text('Ajouter')")
+    page.wait_for_function("[...document.querySelectorAll('#rp-home-adv option')].some(o => o.textContent.includes('Boulangerie Test'))")
+    assert "a été ajouté" in page.text_content("#notif-panel")
+    page.mouse.click(5, 300)                                     # clic ailleurs : panneau fermé
+    assert not page.is_visible("#notif-panel")
+    page.click("#account-btn")
+    page.click("#open-agency")
+    assert "Boulangerie Test" in page.text_content("#ag-adv")
+    page.fill("#ag-tpl-name", "Bilan hebdo agence")
+    page.select_option("#ag-tpl-base", "check")
+    page.select_option("#ag-tpl-freq", "weekly")
+    page.click("#ag-tpl-form button[type=submit]")
+    page.wait_for_function("document.getElementById('ag-tpl').textContent.includes('Bilan hebdo agence')")
+    page.click("#agency-dialog [data-close]")
+    _report_space(page, "UPSA")
+    tpls = page.locator("#rp-tpls .tpl, #rp-agency-tpls .tpl").all_text_contents()
+    assert "Bilan hebdo agence" in tpls[-1] and "Check de mise en ligne" in tpls[0]
+    page.click("#rp-agency-tpls .tpl")
+    _scope(page, "Citrate")
+    page.wait_for_selector(".kpis")                              # modèle « check »
+    page.click(".modes [data-mode=trafficking]")
     assert page.errors == []

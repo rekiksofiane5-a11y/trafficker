@@ -150,6 +150,8 @@ try {
   assert.equal((await api("PUT", "settings/site_map", {value: {"Facebook FR": "Meta"}})).status, 200);
   assert.deepEqual((await api("GET", "settings/site_map")).data, {value: {"Facebook FR": "Meta"}});
   assert.equal((await api("GET", "settings/inconnu")).status, 404);
+  assert.equal((await api("PUT", "settings/advertisers", {value: [{id: "9001", name: "UPSA", adserver: "cm360"}]})).status, 200);
+  assert.equal((await api("PUT", "settings/requests", {value: [{id: "r1", name: "Client X", status: "pending"}]})).status, 200);
   cookie = "";
   assert.equal((await api("GET", "adserver/status")).status, 401);                                // connexion requise
   console.log("OK : Worker + faux CM360 (jeton RS256, lecture, rapport asynchrone, programmation, pause / modification / suppression, carnet).");

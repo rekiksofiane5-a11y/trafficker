@@ -129,6 +129,33 @@ a { color: var(--accent); }
 .sugg-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .sugg-row button { padding: 4px 12px; font-size: .8rem; font-weight: 400; background: var(--chip); color: var(--text); }
 .tpl:disabled { opacity: .5; }
+.bell { position: relative; width: 40px; height: 40px; border-radius: 50%; background: var(--chip); }
+.notif-count { position: absolute; top: -2px; right: -2px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+  background: var(--err); color: #fff; font: 700 .68rem/18px Inter, system-ui, sans-serif; text-align: center; }
+.notif-count[hidden] { display: none; }
+.notif-panel { width: min(22rem, 90vw); padding: 10px; gap: 6px; }
+.notif-title { padding: 2px 4px 6px; }
+.notif-item { display: grid; gap: 6px; padding: 8px; border-radius: 10px; font-size: .85rem; border: 1px solid var(--border); }
+.notif-item.unread { border-color: var(--gold); background: var(--chip); }
+.notif-actions { display: flex; gap: 6px; }
+.notif-actions .sm { padding: 5px 12px; font-size: .8rem; }
+.tpl-mini { display: inline-flex; margin-top: 10px; padding: 8px 14px; border-width: 1px; font-size: .85rem; }
+.tpl-choices.agency { margin-top: 12px; }
+.tpl-choices.agency .tpl strong::before { content: "🏢 "; }
+.rp-adv-name { font-family: Inter, system-ui, sans-serif; font-size: 1rem; color: var(--muted); margin-left: 8px; }
+.rp-scope-grid { display: grid; grid-template-columns: minmax(14rem, 2fr) minmax(9rem, 1fr) minmax(9rem, 1fr) auto; gap: 12px; align-items: end; }
+.rp-scope-grid select, .rp-scope-grid input { width: 100%; }
+.rp-scope-compact { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.rp-scope-compact span { font-weight: 600; }
+.rp-home { display: grid; gap: 12px; padding-bottom: 24px; }
+.rp-home select { width: 100%; padding: 12px; font-size: 1rem; }
+.rp-scope-grid select { padding: 9px 10px; border-radius: 10px; }
+.rp-req label, .rp-scope-grid label, #agency-dialog .row-form label { display: grid; gap: 4px; font-size: .85rem; font-weight: 600; }
+.rp-req input, .rp-scope-grid input, #agency-dialog .row-form input { width: 100%; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 10px; background: var(--field, var(--card)); color: inherit; font: inherit; font-weight: 400; box-sizing: border-box; }
+.rp-req { display: grid; gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
+.hero:not([data-mode="reporting"]) .rp-home, .hero[data-mode="reporting"] #empty-new { display: none; }
+@media (max-width: 800px) { .rp-scope-grid { grid-template-columns: 1fr; } }
 #pp-questions fieldset { border: 1px solid var(--accent); border-radius: 12px; padding: 10px 14px; margin-top: 12px; }
 #pp-questions .q { margin: 8px 0; }
 #pp-questions .opts { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 4px; }
@@ -474,7 +501,7 @@ body { overflow: hidden; }
 .engine-pill.quiet { opacity: 0; transition: opacity 1s; }
 /* Tant que le PM n'est pas analysé, l'écran reste celui de la maquette : pas d'en-tête de tâche */
 #task-view[data-pm="idle"] .task-head, #task-view[data-pm="file"] .task-head, #task-view[data-pm="busy"] .task-head { display: none; }
-.hero[data-mode="reporting"] .up-card { display: none; }
+.hero[data-mode="reporting"] .up-card:not(.rp-home) { display: none; }
 .hero[data-mode="reporting"] { grid-template-columns: 1fr; }
 .hero[data-mode="reporting"] #empty-new { text-decoration: none; background: var(--accent); color: var(--accent-text);
   padding: 12px 26px; border-radius: 12px; font-weight: 600; }
@@ -531,6 +558,16 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
       <button role="tab" data-mode="reporting" aria-selected="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Reporting</button>
     </div>
     <div class="appbar-right">
+      <div class="menu-wrap">
+        <button type="button" id="notif-btn" class="ghost icon-only bell" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+          <span id="notif-count" class="notif-count" hidden>0</span>
+        </button>
+        <div id="notif-panel" class="pop notif-panel" hidden>
+          <strong class="notif-title">Notifications</strong>
+          <div id="notif-list"></div>
+        </div>
+      </div>
       <button type="button" id="theme-btn" class="ghost icon-only" aria-label="Passer en thème sombre">
         <svg class="ico sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
         <svg class="ico moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
@@ -565,7 +602,6 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
           <button role="tab" data-scope="mine" class="on" aria-selected="true">Mes tâches</button>
           <button role="tab" data-scope="agency" aria-selected="false">Agence</button>
         </div>
-        <button type="button" id="new-task" class="new-task">＋ Nouvelle tâche</button>
       </div>
       <nav id="task-list" aria-label="Tâches récentes"></nav>
       <div class="history-foot"><span id="local-banner" class="hint" hidden>Mode local : les tâches restent dans ce navigateur.</span></div>
@@ -587,6 +623,19 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
           <div class="up-foot"><svg class="xl" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="18" rx="3" fill="#1f7a46"/><path d="M8 8l8 8M16 8l-8 8" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg>Fichiers Excel (.xls, .xlsx) et CSV acceptés</div>
         </div>
         <input id="hero-file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
+        <div class="up-card rp-home" id="rp-home">
+          <label for="rp-home-adv" class="lbl">Annonceur</label>
+          <select id="rp-home-adv"><option value="">Choisir un annonceur…</option></select>
+          <p class="hint" id="rp-home-src"></p>
+          <button type="button" id="rp-home-go" class="hero-btn" disabled>Espace report <span aria-hidden="true">→</span></button>
+          <button type="button" id="rp-req-open" class="linkish">Mon annonceur n'est pas dans la liste</button>
+          <form id="rp-req-form" class="rp-req" hidden>
+            <label>Nom de l'annonceur<input id="rp-req-name" required maxlength="120" autocomplete="off"></label>
+            <label>Ad server<select id="rp-req-adserver"><option value="cm360">Campaign Manager 360</option><option value="adform">Adform</option></select></label>
+            <div class="actions"><button type="submit" id="rp-req-send" class="secondary">Demander l'ajout à l'admin</button></div>
+            <p id="rp-req-msg" class="hint" role="status"></p>
+          </form>
+        </div>
         <button id="empty-new" type="button" class="linkish">ou créer une tâche vide</button>
       </div>
       <div class="bg-grid" data-grid aria-hidden="true"></div>
@@ -742,46 +791,50 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 
       <!-- Reporting : campagne de l'ad server -> template (check de mise en ligne / report d'envoi aux régies) -->
       <div id="rp-view" hidden>
-        <section class="card" aria-labelledby="rp-t1">
-          <h2 id="rp-t1">1. Campagne</h2>
+        <section class="card" id="rp-template" aria-labelledby="rp-t2">
+          <div class="rp-head">
+            <h2 id="rp-t2" class="serif">Espace report <span class="rp-adv-name" id="rp-adv-label"></span></h2>
+            <button type="button" id="rp-change-adv" class="linkish">Changer d'annonceur</button>
+          </div>
           <p id="rp-source" class="hint"></p>
-          <div class="grid rp-pick">
-            <div>
-              <label for="rp-adv-q">Annonceur</label>
-              <input id="rp-adv-q" type="search" autocomplete="off" placeholder="Rechercher un annonceur…">
-              <div id="rp-adv-list" class="pick-list" role="listbox" aria-label="Annonceurs"></div>
-            </div>
-            <div>
-              <label for="rp-camp-q">Campagne</label>
-              <input id="rp-camp-q" type="search" autocomplete="off" placeholder="Choisissez d'abord l'annonceur" disabled>
-              <div id="rp-camp-list" class="pick-list" role="listbox" aria-label="Campagnes"></div>
-            </div>
+          <div class="tpl-choices" id="rp-tpls" role="radiogroup" aria-label="Template de reporting">
+            <button type="button" class="tpl" data-tpl="check" role="radio" aria-checked="false">
+              <strong>✅ Check de mise en ligne</strong><span>Toutes les régies et tous les emplacements : qui remonte des données, qui n'en a pas. Rythme, tableau de bord et Excel.</span></button>
+            <button type="button" class="tpl" data-tpl="regies" role="radio" aria-checked="false">
+              <strong>📨 Daily report aux régies</strong><span>Un report automatique par régie, envoyé chaque jour par e-mail (calendrier modifiable).</span></button>
+            <button type="button" class="tpl" data-tpl="pivot" role="radio" aria-checked="false">
+              <strong>📊 Tableau croisé</strong><span>Les données de la campagne rangées par dimensions et métriques : lignes, colonnes, comparaison de périodes, Excel.</span></button>
           </div>
-          <div class="rp-file">
-            <strong>Pas d'accès API ?</strong>
-            <button type="button" id="rp-file-btn" class="secondary">📄 Importer un export de rapport CM360</button>
-            <input id="rp-file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
-            <a href="exemples/exemple_export_cm360_une_campagne.xlsx" download>Exemple Excel CM360 (une campagne)</a>
-            <a href="exemples/exemple_export_cm360.csv" download>Exemple CSV</a>
-            <div class="hint">CSV ou Excel téléchargé depuis CM360 (Report builder → « Download »). Colonnes utiles : Date, Site (CM360),
-              Placement, Placement ID, Impressions, Clicks — le template « Prompt de rapport CM360 » → « Check de mise en ligne » les demande.</div>
-          </div>
-          <div id="rp-selected" class="info" hidden></div>
+          <div id="rp-agency-tpls" class="tpl-choices agency" hidden></div>
+          <button type="button" class="tpl tpl-mini" data-tpl="prompt" role="radio" aria-checked="false">🪄 Prompt de rapport CM360 (sans API)</button>
+          <p id="rp-tpl-hint" class="hint">Choisissez un template, puis la campagne et la période.</p>
         </section>
 
-        <section class="card" id="rp-template" aria-labelledby="rp-t2">
-          <h2 id="rp-t2">2. Template</h2>
-          <div class="tpl-choices" role="radiogroup" aria-label="Template de reporting">
-            <button type="button" class="tpl" data-tpl="check" role="radio" aria-checked="false">
-              <strong>✅ Check de mise en ligne</strong><span>Toutes les régies et tous les emplacements : qui remonte des données, qui n'en a pas. Tableau de bord et Excel.</span></button>
-            <button type="button" class="tpl" data-tpl="regies" role="radio" aria-checked="false">
-              <strong>📨 Report d'envoi aux régies</strong><span>Un report automatique par régie, envoyé par e-mail selon un calendrier.</span></button>
-            <button type="button" class="tpl" data-tpl="pivot" role="radio" aria-checked="false">
-              <strong>📊 Tableau croisé</strong><span>L'export importé rangé par dimensions et métriques : lignes, colonnes, valeurs, totaux, Excel.</span></button>
-            <button type="button" class="tpl" data-tpl="prompt" role="radio" aria-checked="false">
-              <strong>🪄 Prompt de rapport CM360</strong><span>Sans accès API : votre demande en français devient un prompt complet à coller dans « Generate report » de CM360.</span></button>
+        <section class="card" id="rp-scope" aria-labelledby="rp-t1" hidden>
+          <div id="rp-scope-form">
+            <h2 id="rp-t1">Campagne et période</h2>
+            <div class="rp-scope-grid">
+              <label>Campagne<select id="rp-camp-sel"><option value="">Choisir une campagne…</option></select></label>
+              <label>Du<input type="date" id="rp-d1"></label>
+              <label>Au<input type="date" id="rp-d2"></label>
+              <button type="button" id="rp-validate" disabled>Valider</button>
+            </div>
+            <p id="rp-camp-msg" class="hint" role="status"></p>
+            <div class="rp-file">
+              <strong>Pas d'accès API ?</strong>
+              <button type="button" id="rp-file-btn" class="secondary">📄 Importer un export de rapport CM360</button>
+              <input id="rp-file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
+              <a href="exemples/exemple_export_cm360_une_campagne.xlsx" download>Exemple Excel CM360 (une campagne)</a>
+              <a href="exemples/exemple_export_cm360.csv" download>Exemple CSV</a>
+              <div class="hint">CSV ou Excel téléchargé depuis CM360 (Report builder → « Download »). Colonnes utiles : Date, Site (CM360),
+                Placement, Placement ID, Impressions, Clicks — le « Prompt de rapport CM360 » les demande.</div>
+            </div>
           </div>
-          <p id="rp-tpl-hint" class="hint">Check et report régie : choisissez d'abord la campagne ou importez un export. Tableau croisé : après l'import d'un export. Le prompt CM360 fonctionne sans.</p>
+          <div id="rp-scope-compact" class="rp-scope-compact" hidden>
+            <span id="rp-scope-text"></span>
+            <button type="button" id="rp-scope-edit" class="linkish">Modifier</button>
+          </div>
+          <div id="rp-selected" class="info" hidden></div>
         </section>
 
         <section class="card" id="rp-pivot" aria-labelledby="pv-title" hidden>
@@ -921,6 +974,29 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 <dialog id="agency-dialog" aria-labelledby="ag-title">
   <h2 id="ag-title">Réglages de l'agence</h2>
   <p class="hint">Partagés par tous les utilisateurs de l'agence et appliqués à chaque import d'export.</p>
+  <section aria-labelledby="ag-adv-title">
+    <h3 id="ag-adv-title">Annonceurs du reporting</h3>
+    <p class="hint">Liste proposée sur l'accueil Reporting. Les comptes connectés à l'API d'un ad server ajoutent ses annonceurs automatiquement. Modifiable par l'admin.</p>
+    <div class="table-wrap"><table id="ag-adv"></table></div>
+    <form id="ag-adv-form" class="row-form admin-only">
+      <label>Annonceur<input id="ag-adv-name" required></label>
+      <label>Ad server<select id="ag-adv-adserver"><option value="cm360">CM360</option><option value="adform">Adform</option></select></label>
+      <button type="submit" class="secondary">Ajouter l'annonceur</button>
+    </form>
+  </section>
+  <section aria-labelledby="ag-tpl-title">
+    <h3 id="ag-tpl-title">Templates de reporting de l'agence</h3>
+    <p class="hint">Proposés après les 3 templates par défaut. Chacun part d'un modèle (check, régies, croisé) avec ses réglages. Modifiable par l'admin.</p>
+    <div class="table-wrap"><table id="ag-tpl"></table></div>
+    <form id="ag-tpl-form" class="row-form admin-only">
+      <label>Nom<input id="ag-tpl-name" required></label>
+      <label>Modèle<select id="ag-tpl-base"><option value="check">Check de mise en ligne</option><option value="regies">Daily report aux régies</option><option value="pivot">Tableau croisé</option></select></label>
+      <label>Description<input id="ag-tpl-desc"></label>
+      <label>Fréquence<select id="ag-tpl-freq"><option value="">—</option><option value="daily">Quotidienne</option><option value="weekly">Hebdomadaire</option></select></label>
+      <label>Vue du croisé<select id="ag-tpl-view"><option value="">—</option></select></label>
+      <button type="submit" class="secondary">Ajouter le template</button>
+    </form>
+  </section>
   <section aria-labelledby="ag-map-title">
     <h3 id="ag-map-title">Correspondance des régies</h3>
     <div class="table-wrap"><table id="ag-map"></table></div>
@@ -1941,6 +2017,7 @@ function enterApp(user) {
   $("open-admin").hidden = me.role !== "admin" || Store.local;
   $("logout").hidden = Store.local;
   setMode(mode);
+  refreshNotifs();
 }
 
 // Barre latérale : modes, recherche, récents (mes tâches / agence)
@@ -1957,10 +2034,11 @@ function setMode(m) {
   $("empty-view").dataset.mode = m;
   $("empty-title").textContent = m === "reporting" ? "Quel reporting voulez-vous lancer ?" : "Un nouveau projet ?";
   $("empty-sub").textContent = m === "reporting"
-    ? "Choisissez la campagne dans l'ad server ou importez un export, puis le template : check de mise en ligne, report aux régies, tableau croisé."
+    ? "Choisissez l'annonceur, puis ouvrez son espace report : template, campagne et dates."
     : "Partagez-moi votre PM.";
   $("empty-new").textContent = m === "reporting" ? "＋ Créer une tâche" : "ou créer une tâche vide";
   if (current && current.mode !== m) closeTask();
+  if (m === "reporting" && !current) rpHome();
   refreshList();
 }
 for (const b of document.querySelectorAll(".modes button")) b.addEventListener("click", () => setMode(b.dataset.mode));
@@ -2071,7 +2149,6 @@ function openCreate() {
   $("create-dialog").showModal();
   $("cd-name").focus();
 }
-$("new-task").addEventListener("click", openCreate);
 $("empty-new").addEventListener("click", openCreate);
 // Accueil Trafficking : déposer le PM crée la tâche (nommée d'après le fichier) et le prépare à l'analyse
 async function heroImport(f) {
@@ -2208,6 +2285,7 @@ function closeTask() {
   resetWork();
   $("task-view").hidden = true;
   $("empty-view").hidden = false;
+  if (mode === "reporting") rpHome();
 }
 
 $("delete-task").addEventListener("click", async () => {
@@ -2251,7 +2329,7 @@ function toggleMenu(btn, menu) {
   btn.setAttribute("aria-expanded", String(open));
 }
 function closeMenus() {
-  for (const [b, m] of [["account-btn", "account-menu"]]) { $(m).hidden = true; $(b).setAttribute("aria-expanded", "false"); }
+  for (const [b, m] of [["account-btn", "account-menu"], ["notif-btn", "notif-panel"]]) { $(m).hidden = true; $(b).setAttribute("aria-expanded", "false"); }
 }
 $("account-btn").addEventListener("click", (e) => { e.stopPropagation(); toggleMenu($("account-btn"), $("account-menu")); });
 document.addEventListener("click", closeMenus);
@@ -2394,12 +2472,71 @@ function agRenderViews() {
       return el("tr", {}, el("td", {}, name), el("td", {}, (sp.rows || []).join(" / ") + (sp.col ? " × " + sp.col : "")), el("td", {}, rm));
     }) : [el("tr", {}, el("td", {colspan: "3", class: "hint"}, "Aucune vue : enregistre-en une depuis le tableau croisé."))])));
 }
+// Annonceurs et templates de reporting : listes de l'agence, tenues par l'admin
+let agAdv = [];
+function agRenderAdv() {
+  const admin = me.role === "admin";
+  $("ag-adv").replaceChildren(
+    el("thead", {}, el("tr", {}, ...["Annonceur", "Ad server", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...(agAdv.length ? agAdv.map((a, i) => {
+      const rm = el("button", {type: "button", class: "secondary", "aria-label": "Retirer l'annonceur " + a.name}, "Retirer");
+      rm.disabled = !admin;
+      rm.addEventListener("click", () => {
+        if (!window.confirm(`Retirer « ${a.name} » de la liste ?`)) return;
+        const next = agAdv.filter((_, j) => j !== i);
+        agSave("advertisers", next, () => { agAdv = next; agRenderAdv(); });
+      });
+      return el("tr", {}, el("td", {}, a.name), el("td", {}, ADSERVER_LABEL[a.adserver] || a.adserver), el("td", {}, rm));
+    }) : [el("tr", {}, el("td", {colspan: "3", class: "hint"}, "Aucun annonceur ajouté par l'agence."))])));
+}
+$("ag-adv-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = $("ag-adv-name").value.trim(), adserver = $("ag-adv-adserver").value;
+  if (!name || agAdv.some((a) => a.name.toLowerCase() === name.toLowerCase() && a.adserver === adserver)) return;
+  const next = [...agAdv, {id: "a" + Date.now(), name, adserver}];
+  agSave("advertisers", next, () => { agAdv = next; $("ag-adv-form").reset(); agRenderAdv(); });
+});
+const TPL_BASE = {check: "Check de mise en ligne", regies: "Daily report aux régies", pivot: "Tableau croisé"};
+function agRenderTpl() {
+  const admin = me.role === "admin", tpls = RP.agencyTpls || [];
+  $("ag-tpl").replaceChildren(
+    el("thead", {}, el("tr", {}, ...["Nom", "Modèle", "Réglages", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...(tpls.length ? tpls.map((t, i) => {
+      const rm = el("button", {type: "button", class: "secondary", "aria-label": "Supprimer le template " + t.name}, "Supprimer");
+      rm.disabled = !admin;
+      rm.addEventListener("click", () => {
+        if (!window.confirm(`Supprimer le template « ${t.name} » pour toute l'agence ?`)) return;
+        const next = tpls.filter((_, j) => j !== i);
+        agSave("report_templates", next, () => { RP.agencyTpls = next; agRenderTpl(); });
+      });
+      const c = t.config || {};
+      const conf = [c.frequency === "weekly" ? "hebdomadaire" : c.frequency === "daily" ? "quotidien" : "", c.view_name ? "vue « " + c.view_name + " »" : ""].filter(Boolean).join(", ");
+      return el("tr", {}, el("td", {}, t.name), el("td", {}, TPL_BASE[t.base] || t.base), el("td", {}, conf || "—"), el("td", {}, rm));
+    }) : [el("tr", {}, el("td", {colspan: "4", class: "hint"}, "Aucun template d'agence : les 3 templates par défaut sont proposés."))])));
+  $("ag-tpl-view").replaceChildren(el("option", {value: ""}, "—"), ...(RP.views || []).map((v, i) => el("option", {value: String(i)}, v.name)));
+}
+$("ag-tpl-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = $("ag-tpl-name").value.trim();
+  if (!name) return;
+  const config = {}, freq = $("ag-tpl-freq").value, v = (RP.views || [])[Number($("ag-tpl-view").value)];
+  if (freq) config.frequency = freq;
+  if ($("ag-tpl-view").value && v) { config.view = v.spec; config.view_name = v.name; }
+  const next = [...(RP.agencyTpls || []), {id: "t" + Date.now(), name, base: $("ag-tpl-base").value, description: $("ag-tpl-desc").value.trim(), config}];
+  agSave("report_templates", next, () => { RP.agencyTpls = next; $("ag-tpl-form").reset(); agRenderTpl(); });
+});
+
 $("open-agency").addEventListener("click", async () => {
   $("ag-msg").textContent = "";
+  try { agAdv = (await Store.setting("advertisers")) || []; } catch (e) { agAdv = []; handleAuth(e); }
+  try { RP.agencyTpls = (await Store.setting("report_templates")) || []; } catch (e) { RP.agencyTpls = []; handleAuth(e); }
+  for (const f of document.querySelectorAll("#agency-dialog .admin-only")) f.hidden = me.role !== "admin";
   await Promise.all([rpLoadSiteMap(), (async () => { try { RP.views = (await Store.setting("pivot_views")) || []; } catch (e) { RP.views = []; handleAuth(e); } })()]);
   agRenderMap();
   agRenderNom();
   agRenderViews();
+  agRenderAdv();
+  agRenderTpl();
   $("agency-dialog").showModal();
 });
 $("ag-map-form").addEventListener("submit", (e) => {
@@ -2498,43 +2635,63 @@ function pickList(box, items, sel, label, sub, onPick) {
   }) : [el("p", {class: "hint"}, "Aucun résultat.")]));
 }
 
-async function rpSearchAdv() {
-  const seq = ++RP.seq;
-  try {
-    const list = await rpAdvertisers($("rp-adv-q").value.trim());
-    if (seq !== RP.seq) return;
-    RP.advertisers = list;
-    pickList($("rp-adv-list"), list, (rpData().advertiser || {}).id, (a) => a.name, (a) => "ID " + a.id, rpPickAdv);
-  } catch (e) { $("rp-adv-list").replaceChildren(el("p", {class: "err"}, e.message)); handleAuth(e); }
-}
-async function rpPickAdv(a) {
-  const data = rpData();
-  if (data.file) { delete data.file; RP.source = ""; data.campaign = null; rpSource(); }
-  if ((data.advertiser || {}).id !== a.id) { data.campaign = null; rpReset(); }
-  data.advertiser = {id: a.id, name: a.name};
-  current.advertiser = a.name;
-  $("rp-adv-q").value = a.name;
-  $("rp-camp-q").disabled = false;
-  $("rp-camp-q").placeholder = "Rechercher une campagne…";
-  renderTaskHead();
-  saveSoon();
-  rpSearchAdv();
-  rpSearchCamp();
-}
-async function rpSearchCamp() {
+// Campagnes de l'annonceur (API, sinon démo) dans la liste déroulante ; dates préremplies
+async function rpFillCampaigns() {
   const adv = rpData().advertiser;
+  const sel = $("rp-camp-sel");
   if (!adv) return;
   try {
-    const list = await rpCampaigns(adv.id, $("rp-camp-q").value.trim());
-    RP.campaigns = list;
-    const fr = (d) => d ? d.split("-").reverse().join("/") : "?";
-    pickList($("rp-camp-list"), list, (rpData().campaign || {}).id, (c) => c.name, (c) => `${fr(c.start)} → ${fr(c.end)}`, rpPickCamp);
-  } catch (e) { $("rp-camp-list").replaceChildren(el("p", {class: "err"}, e.message)); handleAuth(e); }
+    RP.campaigns = await rpCampaigns(adv.id, "");
+  } catch (e) { RP.campaigns = []; $("rp-camp-msg").textContent = "Campagnes illisibles : " + e.message; handleAuth(e); }
+  const cur = (rpData().campaign || {}).id || "";
+  sel.replaceChildren(el("option", {value: ""}, RP.campaigns.length ? "Choisir une campagne…" : "Aucune campagne"),
+    ...RP.campaigns.map((c) => el("option", {value: c.id}, c.name)));
+  sel.value = cur;
+  $("rp-camp-msg").textContent = RP.campaigns.length ? "" : (RP.live
+    ? "Aucune campagne pour cet annonceur dans l'ad server."
+    : "Pas de campagne de démonstration pour cet annonceur : importez un export de rapport CM360 ci-dessous.");
+  rpScopeState();
 }
-let rpTimer = null;
-$("rp-adv-q").addEventListener("input", () => { clearTimeout(rpTimer); rpTimer = setTimeout(rpSearchAdv, 250); });
-$("rp-camp-q").addEventListener("input", () => { clearTimeout(rpTimer); rpTimer = setTimeout(rpSearchCamp, 250); });
-
+function rpScopeState() {
+  $("rp-validate").disabled = !($("rp-camp-sel").value && $("rp-d1").value && $("rp-d2").value && $("rp-d1").value <= $("rp-d2").value);
+}
+$("rp-camp-sel").addEventListener("change", () => {
+  const c = RP.campaigns.find((x) => x.id === $("rp-camp-sel").value);
+  if (c) { $("rp-d1").value = c.start || ""; $("rp-d2").value = c.end && c.end < isoToday() ? c.end : (c.end ? isoToday() : ""); }
+  if (c && $("rp-d1").value > $("rp-d2").value) $("rp-d2").value = c.end || "";
+  rpScopeState();
+});
+for (const id of ["rp-d1", "rp-d2"]) $(id).addEventListener("change", rpScopeState);
+// Valider : la section se replie, le tableau de bord du template s'affiche
+$("rp-validate").addEventListener("click", async () => {
+  const c = RP.campaigns.find((x) => x.id === $("rp-camp-sel").value);
+  if (!c) return;
+  const data = rpData();
+  if (data.file) { delete data.file; RP.source = ""; }
+  if ((data.campaign || {}).id !== c.id) { data.regies = []; delete data.plan_task; }
+  data.campaign = {id: c.id, name: c.name};
+  data.period = {start: $("rp-d1").value, end: $("rp-d2").value};
+  data.validated = true;
+  current.campaign = c.name;
+  renderTaskHead();
+  saveSoon(0);
+  await rpLoadCampaign();
+});
+$("rp-scope-edit").addEventListener("click", () => {
+  rpData().validated = false;
+  saveSoon();
+  rpScopeView(false);
+  for (const id of ["rp-check", "rp-send", "rp-pivot"]) $(id).hidden = true;
+});
+function rpScopeView(compact) {
+  $("rp-scope-form").hidden = compact;
+  $("rp-scope-compact").hidden = !compact;
+  if (!compact) return;
+  const d = rpData(), p = d.period || {};
+  const fr = (x) => x ? x.split("-").reverse().join("/") : "?";
+  $("rp-scope-text").textContent = d.file ? `📄 ${d.file.name}` + (RP.campaign ? ` · ${RP.campaign.name}` : "")
+    : `${(d.campaign || {}).name || ""} · du ${fr(p.start)} au ${fr(p.end)}`;
+}
 function rpReset() {
   RP.campaign = null; RP.placements = []; RP.delivery = null; RP.targets = null;
   for (const id of ["rp-selected", "rp-check", "rp-send"]) $(id).hidden = true;
@@ -2543,22 +2700,7 @@ function rpReset() {
 }
 // Check et report régie demandent une campagne ; le prompt CM360 fonctionne sans
 function rpTplState() {
-  for (const b of document.querySelectorAll(".tpl[data-tpl=check], .tpl[data-tpl=regies]")) b.disabled = !RP.campaign;
-  for (const b of document.querySelectorAll(".tpl[data-tpl=pivot]")) b.disabled = RP.source !== "file";
-  $("rp-tpl-hint").hidden = !!RP.campaign;
-}
-
-async function rpPickCamp(c) {
-  const data = rpData();
-  if (data.file) { delete data.file; RP.source = ""; }
-  if ((data.campaign || {}).id !== c.id) { data.regies = []; data.template = data.template || ""; delete data.plan_task; }
-  data.campaign = {id: c.id, name: c.name};
-  current.campaign = c.name;
-  $("rp-camp-q").value = c.name;
-  renderTaskHead();
-  rpSearchCamp();
-  await rpLoadCampaign();
-  saveSoon(0);
+  $("rp-tpl-hint").hidden = !!rpData().template;
 }
 
 async function rpLoadCampaign() {
@@ -2583,6 +2725,8 @@ async function rpLoadCampaign() {
     el("strong", {}, RP.campaign.name), ` — ${RP.campaign.advertiser} · du ${fr(RP.campaign.start)} au ${fr(RP.campaign.end)} · `
     + `${RP.placements.length} emplacement(s) · ${sites.length} régie(s) : `,
     ...sites.map((s) => el("span", {class: "chip"}, s.name)));
+  RP.period = data.period || {start: RP.campaign.start, end: RP.campaign.end};
+  rpScopeView(true);
   rpTplState();
   rpShowTemplate(data.template);
 }
@@ -2595,28 +2739,94 @@ function rpSites() {
   return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, "fr"));
 }
 
-for (const b of document.querySelectorAll(".tpl")) b.addEventListener("click", () => {
-  rpData().template = b.dataset.tpl;
-  saveSoon(0);
-  rpShowTemplate(b.dataset.tpl);
-});
+// Templates : 3 par défaut + ceux de l'agence (créés par l'admin, chacun bâti sur un template par défaut)
+RP.agencyTpls = [];
+const rpBase = (tpl) => (String(tpl || "").startsWith("agency:")
+  ? ((RP.agencyTpls.find((t) => "agency:" + t.id === tpl) || {}).base || "") : tpl || "");
+function rpTplConfig() {
+  const t = RP.agencyTpls.find((x) => "agency:" + x.id === (current && rpData().template));
+  return (t && t.config) || {};
+}
+function bindTpl(b) {
+  b.addEventListener("click", () => {
+    const data = rpData();
+    data.template = b.dataset.tpl;
+    const cfg = rpTplConfig();
+    if (cfg.view) data.pivot = JSON.parse(JSON.stringify(cfg.view));          // vue du croisé du template
+    if (cfg.frequency && data.schedule) data.schedule.frequency = cfg.frequency;
+    if (cfg.group) data.group = cfg.group;
+    saveSoon(0);
+    rpShowTemplate(b.dataset.tpl);
+  });
+}
+for (const b of document.querySelectorAll(".tpl")) bindTpl(b);
+async function rpLoadAgencyTpls() {
+  try { RP.agencyTpls = (await Store.setting("report_templates")) || []; } catch (e) { RP.agencyTpls = []; handleAuth(e); }
+  const box = $("rp-agency-tpls");
+  box.replaceChildren(...RP.agencyTpls.map((t) => {
+    const b = el("button", {type: "button", class: "tpl", "data-tpl": "agency:" + t.id, role: "radio", "aria-checked": "false"},
+      el("strong", {}, t.name), el("span", {}, t.description || ({check: "Check de mise en ligne", regies: "Report aux régies",
+                                                                    pivot: "Tableau croisé"}[t.base] || "")));
+    bindTpl(b);
+    return b;
+  }));
+  box.hidden = !RP.agencyTpls.length;
+}
 function rpShowTemplate(tpl) {
   for (const b of document.querySelectorAll(".tpl")) {
     b.classList.toggle("on", b.dataset.tpl === tpl);
     b.setAttribute("aria-checked", String(b.dataset.tpl === tpl));
   }
-  $("rp-check").hidden = tpl !== "check";
-  $("rp-send").hidden = tpl !== "regies";
-  $("rp-prompt").hidden = tpl !== "prompt";
-  $("rp-pivot").hidden = tpl !== "pivot" || RP.source !== "file";
-  if (tpl === "pivot" && RP.source === "file") pvOpen();
-  if (tpl === "prompt") ppOpen();
-  if (tpl === "check") rpLoadPlans().then(() => rpRunCheck());
-  if (tpl === "regies") rpRenderSend();
+  const base = rpBase(tpl), data = current ? rpData() : {};
+  // campagne et période à choisir (sauf prompt CM360) : le tableau de bord vient après « Valider »
+  const ready = !!(data.file || (data.validated && RP.campaign));
+  $("rp-scope").hidden = !base || base === "prompt";
+  if (!$("rp-scope").hidden) { rpScopeView(ready); if (!ready) rpFillCampaigns(); }
+  const show = ready ? base : (base === "prompt" ? "prompt" : "");
+  $("rp-check").hidden = show !== "check";
+  $("rp-send").hidden = show !== "regies";
+  $("rp-prompt").hidden = show !== "prompt";
+  $("rp-pivot").hidden = show !== "pivot";
+  if (data.group && $("rp-group")) $("rp-group").value = data.group;
+  if (show === "pivot") {
+    if (RP.source === "file") pvOpen();
+    else rpEnsureDelivery().then((dl) => { RP.table = rpTableFromDelivery(dl); pvOpen(); });
+  }
+  if (show === "prompt") ppOpen();
+  if (show === "check") rpLoadPlans().then(() => rpRunCheck());
+  if (show === "regies") rpRenderSend();
+  rpTplState();
+}
+// Diffusion de l'ad server -> table à plat pour le tableau croisé (mêmes colonnes qu'un export CM360)
+function rpTableFromDelivery(delivery) {
+  const pl = new Map(RP.placements.map((p) => [String(p.id), p]));
+  const week = (iso) => {
+    const d = new Date(iso + "T12:00:00Z"), day = (d.getUTCDay() + 6) % 7;
+    const mon = new Date(d); mon.setUTCDate(d.getUTCDate() - day);
+    const th = new Date(mon); th.setUTCDate(mon.getUTCDate() + 3);
+    const jan4 = new Date(Date.UTC(th.getUTCFullYear(), 0, 4));
+    const n = 1 + Math.round(((th - jan4) / 864e5 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
+    return `S${String(n).padStart(2, "0")} · ${mon.toISOString().slice(0, 10).split("-").reverse().join("/")}`;
+  };
+  const columns = [{label: "Date", kind: "dimension"}, {label: "Site (CM360)", kind: "dimension"}, {label: "Placement", kind: "dimension"},
+    {label: "Placement ID", kind: "dimension"}, {label: "Impressions", kind: "metric"}, {label: "Clicks", kind: "metric"},
+    {label: "Click Rate", kind: "metric", rate: true}, {label: "Semaine", kind: "dimension", derived: true},
+    {label: "Mois", kind: "dimension", derived: true}];
+  const rows = (delivery || []).map((d) => {
+    const p = pl.get(String(d.placement_id)) || {};
+    const imp = Number(d.impressions) || 0, clk = Number(d.clicks) || 0;
+    return [d.date, p.site || "Régie inconnue", p.name || String(d.placement_id), String(d.placement_id), imp, clk,
+            imp ? Math.round(clk / imp * 10000) / 100 : 0, d.date ? week(d.date) : "", (d.date || "").slice(0, 7)];
+  });
+  return {columns, rows};
 }
 
 async function rpEnsureDelivery(force) {
-  if (!RP.delivery || force) RP.delivery = await rpDelivery();
+  if (!RP.delivery || force) {
+    const all = await rpDelivery();
+    const p = RP.source !== "file" && RP.period;
+    RP.delivery = p ? all.filter((d) => !d.date || ((!p.start || d.date >= p.start) && (!p.end || d.date <= p.end))) : all;
+  }
   return RP.delivery;
 }
 
@@ -2806,7 +3016,7 @@ const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[a-z]{2,}$/i;
 
 function rpSchedule() {
   const data = rpData();
-  data.schedule = data.schedule || {frequency: "weekly", weekdays: ["MONDAY"], range: "cumul",
+  data.schedule = data.schedule || {frequency: (rpTplConfig().frequency || "daily"), weekdays: ["MONDAY"], range: "cumul",
     start: RP.campaign.start > isoToday() ? RP.campaign.start : addDays(isoToday(), 1), end: addDays(RP.campaign.end || isoToday(), 1), message: ""};
   return data.schedule;
 }
@@ -3208,10 +3418,8 @@ function rpApplyFile(file) {
   RP.table = raw ? mapped.table : null;
   RP.fileDelivery = RP.table ? deliveryFromTable(p, RP.table)
     : (p.d || []).map(([date, placement_id, impressions, clicks]) => ({date, placement_id, impressions, clicks}));
-  $("rp-adv-q").value = RP.campaign.advertiser || "";
-  $("rp-camp-q").value = RP.campaign.name;
-  $("rp-adv-list").replaceChildren(); $("rp-camp-list").replaceChildren();
-  $("rp-source").textContent = `Données de l'export importé (${file.name}) — pas d'API nécessaire. Pour revenir à l'ad server, recherchez un annonceur.`;
+  $("rp-source").textContent = `Données de l'export importé (${file.name}) — pas d'API nécessaire. Pour revenir à l'ad server, choisissez une campagne (Modifier).`;
+  rpData().validated = true;
   const sites = rpSites();
   const start = el("input", {type: "date", id: "rp-fstart", value: RP.campaign.start, "aria-label": "Début de la campagne"});
   const end = el("input", {type: "date", id: "rp-fend", value: RP.campaign.end, "aria-label": "Fin de la campagne"});
@@ -3717,26 +3925,161 @@ $("pp-go").addEventListener("click", ppGo);
 // Ouverture d'une tâche de reporting : on reprend l'annonceur, la campagne et le template choisis
 async function rpOpen() {
   rpReset();
-  $("rp-adv-q").value = "";
-  $("rp-camp-q").value = "";
-  $("rp-adv-list").replaceChildren(); $("rp-camp-list").replaceChildren();
-  $("rp-camp-q").disabled = true;
   $("rp-send-msg").textContent = "";
+  $("rp-camp-sel").replaceChildren(el("option", {value: ""}, "Choisir une campagne…"));
+  $("rp-d1").value = $("rp-d2").value = "";
+  $("rp-camp-msg").textContent = "";
   await rpSource();
+  await rpLoadAgencyTpls();
   const data = rpData();
-  if (data.advertiser) {
-    $("rp-adv-q").value = data.advertiser.name;
-    $("rp-camp-q").disabled = false;
-    $("rp-camp-q").placeholder = "Rechercher une campagne…";
-  } else if (current.advertiser) {
-    $("rp-adv-q").value = current.advertiser;
+  if (!data.advertiser && current.advertiser) {           // tâche créée sans passer par la liste : retrouvée par son nom
+    const a = ((RP.demo && RP.demo.advertisers) || []).find((x) => x.name === current.advertiser);
+    data.advertiser = {id: a ? a.id : "", name: current.advertiser};
   }
-  await rpSearchAdv();
-  if (data.advertiser) await rpSearchCamp();
-  if (data.campaign && engineReady) await rpLoadCampaign();
-  else if (data.campaign) pendingReporting = true;
-  else rpShowTemplate(data.template === "prompt" ? "prompt" : "");
+  if (data.campaign && data.validated === undefined) data.validated = true;      // tâches d'avant le choix des dates
+  $("rp-adv-label").textContent = data.advertiser ? "· " + data.advertiser.name : "";
+  if (data.period) { $("rp-d1").value = data.period.start || ""; $("rp-d2").value = data.period.end || ""; }
+  const ready = data.file || (data.campaign && data.validated);
+  if (ready && engineReady) await rpLoadCampaign();
+  else if (ready) pendingReporting = true;
+  else rpShowTemplate(data.template || "");
 }
+$("rp-change-adv").addEventListener("click", () => closeTask());
+
+// --- Accueil Reporting : annonceurs de l'agence (liste tenue par l'admin), de l'ad server (API), sinon démo ---
+async function advDirectory() {
+  let list = [];
+  try { list = ((await Store.setting("advertisers")) || []).map((a) => ({...a, source: "agence"})); } catch (e) { handleAuth(e); }
+  let live = {};
+  if (!Store.local) { try { live = await Store.api("GET", "adserver/status"); } catch (e) { handleAuth(e); } }
+  for (const ad of ["cm360", "adform"]) {
+    if (!live[ad]) continue;                                // compte connecté : annonceurs ajoutés automatiquement
+    try {
+      for (const a of (await Store.api("GET", `adserver/advertisers?adserver=${ad}&q=`)).advertisers)
+        list.push({id: a.id, name: a.name, adserver: ad, source: "API"});
+    } catch (e) { handleAuth(e); }
+  }
+  if (!live.cm360 && !live.adform) {                         // pas encore d'API : compte de démonstration
+    try {
+      const demo = RP.demo || (RP.demo = await (await fetch("demo_adserver.json")).json());
+      for (const a of demo.advertisers) list.push({id: a.id, name: a.name, adserver: "cm360", source: "démo"});
+    } catch (e) { /* hors ligne */ }
+  }
+  const seen = new Set();
+  return list.filter((a) => { const k = a.adserver + "|" + a.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+}
+let advList = [];
+async function rpHome() {
+  advList = await advDirectory();
+  const sel = $("rp-home-adv");
+  sel.replaceChildren(el("option", {value: ""}, "Choisir un annonceur…"),
+    ...advList.map((a, i) => el("option", {value: String(i)}, `${a.name} — ${ADSERVER_LABEL[a.adserver] || a.adserver}` + (a.source === "démo" ? " (démo)" : ""))));
+  $("rp-home-go").disabled = true;
+  const src = new Set(advList.map((a) => a.source));
+  $("rp-home-src").textContent = src.has("API") ? "Annonceurs de votre ad server (API) et de l'agence."
+    : "Pas encore de connexion API : annonceurs de l'agence et compte de démonstration (données fictives).";
+}
+$("rp-home-adv").addEventListener("change", () => { $("rp-home-go").disabled = !$("rp-home-adv").value; });
+$("rp-home-go").addEventListener("click", async () => {
+  const a = advList[Number($("rp-home-adv").value)];
+  if (!a) return;
+  try {
+    const id = await Store.create({mode: "reporting", name: `Report ${a.name}`, advertiser: a.name, adserver: a.adserver || "cm360",
+                                   campaign: "", agency_id: me.agency_id || ""});
+    const t = await Store.get(id);
+    await Store.update(id, {data: {...(t.data || {}), rp: {advertiser: {id: a.id, name: a.name, adserver: a.adserver, source: a.source}}}});
+    await openTask(id);
+    refreshList();
+  } catch (e) { $("rp-home-src").textContent = "Ouverture impossible : " + e.message; handleAuth(e); }
+});
+// Annonceur absent de la liste : demande envoyée à l'admin (notification)
+$("rp-req-open").addEventListener("click", () => { $("rp-req-form").hidden = !$("rp-req-form").hidden; if (!$("rp-req-form").hidden) $("rp-req-name").focus(); });
+$("rp-req-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = $("rp-req-name").value.trim();
+  if (!name) return;
+  const msg = $("rp-req-msg");
+  try {
+    const reqs = (await Store.setting("requests")) || [];
+    reqs.push({id: String(Date.now()), kind: "advertiser", name, adserver: $("rp-req-adserver").value,
+               by: me.name || me.email || "", by_id: me.id, ts: Date.now() / 1000, status: "pending"});
+    await Store.putSetting("requests", reqs.slice(-200));
+    $("rp-req-form").reset();
+    msg.className = "ok"; msg.textContent = "Demande envoyée à l'admin : vous serez notifié quand l'annonceur sera ajouté.";
+    refreshNotifs();
+  } catch (err) { msg.className = "err"; msg.textContent = "Envoi impossible : " + err.message; handleAuth(err); }
+});
+
+// --- Cloche : demandes d'ajout (admin) et réponses (demandeur) ---
+const seenKey = () => "umnia_seen_" + (me ? me.id : 0);
+const seenSet = () => { try { return new Set(JSON.parse(localStorage.getItem(seenKey()) || "[]")); } catch (e) { return new Set(); } };
+let notifs = [];
+async function refreshNotifs() {
+  if (!me) return;
+  let reqs = [];
+  try { reqs = (await Store.setting("requests")) || []; } catch (e) { handleAuth(e); return; }
+  const seen = seenSet(), admin = me.role === "admin";
+  notifs = [];
+  for (const r of reqs) {
+    if (admin && r.status === "pending") notifs.push({req: r, kind: "todo", key: r.id + ":pending",
+      text: `Demande d'ajout de l'annonceur « ${r.name} » (${ADSERVER_LABEL[r.adserver] || r.adserver}) par ${r.by || "un utilisateur"}`});
+    else if (r.by_id === me.id && r.status !== "pending") notifs.push({req: r, kind: "info", key: r.id + ":" + r.status,
+      text: r.status === "approved" ? `« ${r.name} » a été ajouté à la liste des annonceurs.` : `Demande « ${r.name} » refusée par l'admin.`});
+  }
+  const unread = notifs.filter((n) => n.kind === "todo" || !seen.has(n.key)).length;
+  $("notif-count").textContent = String(unread);
+  $("notif-count").hidden = !unread;
+  $("notif-btn").setAttribute("aria-label", unread ? `Notifications (${unread} non lue(s))` : "Notifications");
+  renderNotifs();
+}
+function renderNotifs() {
+  const seen = seenSet();
+  $("notif-list").replaceChildren(...(notifs.length ? [...notifs].reverse().map((n) => {
+    const row = el("div", {class: "notif-item" + (n.kind === "todo" || !seen.has(n.key) ? " unread" : "")}, el("span", {}, n.text));
+    if (n.kind === "todo") {
+      const ok = el("button", {type: "button", class: "sm"}, "Ajouter");
+      const no = el("button", {type: "button", class: "secondary sm"}, "Refuser");
+      ok.addEventListener("click", (e) => { e.stopPropagation(); answerRequest(n.req, true); });
+      no.addEventListener("click", (e) => { e.stopPropagation(); answerRequest(n.req, false); });
+      row.append(el("span", {class: "notif-actions"}, ok, no));
+    }
+    return row;
+  }) : [el("p", {class: "hint"}, "Aucune notification.")]));
+}
+async function answerRequest(req, approve) {
+  try {
+    const reqs = (await Store.setting("requests")) || [];
+    const r = reqs.find((x) => x.id === req.id);
+    if (!r) return;
+    r.status = approve ? "approved" : "refused";
+    r.answered = Date.now() / 1000;
+    if (approve) {
+      const advs = (await Store.setting("advertisers")) || [];
+      if (!advs.some((a) => a.name.toLowerCase() === r.name.toLowerCase() && a.adserver === r.adserver))
+        advs.push({id: "a" + r.id, name: r.name, adserver: r.adserver});
+      await Store.putSetting("advertisers", advs);
+    }
+    await Store.putSetting("requests", reqs);
+    await refreshNotifs();
+    if (mode === "reporting" && !current) rpHome();
+  } catch (e) { window.alert("Réponse impossible : " + e.message); handleAuth(e); }
+}
+$("notif-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const open = $("notif-panel").hidden;
+  closeMenus();
+  $("notif-panel").hidden = !open;
+  $("notif-btn").setAttribute("aria-expanded", String(open));
+  if (open) {                                               // ouvrir = lu (sauf les demandes à traiter)
+    const seen = seenSet();
+    for (const n of notifs) if (n.kind === "info") seen.add(n.key);
+    try { localStorage.setItem(seenKey(), JSON.stringify([...seen])); } catch (err) { /* stockage indisponible */ }
+    refreshNotifs();
+  }
+});
+$("notif-panel").addEventListener("click", (e) => e.stopPropagation());
+setInterval(() => { if (!document.hidden) refreshNotifs(); }, 60000);
 let pendingReporting = false;
 
 // Thème clair / sombre / auto (préférence du navigateur), mémorisé localement

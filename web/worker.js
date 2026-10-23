@@ -28,7 +28,9 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS agency_settings (agency_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
      updated REAL NOT NULL, PRIMARY KEY (agency_id, key))`,
 ];
-const SETTING_KEYS = new Set(["site_map", "pivot_views"]);
+const SETTING_KEYS = new Set(["site_map", "pivot_views", "advertisers", "report_templates", "requests"]);
+// Réglages que seul un administrateur modifie (les demandes d'ajout restent ouvertes à tous)
+const ADMIN_SETTING_KEYS = new Set(["advertisers", "report_templates"]);
 const MAX_SETTING_BYTES = 200_000;
 const EMAIL = /^[^\s@<>,;]+@[^\s@<>,;]+\.[a-z]{2,}$/i;
 let schemaReady = false;
@@ -256,6 +258,7 @@ async function api(request, env, url) {
       return json({value: row ? JSON.parse(row.value) : null});
     }
     if (method === "PUT") {
+      if (ADMIN_SETTING_KEYS.has(sk[1]) && user.role !== "admin") return fail("Réservé aux administrateurs.", 403);
       const b = await body(request);
       const value = JSON.stringify(b.value ?? null);
       if (value.length > MAX_SETTING_BYTES) return fail("Réglage trop volumineux.", 413);
