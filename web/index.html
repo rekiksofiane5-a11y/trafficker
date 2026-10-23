@@ -378,8 +378,14 @@ body { overflow: hidden; }
 .who { display: grid; min-width: 0; line-height: 1.2; } .who > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who #account-name { font-weight: 600; font-size: .9rem; } .who .hint { margin: 0; font-size: .72rem; }
 .app-body { flex: 1; display: flex; min-height: 0; }
-.history { order: 2; width: 23rem; flex: none; margin: 14px 14px 14px 0; background: var(--card); border: 1px solid var(--border); border-radius: 18px;
-  box-shadow: 0 6px 24px #00000014; display: flex; flex-direction: column; min-height: 0; }
+/* Historique : fenêtre posée au-dessus de la zone de travail (qui garde toute sa largeur), transparente à 30 % */
+.history { position: fixed; z-index: 20; top: calc(var(--appbar-h, 60px) + 10px); right: 14px; bottom: 14px; width: min(23rem, calc(100vw - 28px));
+  background: color-mix(in srgb, var(--card) 70%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 12px 40px #00000033;
+  display: flex; flex-direction: column; min-height: 0; animation: hist-in .16s ease-out; }
+.history[hidden] { display: none; }
+@keyframes hist-in { from { opacity: 0; transform: translateX(12px); } }
+@media (prefers-reduced-motion: reduce) { .history { animation: none; } }
 .history-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 6px; }
 .history-head h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 1.15rem; }
 .icon-btn { background: none; color: var(--muted); padding: 4px 8px; font-weight: 400; }
@@ -428,7 +434,6 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 #admin-dialog { width: min(52rem, calc(100% - 32px)); }
 .ok { color: var(--ok); }
 @media (max-width: 1000px) { .appbar { flex-wrap: wrap; gap: 10px; }
-  .history { position: fixed; z-index: 15; right: 0; top: 0; bottom: 0; margin: 0; border-radius: 18px 0 0 18px; max-width: 92vw; }
   .who { display: none; } }
 </style>
 </head>
@@ -1800,7 +1805,7 @@ async function refreshList() {
       el("span", {class: "tm"}, el("span", {class: "t"}, t.name),
          el("span", {class: "tl"}, el("span", {class: "badge " + st.cls}, st.label), sub ? el("span", {class: "s"}, sub) : "")),
       el("span", {class: "when"}, ago(t.updated)), el("span", {class: "chev"}, icon("chevron")));
-    b.addEventListener("click", () => { openTask(t.id); if (window.innerWidth < 1000) setHistory(false); });
+    b.addEventListener("click", () => openTask(t.id));
     return b;
   }));
 }
@@ -1843,19 +1848,27 @@ function ago(ts) {
   return new Date(ts * 1000).toLocaleDateString("fr-FR");
 }
 
-// Panneau d'historique : ouvert par défaut sur grand écran, état mémorisé
+// Historique : fenêtre au-dessus du travail (ne rétrécit pas la page), fermée au départ ;
+// se ferme avec ✕, Échap, un clic à côté ou à l'ouverture d'une tâche
 function setHistory(open) {
+  if (open) syncAppbar();                              // sous la barre du haut (sa hauteur varie avec la largeur)
   $("history").hidden = !open;
   $("history-btn").setAttribute("aria-expanded", String(open));
-  try { localStorage.setItem("umnia_history", open ? "1" : "0"); } catch (e) { /* stockage indisponible */ }
+  if (open) $("history-q").focus();
 }
-$("history-btn").addEventListener("click", () => setHistory($("history").hidden));
-$("history-close").addEventListener("click", () => setHistory(false));
-(() => {
-  let open = window.innerWidth >= 1000;
-  try { const v = localStorage.getItem("umnia_history"); if (v !== null) open = v === "1"; } catch (e) { /* idem */ }
-  setHistory(open);
-})();
+$("history-btn").addEventListener("click", (e) => { e.stopPropagation(); setHistory($("history").hidden); });
+$("history-close").addEventListener("click", () => { setHistory(false); $("history-btn").focus(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("history").hidden && !document.querySelector("dialog[open]")) setHistory(false); });
+document.addEventListener("click", (e) => {
+  if (!$("history").hidden && !$("history").contains(e.target) && !e.target.closest("dialog")) setHistory(false);
+});
+function syncAppbar() {
+  const bar = document.querySelector(".appbar");
+  document.documentElement.style.setProperty("--appbar-h", bar.getBoundingClientRect().bottom + "px");
+}
+window.addEventListener("resize", syncAppbar);
+syncAppbar();
+setHistory(false);
 $("history-q").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(refreshList, 250); });
 
 function handleAuth(e) {
@@ -1967,6 +1980,7 @@ async function openTask(id) {
   let t;
   try { t = await Store.get(id); } catch (e) { handleAuth(e); return; }
   current = {...t, data: t.data || {}};
+  setHistory(false);                                   // l'historique se referme sur la tâche ouverte
   resetWork();
   $("empty-view").hidden = true;
   $("task-view").hidden = false;

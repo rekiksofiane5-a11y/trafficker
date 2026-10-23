@@ -55,7 +55,20 @@ def page(site):
         browser.close()
 
 
+def _history(page):
+    """L'historique est une fenêtre fermée par défaut : l'ouvrir avant d'y cliquer."""
+    if not page.is_visible("#history"):
+        page.click("#history-btn")
+        page.wait_for_selector("#history:not([hidden])")
+
+
+def _open_task(page, name):
+    _history(page)
+    page.click(f".task-item:has-text('{name}')")
+
+
 def _create_task(page, name, **fields):
+    _history(page)
     page.click("#new-task")
     page.fill("#cd-name", name)
     for key, value in fields.items():
@@ -312,12 +325,13 @@ def test_tasks_are_saved_restored_and_reporting_mode(page):
     page.reload()
     page.wait_for_selector("text=Moteur prêt", timeout=120000)
     assert page.is_visible("#empty-view")
-    page.click(".task-item:has-text('Lancement printemps')")
+    _open_task(page, "Lancement printemps")
     page.wait_for_selector("#result:not(.hidden)")
     page.wait_for_selector("#back-step")                       # étape 2 restaurée
     assert page.input_value("#cf-campaign_name") == "Printemps"      # la pop-up fait foi
     assert page.input_value("#cf-advertiser_name") == "Annonceur Démo"
     assert page.input_value("#instructions") == "URL : https://www.exemple.fr"
+    _history(page)
     page.click(".scopes [data-scope=agency]")
     page.wait_for_selector("#task-list .task-item")
     page.click(".modes [data-mode=reporting]")
@@ -422,7 +436,7 @@ def test_reporting_check_and_scheduled_reports(page):
     page.wait_for_selector("#rp-send-msg.ok")
     assert page.locator("#rp-scheduled tbody tr").count() == 2
     assert "trafic@lemonde.fr" in page.text_content(".rp-regie .sugg")                # carnet d'adresses
-    page.click(".task-item:has-text('Check SUV')")                                   # réouverture
+    _open_task(page, "Check SUV")                                   # réouverture
     page.wait_for_selector("#rp-template:not([hidden])")
     assert page.locator(".tpl.on").get_attribute("data-tpl") == "regies"
     page.click(".modes [data-mode=trafficking]")
@@ -489,7 +503,7 @@ def test_cm360_prompt_without_api(page):
     assert 'campaign "Noël 2026"' in prompt and "for last week" in prompt and "Active View" in prompt
     assert "Placement ID" in page.text_content("#pp-settings")
     page.click("#pp-copy")
-    page.click(".task-item:has-text('Prompt visibilité')")                   # réouverture : prompt restauré
+    _open_task(page, "Prompt visibilité")                   # réouverture : prompt restauré
     page.wait_for_selector("#pp-prompt")
     assert page.input_value("#pp-prompt") == prompt
     page.click("#pp-presets button:has-text('Report régie')")          # sans campagne choisie : questions
@@ -528,7 +542,7 @@ def test_reporting_from_cm360_export_file(page, tmp_path):
     page.click("#rp-launch")
     page.wait_for_selector("#rp-sched-table")
     assert "à programmer dans CM360" in page.text_content("#rp-sched-table")
-    page.click(".task-item:has-text('UPSA export')")             # réouverture : export conservé
+    _open_task(page, "UPSA export")             # réouverture : export conservé
     page.wait_for_selector("#rp-fstart")
     assert page.input_value("#rp-fend") == "2026-10-23"
     page.click(".modes [data-mode=trafficking]")
@@ -561,7 +575,12 @@ def test_app_bar_history_and_menus(page):
     """Barre du haut (modes, recherche, thème, compte, historique) et panneau Historique (récents)."""
     page.click(".modes [data-mode=trafficking]")
     _create_task(page, "Tâche historique")
-    assert page.is_visible("#history")
+    assert not page.is_visible("#history")                                   # fermé à l'ouverture de la tâche
+    main_w = page.locator("#main").bounding_box()["width"]
+    _history(page)
+    assert page.locator("#main").bounding_box()["width"] == main_w            # ne rétrécit pas la zone de travail
+    bg = page.evaluate("getComputedStyle(document.getElementById('history')).backgroundColor")
+    assert bg.startswith("rgba(") or "/ 0.7" in bg, bg                         # transparente à 30 %
     item = page.locator(".task-item:has-text('Tâche historique')")
     assert "Brouillon" in item.text_content() and "instant" in item.text_content()
     assert page.locator("#search").count() == 0                              # plus de recherche en haut
@@ -575,6 +594,11 @@ def test_app_bar_history_and_menus(page):
     assert not page.is_visible("#history") and page.get_attribute("#history-btn", "aria-expanded") == "false"
     page.click("#history-btn")
     assert page.is_visible("#history")
+    page.keyboard.press("Escape")                                              # Échap ferme
+    assert not page.is_visible("#history")
+    _history(page)
+    page.mouse.click(40, 400)                                                  # clic à côté ferme
+    assert not page.is_visible("#history")
     assert page.text_content("#theme-btn").strip() == ""                       # icône seule
     before = page.evaluate("document.documentElement.classList.contains('is-dark')")
     page.click("#theme-btn")
@@ -612,7 +636,7 @@ def test_pivot_table_after_export_import(page):
         page.click("#pv-dl")
     wb = openpyxl.load_workbook(io.BytesIO(open(dl.value.path(), "rb").read()))
     assert wb.sheetnames == ["Tableau croisé", "Données"]
-    page.click(".task-item:has-text('Croisé export')")                       # réouverture : vue conservée
+    _open_task(page, "Croisé export")                       # réouverture : vue conservée
     page.wait_for_selector("#pv-table")
     assert page.input_value("#pv-r1") == "Date"
     page.click(".modes [data-mode=trafficking]")
