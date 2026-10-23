@@ -172,23 +172,10 @@
         ctx.beginPath(); ctx.moveTo(c[0].x, c[0].y); ctx.bezierCurveTo(c[1].x, c[1].y, c[2].x, c[2].y, c[3].x, c[3].y); ctx.stroke();
       }
       ctx.setLineDash([]);
-      // nœuds, étiquettes des formats, feuilles
-      ctx.font = "500 11px Inter, system-ui, sans-serif";
-      ctx.textBaseline = "middle";
-      let fi = 0;
+      // nœuds et feuilles (sans texte)
       for (const n of tree.nodes) {
         if (n.kind === "top") continue;
         const p = pos(n);
-        if (n.kind === "format" && W >= 480) {                // étiquettes seulement quand il y a la place
-          const w = ctx.measureText(n.label).width + 30, x = p.x - w / 2, y = p.y + (fi++ % 2 ? 34 : 12);   // en quinconce
-          ctx.fillStyle = col(pal.pill, dark ? 0.85 : 0.9);
-          ctx.strokeStyle = col(pal.line, 0.35);
-          ctx.beginPath(); ctx.roundRect(x, y, w, 22, 11); ctx.fill(); ctx.stroke();
-          ctx.fillStyle = col(blend(pal.node, cur.accent, cur.mix * 0.6), 0.9);
-          ctx.beginPath(); ctx.arc(x + 11, y + 11, 3, 0, 6.283); ctx.fill();
-          ctx.fillStyle = col(pal.text, 0.95);
-          ctx.fillText(n.label, x + 19, y + 11.5);
-        }
         const r = n.kind === "split" ? 5 : n.kind === "format" ? 4 : n.kind === "mid" ? 2.4 : 3;
         const leafLit = n.kind === "leaf" ? cur.leaves * (0.5 + 0.5 * Math.sin(t * 2 + n.ph)) : 0;
         const c = blend(pal.node, cur.accent, Math.max(cur.mix * (n.kind === "leaf" ? 0.8 : 0.3), leafLit));
@@ -198,14 +185,6 @@
         }
         ctx.fillStyle = col(c, n.kind === "leaf" ? 0.55 + leafLit * 0.45 : 0.9);
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 6.283); ctx.fill();
-      }
-      // étiquettes des feuilles de la branche survolée (device, ciblage…)
-      if (hot && hotLevel > 0.3) {
-        const leaf = hot[3].b, p = pos(leaf);
-        ctx.fillStyle = col(pal.text, hotLevel);
-        ctx.textAlign = "center";
-        ctx.fillText(leaf.label, p.x, p.y + 16);
-        ctx.textAlign = "start";
       }
       // impulsions lumineuses
       for (const pu of pulses) {
