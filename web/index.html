@@ -329,16 +329,9 @@ table.pv.rz .pv-name { max-width: none; }
 .stepper li.on::before { box-shadow: 0 0 0 4px var(--paper), 0 0 0 8px color-mix(in srgb, var(--gold) 30%, transparent); }
 .stepper li.on strong { color: var(--gold); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-/* Sphère : trois rendus superposés, fondu selon l'état ; flotte doucement, tourne pendant l'analyse */
-.orb { position: relative; width: min(640px, 100%); aspect-ratio: 1; justify-self: center; pointer-events: none; }
-.orb img { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transition: opacity .8s ease;
-  animation: orb-float 9s ease-in-out infinite; }
-[data-state="idle"] .o-repos, [data-state="file"] .o-repos, [data-state="busy"] .o-analyse, [data-state="ready"] .o-pret { opacity: 1; }
-[data-state="busy"] .orb img { animation: orb-spin 26s linear infinite, orb-pulse 2.2s ease-in-out infinite; }
-@keyframes orb-float { 50% { transform: translateY(-10px); } }
-@keyframes orb-spin { to { transform: rotate(360deg); } }
-@keyframes orb-pulse { 50% { filter: brightness(1.12) saturate(1.1); } }
-@media (prefers-reduced-motion: reduce) { .orb img { animation: none !important; transition: none; } }
+/* Anneau de particules (web/ring.js) : canvas animé, réagit à la souris et à l'état (data-state) */
+.orb { position: relative; width: min(640px, 100%); aspect-ratio: 1; justify-self: center; }
+.orb canvas { position: absolute; inset: 0; display: block; }
 @media (max-width: 980px) { .hero, .pm-hero, #pm-step[data-state="ready"] { grid-template-columns: 1fr; } .orb { display: none; } .feats { grid-template-columns: 1fr; } }
 /* Coquille : connexion, barre latérale, tâches */
 body { overflow: hidden; }
@@ -558,11 +551,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             <span><strong>Suivi en temps réel</strong><span>Chaque étape de l'analyse s'affiche au fil de l'eau.</span></span></li>
         </ul>
       </div>
-      <div class="orb" aria-hidden="true">
-        <img class="o-repos" src="assets/orb_repos.webp" alt="" decoding="async">
-        <img class="o-analyse" src="assets/orb_analyse.webp" alt="" decoding="async" loading="lazy">
-        <img class="o-pret" src="assets/orb_pret.webp" alt="" decoding="async" loading="lazy">
-      </div>
+      <div class="orb" data-ring aria-hidden="true"></div>
     </div>
 
     <div id="task-view" class="task-view" hidden>
@@ -643,11 +632,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             </div>
           </div>
         </div>
-        <div class="orb" aria-hidden="true">
-          <img class="o-repos" src="assets/orb_repos.webp" alt="" decoding="async">
-          <img class="o-analyse" src="assets/orb_analyse.webp" alt="" decoding="async" loading="lazy">
-          <img class="o-pret" src="assets/orb_pret.webp" alt="" decoding="async" loading="lazy">
-        </div>
+        <div class="orb" data-ring aria-hidden="true"></div>
       </section>
 
       <section id="result" class="card hidden" aria-labelledby="t-res" aria-live="polite">
@@ -1957,7 +1942,7 @@ for (const ev of ["dragleave", "drop"])
   $("hero-drop").addEventListener(ev, (e) => { e.preventDefault(); $("hero-drop").classList.remove("over"); });
 $("hero-drop").addEventListener("drop", (e) => heroImport(e.dataTransfer.files[0]));
 
-// Sphère : trois images (repos, analyse, prêt), fondu selon data-state du conteneur
+
 $("cd-cancel").addEventListener("click", () => $("create-dialog").close());
 $("create-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -3614,5 +3599,6 @@ if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEven
 boot();
 start();
 </script>
+<script src="ring.js"></script>
 </body>
 </html>
