@@ -298,8 +298,8 @@ def test_step_by_step_and_direct_edit_in_preview(page, tmp_path):
                  "Hiver,Notoriété,Le Monde,Home,Pavé,Noël,02/11/2026,15/12/2026,https://x.fr\n"
                  "Hiver,Trafic,L'Équipe,Article,Méga-bannière,Soldes,02/11/2026,15/12/2026,https://x.fr\n",
                  encoding="utf-8")
-    page.select_option("#adserver", "cm360")
     _analyze(page, str(p), validate=False)
+    page.select_option("#adserver", "cm360")
     pane = lambda: page.inner_text("#preview-pane")
     # Étape 1 : emplacements sous la régie, pas encore d'annonces ni de créas
     assert "1. Emplacements" in pane() and "Placement" in pane() and "Tracking" not in pane()
@@ -899,5 +899,30 @@ def test_reporting_home_advertiser_request_bell_and_agency_templates(page):
     page.click("#rp-agency-tpls .tpl")
     _scope(page, "Citrate")
     page.wait_for_selector(".kpis")                              # modèle « check »
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []
+
+
+def test_rename_task(page):
+    """Titre : crayon (ou double-clic) -> champ, Entrée enregistre, Échap annule ; historique : crayon par tâche."""
+    _report_space(page, "Banque Démo")
+    page.click("#rename-task")
+    page.fill("#task-title-input", "Campagne renommée")
+    page.press("#task-title-input", "Escape")
+    assert page.text_content("#task-title") == "Report Banque Démo"
+    page.dblclick("#task-title")
+    page.fill("#task-title-input", "Campagne renommée")
+    page.press("#task-title-input", "Enter")
+    assert page.text_content("#task-title") == "Campagne renommée" and not page.is_visible("#task-title-input")
+    page.evaluate("closeTask()")
+    _history(page)
+    page.wait_for_selector(".task-item:has-text('Campagne renommée')")
+    row = page.locator(".task-row", has=page.locator(".task-item:has-text('Campagne renommée')"))
+    row.hover()
+    page.once("dialog", lambda d: d.accept("Bilan banque"))
+    row.locator(".ti-rename").click()
+    page.wait_for_selector(".task-item:has-text('Bilan banque')")
+    _open_task(page, "Bilan banque")
+    page.wait_for_function("document.getElementById('task-title').textContent === 'Bilan banque'")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []

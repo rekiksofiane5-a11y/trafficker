@@ -28,7 +28,6 @@
   --halo: rgba(120, 160, 205, .14);
 }
 @font-face { font-family: "Inter"; src: url("assets/inter-var.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: "DM Serif Display"; src: url("assets/dm-serif-display.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 * { box-sizing: border-box; }
 body { margin: 0; color: var(--text); font: 15px/1.55 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
        background: radial-gradient(1200px 900px at 108% 70%, color-mix(in srgb, var(--gold) 9%, transparent), transparent 60%),
@@ -344,7 +343,9 @@ table.pv.rz .pv-name { max-width: none; }
 /* Plan déposé : la zone de dépôt se replie en une ligne après la production */
 /* Accueil et carte du plan média (maquette) : titre serif, carte blanche, sphère à droite.
    États : idle (dépôt) -> file (fichier choisi) -> busy (étapes du moteur) -> ready */
-.serif { font-family: "DM Serif Display", Georgia, "Times New Roman", serif; font-weight: 400; }
+/* titres : même famille que le logo (Inter fin, lettres espacées) pour rester cohérent */
+.serif { font-family: Inter, system-ui, sans-serif; font-weight: 300; letter-spacing: .01em; }
+h1.serif, .pm-h.serif { letter-spacing: -.005em; }
 .hero, .pm-hero { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 2vw; }
 .hero { margin: 0; padding: 4vh 2vw 2vh 4vw; min-height: calc(100vh - var(--appbar-h, 80px) - 40px); }
 .pm-hero { padding: 3vh 2vw 4vh 4vw; margin-top: 6px; min-height: calc(100vh - var(--appbar-h, 80px) - 60px); }
@@ -487,6 +488,11 @@ body { overflow: hidden; }
 .task-item .s { display: block; min-width: 0; font-size: .72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .task-item .when { font-size: .72rem; color: var(--muted); white-space: nowrap; }
 .task-item .chev { color: var(--muted); }
+.task-row { position: relative; }
+.ti-rename { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; padding: 0;
+  display: grid; place-items: center; border-radius: 8px; background: var(--card); color: var(--muted); opacity: 0; }
+.task-row:hover .ti-rename, .ti-rename:focus-visible { opacity: 1; }
+.ti-rename:hover { color: var(--text); background: var(--chip); }
 .badge { display: inline-block; flex: none; white-space: nowrap; padding: 1px 9px; border-radius: 999px; font-size: .72rem; font-weight: 500; }
 .badge.b-run { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
 .badge.b-done { background: var(--chip); color: var(--muted); }
@@ -508,7 +514,12 @@ body { overflow: hidden; }
 .task-view { max-width: 120rem; margin: 0 auto; }
 .task-view > .card:first-of-type { max-width: 60rem; }
 .task-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
-.task-head h1 { margin: 0; font-size: 1.4rem; }
+.task-head h1 { margin: 0; font-size: 1.4rem; font-weight: 400; letter-spacing: .02em; cursor: text; }
+.title-row { display: flex; align-items: center; gap: 6px; }
+.title-input { font: 400 1.4rem/1.2 Inter, system-ui, sans-serif; letter-spacing: .02em; padding: 2px 8px; min-width: 18rem;
+  border: 1px solid var(--accent); border-radius: 8px; background: var(--card); color: var(--text); }
+#rename-task { width: 32px; height: 32px; opacity: .6; }
+#rename-task:hover, #rename-task:focus-visible { opacity: 1; }
 .task-head-right { display: flex; gap: 10px; align-items: flex-end; }
 .adserver-pick { margin: 0; }
 .lbl { margin-top: 14px; }
@@ -612,7 +623,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 
     <div id="empty-view" class="empty hero" data-state="idle">
       <div class="hero-main">
-        <h1 id="empty-title" class="serif">Un nouveau projet ?</h1>
+        <h1 id="empty-title" class="serif">Un nouveau projet ?</h1>
         <p class="hero-sub serif" id="empty-sub">Partagez-moi votre PM.</p>
         <div class="up-card">
           <div id="hero-drop" class="hero-drop" tabindex="0" role="button" aria-label="Importer mon plan média (Excel ou CSV)">
@@ -644,7 +655,13 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
     <div id="task-view" class="task-view" hidden>
       <div class="task-head">
         <div>
-          <h1 id="task-title"></h1>
+          <div class="title-row">
+            <h1 id="task-title" title="Double-clic pour renommer"></h1>
+            <input id="task-title-input" class="title-input" maxlength="120" aria-label="Nom de la tâche" hidden>
+            <button type="button" id="rename-task" class="ghost icon-only" aria-label="Renommer la tâche" title="Renommer">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>
+            </button>
+          </div>
           <div class="chips" id="task-chips"></div>
         </div>
         <div class="task-head-right">
@@ -681,7 +698,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             </div>
           </div>
           <div id="pm-input">
-            <h2 id="t-plan" class="pm-h serif">Un nouveau projet ?</h2>
+            <h2 id="t-plan" class="pm-h serif">Un nouveau projet ?</h2>
             <p class="hero-sub serif">Partagez-moi votre PM.</p>
             <div class="up-card">
               <div id="drop" class="hero-drop" tabindex="0" role="button" aria-describedby="drop-hint">
@@ -2032,7 +2049,7 @@ function setMode(m) {
   mode = m;
   setTabs(".modes button", "mode", m);
   $("empty-view").dataset.mode = m;
-  $("empty-title").textContent = m === "reporting" ? "Quel reporting voulez-vous lancer ?" : "Un nouveau projet ?";
+  $("empty-title").textContent = m === "reporting" ? "Quel reporting voulez-vous lancer ?" : "Un nouveau projet ?";
   $("empty-sub").textContent = m === "reporting"
     ? "Choisissez l'annonceur, puis ouvrez son espace report : template, campagne et dates."
     : "Partagez-moi votre PM.";
@@ -2069,7 +2086,14 @@ async function refreshList() {
          el("span", {class: "tl"}, el("span", {class: "badge " + st.cls}, st.label), sub ? el("span", {class: "s"}, sub) : "")),
       el("span", {class: "when"}, ago(t.updated)), el("span", {class: "chev"}, icon("chevron")));
     b.addEventListener("click", () => openTask(t.id));
-    return b;
+    const rn = el("button", {type: "button", class: "ti-rename", "aria-label": "Renommer " + t.name, title: "Renommer"}, icon("pencil"));
+    rn.addEventListener("click", async () => {
+      const name = (window.prompt("Nouveau nom de la tâche :", t.name) || "").trim();
+      if (!name || name === t.name) return;
+      if (current && current.id === t.id) { current.name = name; renderTaskHead(); saveSoon(0); return; }
+      try { await Store.update(t.id, {name}); refreshList(); } catch (e) { window.alert("Renommage impossible : " + e.message); handleAuth(e); }
+    });
+    return el("div", {class: "task-row"}, b, rn);
   }));
 }
 
@@ -2082,6 +2106,7 @@ const ICONS = {
   spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
+  pencil: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
 };
 function icon(name) {
   const svgEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -2123,7 +2148,7 @@ $("history-btn").addEventListener("click", (e) => { e.stopPropagation(); setHist
 $("history-close").addEventListener("click", () => { setHistory(false); $("history-btn").focus(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("history").hidden && !document.querySelector("dialog[open]")) setHistory(false); });
 document.addEventListener("click", (e) => {
-  if (!$("history").hidden && !$("history").contains(e.target) && !e.target.closest("dialog")) setHistory(false);
+  if (!$("history").hidden && e.target.isConnected && !$("history").contains(e.target) && !e.target.closest("dialog")) setHistory(false);
 });
 function syncAppbar() {
   const bar = document.querySelector(".appbar");
@@ -2238,6 +2263,7 @@ function renderTaskHead() {
 }
 
 async function openTask(id) {
+  endTaskRename(true);
   await flushSave();
   let t;
   try { t = await Store.get(id); } catch (e) { handleAuth(e); return; }
@@ -2280,6 +2306,7 @@ async function restoreWork(t) {
 }
 
 function closeTask() {
+  endTaskRename(true);
   flushSave();
   current = null;
   resetWork();
@@ -2318,6 +2345,30 @@ async function flushSave() {
   } catch (e) { $("sync").textContent = " · enregistrement impossible : " + e.message; handleAuth(e); }
 }
 $("instructions").addEventListener("input", () => saveSoon());
+// Renommer la tâche : crayon ou double-clic sur le titre ; Entrée valide, Échap annule
+function startTaskRename() {
+  if (!current) return;
+  const inp = $("task-title-input");
+  inp.value = current.name;
+  $("task-title").hidden = $("rename-task").hidden = true;
+  inp.hidden = false;
+  inp.focus(); inp.select();
+}
+function endTaskRename(save) {
+  const inp = $("task-title-input");
+  if (inp.hidden) return;
+  const v = inp.value.trim();
+  inp.hidden = true;
+  $("task-title").hidden = $("rename-task").hidden = false;
+  if (save && current && v && v !== current.name) { current.name = v; renderTaskHead(); saveSoon(0); }
+}
+$("rename-task").addEventListener("click", startTaskRename);
+$("task-title").addEventListener("dblclick", startTaskRename);
+$("task-title-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); endTaskRename(true); }
+  if (e.key === "Escape") { e.preventDefault(); endTaskRename(false); }
+});
+$("task-title-input").addEventListener("blur", () => endTaskRename(true));
 window.addEventListener("beforeunload", () => { flushSave(); });
 
 // Compte : paramètres, administration, déconnexion
