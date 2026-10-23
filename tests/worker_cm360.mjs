@@ -40,7 +40,7 @@ const fake = createServer(async (req, res) => {
       {id: "11", name: "PAVE", siteId: "5", size: {width: 300, height: 250}, pricingSchedule: {startDate: "2026-10-01", endDate: "2026-12-31"}}]});
     return send({placements: [{id: "21", name: "VIDEO", siteId: "6", size: {width: 640, height: 360}}]});
   }
-  if (p === "/sites") return send({sites: [{id: "5", name: "Le Monde"}, {id: "6", name: "Teads"}]});
+  if (p === "/sites") return send({sites: [{id: "5", name: "Le Monde", directorySiteId: "105"}, {id: "6", name: "Teads"}]});
   if (p === "/reports" && req.method === "POST") return send({id: "r1", ...JSON.parse(raw)});
   if (p === "/reports/r1/run") return send({id: "f1", status: "PROCESSING"});
   if (p === "/reports/r1/files/f1") {
@@ -97,6 +97,9 @@ try {
   const adv = (await api("GET", "adserver/advertisers?q=UPSA")).data.advertisers;
   assert.equal(adv.length, 2);
   assert.ok(seen.some((s) => s.path.endsWith("/advertisers") && s.query.includes("searchString=UPSA")));
+  const sites = (await api("GET", "adserver/sites")).data;                                       // répertoire des sites CM360
+  assert.deepEqual(sites.sites[0], {id: "5", name: "Le Monde", directory_site_id: "105"});
+  assert.ok(seen.some((s) => s.path.endsWith("/sites") && s.query.includes("maxResults=1000")));
   const camps = (await api("GET", "adserver/campaigns?advertiser_id=9001")).data.campaigns;
   assert.deepEqual(camps[0], {id: "3417", name: "Citrate 2026", advertiser_id: "9001", start: "2026-10-01", end: "2026-12-31"});
   const pl = (await api("GET", "adserver/placements?campaign_id=3417")).data;

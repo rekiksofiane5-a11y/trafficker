@@ -1,5 +1,5 @@
 {
- "note": "Données de démonstration (aucun ad server connecté). Dates relatives au jour J.",
+ "note": "Données de démonstration (aucun ad server connecté). Dates relatives au jour J. Sites : répertoire de démonstration (noms de sites CM360 fictifs), remplacé par celui du compte via l'API.",
  "advertisers": [
   {
    "id": "9001",
@@ -223,6 +223,92 @@
      "size": "1x1"
     }
    ]
+  }
+ ],
+ "sites": [
+  {
+   "id": "1000",
+   "name": "AmplifiProgrammatic"
+  },
+  {
+   "id": "1001",
+   "name": "Amnet"
+  },
+  {
+   "id": "1002",
+   "name": "Canal+"
+  },
+  {
+   "id": "1003",
+   "name": "DV360 Open Market"
+  },
+  {
+   "id": "1004",
+   "name": "Facebook"
+  },
+  {
+   "id": "1005",
+   "name": "Instagram"
+  },
+  {
+   "id": "1006",
+   "name": "Le Figaro"
+  },
+  {
+   "id": "1007",
+   "name": "Le Monde"
+  },
+  {
+   "id": "1008",
+   "name": "Le Parisien"
+  },
+  {
+   "id": "1009",
+   "name": "Linkedin"
+  },
+  {
+   "id": "1010",
+   "name": "Manageo"
+  },
+  {
+   "id": "1011",
+   "name": "Meta"
+  },
+  {
+   "id": "1012",
+   "name": "Netflix"
+  },
+  {
+   "id": "1013",
+   "name": "Seedtag"
+  },
+  {
+   "id": "1014",
+   "name": "Snapchat"
+  },
+  {
+   "id": "1015",
+   "name": "Teads"
+  },
+  {
+   "id": "1016",
+   "name": "TF1"
+  },
+  {
+   "id": "1017",
+   "name": "TikTok"
+  },
+  {
+   "id": "1018",
+   "name": "Venatus"
+  },
+  {
+   "id": "1019",
+   "name": "Web366"
+  },
+  {
+   "id": "1020",
+   "name": "YouTube"
   }
  ]
 }

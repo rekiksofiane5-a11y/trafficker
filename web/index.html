@@ -242,6 +242,8 @@ table.pivot tr.total td { font-weight: 700; border-top: 2px solid var(--text); p
 .checks-list .sub { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
 .checks-list li.ok::before { content: "✓"; background: var(--ok); }
 .more-actions { justify-content: flex-start; opacity: .85; }
+.site-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.site-pick input { flex: 1 1 9rem; padding: 5px 8px; font-size: .8rem; }
 .more-actions .sm { font-size: .82rem; padding: 6px 12px; }
 @media (max-width: 1200px) { .pm-ready { grid-template-columns: 1fr; } .ready-side { border-left: 0; padding-left: 0; }
   .result-grid { grid-template-columns: 1fr; } .checks { position: static; } }
@@ -1140,7 +1142,15 @@ function renderSummary(d) {
     more.append(ref);
   }
   box.append(more);
-  // Points à vérifier : bloquants d'abord, puis alertes
+  renderChecks(buildChecks(d));
+  lastResult = d;
+  renderPreviewPane();
+  return d.errors.length === 0 && !(d.specs || []).some((s) => s.level === "erreur");
+}
+
+// Points à vérifier : bloquants d'abord, puis alertes
+function buildChecks(d) {
+  const cm360 = $("adserver").value === "cm360";
   const checks = [];
   for (const e of d.errors) checks.push({level: "block", text: e});
   if (cm360) for (const i of d.cm360_issues || [])
@@ -1153,11 +1163,92 @@ function renderSummary(d) {
   if (d.to_complete && d.to_complete.length)
     checks.push({level: "warn", text: `${d.to_complete.length} information(s) à compléter dans le plan (cases orange)`,
                  sub: d.to_complete.map((t) => t.split(" — ")[0]).slice(0, 4).join(" · ")});
+  for (const c of siteChecks()) checks.push(c);
   checks.sort((x, y) => (x.level === "block" ? 0 : 1) - (y.level === "block" ? 0 : 1));
-  renderChecks(checks);
-  lastResult = d;
-  renderPreviewPane();
-  return d.errors.length === 0 && !(d.specs || []).some((s) => s.level === "erreur");
+  return checks;
+}
+
+// --- Sites de l'ad server : les régies du PM prennent le nom exact du site CM360 (API) ---
+let siteDir = null, siteIssues = [];
+const siteKey = (v) => String(v || "").replace(/\s*\+\s*$/, "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+  .replace(/\+/g, "plus").replace(/[^a-z0-9]+/g, "").replace(/(fr|france)$/, "");
+// « Canal+ » -> CanalPlus, « TF1 + » -> TF1 : le site écrit dans le nom d'emplacement
+const siteToken = (name) => String(name || "").replace(/\s*\+\s*$/, "").replace(/\+/g, "Plus").normalize("NFKD")
+  .replace(/[\u0300-\u036f]/g, "").split(/[^A-Za-z0-9_]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join("");
+async function loadSiteDir() {
+  const adserver = $("adserver").value;
+  if (siteDir && siteDir.adserver === adserver) return siteDir;
+  let sites = null, source = "démo";
+  if (!Store.local) {
+    try {
+      if ((await Store.api("GET", "adserver/status"))[adserver]) {
+        sites = (await Store.api("GET", "adserver/sites?adserver=" + adserver)).sites;
+        source = "API";
+      }
+    } catch (e) { handleAuth(e); }
+  }
+  if (!sites) {
+    try { sites = (await (await fetch("demo_adserver.json")).json()).sites || []; } catch (e) { sites = []; }
+  }
+  siteDir = {adserver, source, sites, byKey: new Map(sites.map((x) => [siteKey(x.name), x]))};
+  return siteDir;
+}
+function siteSuggestions(name, n = 3) {
+  const k = siteKey(name);
+  const score = (x) => {
+    const sk = siteKey(x.name);
+    if (!k || !sk) return 0;
+    if (sk.includes(k) || k.includes(sk)) return 3 + Math.min(k.length, sk.length) / Math.max(k.length, sk.length);
+    let p = 0;
+    while (p < k.length && k[p] === sk[p]) p++;
+    return p >= 3 ? p / Math.max(k.length, sk.length) : 0;
+  };
+  return siteDir.sites.map((x) => [score(x), x]).filter(([v]) => v > 0).sort((a, b) => b[0] - a[0]).slice(0, n).map(([, x]) => x);
+}
+// Une régie -> le site de l'ad server (nom et ID) ; le partenaire écrit dans le nom suit, sauf achat via DSP
+function applySite(rows, site, render = true) {
+  for (const i of rows) {
+    const r = table[i];
+    if (!r) continue;
+    if (r.partner && siteKey(r.partner) === siteKey(r.site_name)) r.partner = siteToken(site.name);
+    r.site_name = site.name;
+    r.site_id = site.id;
+  }
+  if (!columns.some((c) => c.key === "site_id")) columns.push({key: "site_id", label: "ID site CM360"});
+  if (render) { renderEditor({table, columns}); scheduleRebuild(0); }
+}
+async function resolveSites() {
+  if (!table.length) return;
+  const dir = await loadSiteDir();
+  const groups = new Map();
+  table.forEach((r, i) => {
+    if (r.site_name && !r.site_id) { if (!groups.has(r.site_name)) groups.set(r.site_name, []); groups.get(r.site_name).push(i); }
+  });
+  let changed = false;
+  siteIssues = [];
+  for (const [name, rows] of groups) {
+    const hit = dir.byKey.get(siteKey(name));
+    if (hit) { applySite(rows, hit, false); changed = true; }
+    else if (dir.sites.length) siteIssues.push({name, rows, suggestions: siteSuggestions(name)});
+  }
+  if (changed) { renderEditor({table, columns}); scheduleRebuild(0); }
+  else if (lastResult) renderChecks(buildChecks(lastResult));
+}
+function siteChecks() {
+  if (!siteDir || !siteDir.sites.length) return [];
+  const names = el("datalist", {id: "site-dir"}, ...siteDir.sites.map((x) => el("option", {value: x.name})));
+  return siteIssues.map((iss) => {
+    const pick = (site) => { siteIssues = siteIssues.filter((x) => x !== iss); applySite(iss.rows, site); };
+    const input = el("input", {list: "site-dir", placeholder: "Choisir un site…", "aria-label": `Site CM360 pour ${iss.name}`});
+    input.addEventListener("change", () => { const x = siteDir.sites.find((y) => y.name === input.value.trim()); if (x) pick(x); });
+    const node = el("span", {class: "site-pick"}, ...iss.suggestions.map((x) => {
+      const b = el("button", {type: "button", class: "secondary sm"}, x.name);
+      b.addEventListener("click", () => pick(x));
+      return b;
+    }), input, names.cloneNode(true));
+    return {level: siteDir.source === "API" ? "block" : "warn", text: `Régie « ${iss.name} » introuvable dans les sites ${siteDir.adserver === "adform" ? "Adform" : "CM360"}`
+      + (siteDir.source === "API" ? "" : " (répertoire de démo)"), sub: `${iss.rows.length} ligne(s) du plan`, node};
+  });
 }
 
 // Aperçu « comme dans CM360 » : Campagne > Site > Package > Emplacement > Annonce > Créative
@@ -1571,6 +1662,7 @@ function renderPreviewPane() {
 }
 $("adserver").addEventListener("change", () => {
   if (lastResult) renderSummary(lastResult); else renderPreviewPane();      // contrôles propres à l'ad server
+  if (table.length) resolveSites();                                          // répertoire des sites de cet ad server
   if (current) {
     current.adserver = $("adserver").value;
     if (current.mode === "reporting") { delete current.data.rp; current.advertiser = current.campaign = ""; rpOpen(); }
@@ -1661,7 +1753,7 @@ $("analyze").addEventListener("click", async () => {
     applyResult(d);
     if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); }
     $("output").classList.add("hidden");
-    if (!d.fatal) collapsePlan(true);
+    if (!d.fatal) { collapsePlan(true); resolveSites(); }       // régies -> sites de l'ad server (API, sinon démo)
     if (!d.fatal && current) {
       // Le nom de campagne et l'annonceur saisis à la création de la tâche font foi
       const force = {};
@@ -2020,7 +2112,7 @@ function renderChecks(checks) {
     : "Rien de bloquant : l'export est possible ; vérifiez ces points avant l'import.";
   $("checks-list").replaceChildren(...(checks.length ? checks.map((c, i) => el("li", {class: c.level},
     el("span", {class: "n"}, String(i + 1)),
-    el("span", {class: "t"}, c.text, c.sub ? el("span", {class: "sub"}, c.sub) : ""))) :
+    el("span", {class: "t"}, c.text, c.sub ? el("span", {class: "sub"}, c.sub) : "", c.node || ""))) :
     [el("li", {class: "ok"}, el("span", {class: "n"}, "✓"), el("span", {class: "t"}, "Rien à corriger : l'export est prêt."))]));
   if ($("pm-step").dataset.state === "ready") collapsePlan(true);       // chiffres de la carte à jour après une édition
 }
@@ -2099,7 +2191,7 @@ async function restoreWork(t) {
     step = t.data.step || 1;
     selected.clear(); edSel.clear();
     applyResult(d);
-    if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); collapsePlan(true); }
+    if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); collapsePlan(true); resolveSites(); }
   } catch (e) {
     $("result").classList.remove("hidden");
     $("summary").replaceChildren(el("p", {class: "err"}, "Restauration impossible : " + e.message));

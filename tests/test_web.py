@@ -824,3 +824,24 @@ def test_home_import_flow_with_engine_stages(page):
     assert not page.is_visible("#hero-drop") and page.is_visible("#empty-new")   # reporting : pas de dépôt de PM
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
+
+
+def test_agency_sheet_sites_resolved_against_adserver(page, tmp_path):
+    """Trafficking sheet d'agence : régies rapprochées des sites de l'ad server (démo hors API), choix proposé sinon."""
+    from fixtures.make_agency_sheet import build
+    path = str(tmp_path / "pm_agence.xlsx")
+    build(path)
+    _create_task(page, "PM agence")
+    _analyze(page, path, validate=False)
+    page.wait_for_function("document.getElementById('checks-list').textContent.includes('introuvable')", timeout=15000)
+    checks = page.text_content("#checks-list")
+    assert "« Facebook & Instagram » introuvable" in checks and "répertoire de démo" in checks
+    assert "« TF1 + »" not in checks and "« Amnet »" not in checks                    # TF1 + -> site TF1, Amnet -> Amnet
+    ids = page.evaluate("table.filter((r) => r.site_name === 'TF1').map((r) => r.site_id)")
+    assert ids and all(ids)                                                          # ID du site repris
+    page.click("#checks-list .site-pick button:has-text('Facebook')")               # suggestion choisie
+    page.wait_for_function("!document.getElementById('checks-list').textContent.includes('Facebook & Instagram')", timeout=15000)
+    names = page.evaluate("table.filter((r) => r.site_name === 'Facebook').map((r) => r.partner)")
+    assert names and set(names) == {"Meta"}                                          # le nom garde le diffuseur
+    page.wait_for_function("document.getElementById('preview-pane').innerText.includes('R-Notoriete-CPM-TF1-Seniors')", timeout=15000)
+    assert page.errors == []

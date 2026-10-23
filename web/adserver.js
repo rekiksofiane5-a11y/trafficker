@@ -120,6 +120,11 @@ function cm360(env) {
       const d = await call("/advertisers", {params: {searchString: q || undefined, maxResults: 50, sortField: "NAME"}});
       return (d.advertisers || []).map((a) => ({id: String(a.id), name: a.name}));
     },
+    // Répertoire des sites CM360 du compte : noms exacts à reprendre dans le trafficking
+    async sites(q) {
+      const items = await pages("/sites", {searchString: q || undefined, maxResults: 1000, sortField: "NAME"}, "sites", 10);
+      return items.map((s) => ({id: String(s.id), name: s.name, directory_site_id: s.directorySiteId ? String(s.directorySiteId) : ""}));
+    },
     async campaigns(advertiserId, q) {
       const d = await call("/campaigns", {params: {advertiserIds: advertiserId || undefined, searchString: q || undefined,
                                                    maxResults: 100, sortField: "NAME", archived: false}});
@@ -250,6 +255,12 @@ function adform(env) {
             start: (c.startDate || "").slice(0, 10), end: (c.endDate || "").slice(0, 10)};
   };
   return {
+    // Médias Adform (équivalent des sites) : au mieux, selon les droits de l'API
+    async sites(q) {
+      const s = (q || "").toLowerCase();
+      return list(await call("/v1/buyer/medias")).filter((m) => !s || String(m.name).toLowerCase().includes(s))
+        .map((m) => ({id: String(m.id), name: m.name}));
+    },
     async advertisers(q) {
       const s = (q || "").toLowerCase();
       return list(await call("/v1/buyer/advertisers")).filter((a) => !s || String(a.name).toLowerCase().includes(s))

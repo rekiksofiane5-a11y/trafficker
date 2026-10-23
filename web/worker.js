@@ -218,6 +218,7 @@ async function api(request, env, url) {
       }
       const c = client(adserver, env);
       if (route === "advertisers") return json({advertisers: await c.advertisers(clean(q.get("q"), 100))});
+      if (route === "sites") return json({adserver, sites: await c.sites(clean(q.get("q"), 100))});
       if (route === "campaigns") return json({campaigns: await c.campaigns(clean(q.get("advertiser_id"), 40), clean(q.get("q"), 100))});
       if (route === "placements") return json(await c.placements(clean(q.get("campaign_id"), 40)));
       if (route === "delivery" && method === "POST") return json(await c.delivery(clean(b.campaign_id, 40)));
