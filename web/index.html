@@ -153,6 +153,12 @@ a { color: var(--accent); }
 .pv-filter-editor .vals label { display: flex; justify-content: space-between; gap: 10px; font-weight: 400; margin: 0; font-size: .85rem; }
 .pv-filter-editor .vals label span.w, .sitemap .w { color: var(--muted); font-size: .75rem; }
 .pv-filter-editor .row, .sitemap .head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+td.delta.up { color: var(--ok, #1a7f37); }
+td.delta.down { color: var(--err, #c62828); }
+.row-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 8px 0; }
+.row-form label { flex: 1 1 12rem; }
+#agency-dialog { width: min(760px, 96vw); }
+#agency-dialog td input { width: 100%; }
 .sitemap .rows > div { display: grid; grid-template-columns: minmax(10rem, 1fr) 7rem minmax(10rem, 1fr); gap: 8px; align-items: center; font-size: .85rem; }
 .sitemap input, .pv-filter-editor input[type=search], .pv-filter-editor select { padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px;
   background: var(--card); color: var(--text); font: inherit; }
@@ -391,6 +397,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
         </button>
         <div id="account-menu" class="pop" role="menu" hidden>
           <button type="button" id="open-settings">⚙️ Paramètres</button>
+          <button type="button" id="open-agency">🏢 Réglages de l'agence</button>
           <button type="button" id="open-admin" hidden>🛡️ Administration</button>
           <button type="button" id="logout">↪ Déconnexion</button>
         </div>
@@ -589,7 +596,15 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
             <label>Lignes<select id="pv-r1"></select></label>
             <label>puis<select id="pv-r2"></select></label>
             <label>Colonnes<select id="pv-col"></select></label>
+            <label>Comparer<select id="pv-cmp">
+              <option value="">—</option><option value="7d">7 derniers jours / 7 précédents</option>
+              <option value="week">Cette semaine / la précédente</option><option value="month">Ce mois / le précédent</option>
+              <option value="custom">Dates choisies</option></select></label>
             <div class="pv-values"><span class="lbl">Valeurs</span><div id="pv-values" class="opts" role="group" aria-label="Valeurs"></div></div>
+          </div>
+          <div id="pv-cmp-dates" class="pv-filters" hidden>
+            <span class="lbl">Période A</span><input type="date" id="pv-a1" aria-label="Période A, début"><input type="date" id="pv-a2" aria-label="Période A, fin">
+            <span class="lbl">Période B</span><input type="date" id="pv-b1" aria-label="Période B, début"><input type="date" id="pv-b2" aria-label="Période B, fin">
           </div>
           <div class="pv-filters">
             <span class="lbl">Filtres</span>
@@ -701,6 +716,26 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
     <p id="pw-msg" role="status"></p>
     <div class="actions"><button type="submit">Enregistrer</button><button type="button" class="secondary" data-close>Fermer</button></div>
   </form>
+</dialog>
+
+<dialog id="agency-dialog" aria-labelledby="ag-title">
+  <h2 id="ag-title">Réglages de l'agence</h2>
+  <p class="hint">Partagés par tous les utilisateurs de l'agence et appliqués à chaque import d'export.</p>
+  <section aria-labelledby="ag-map-title">
+    <h3 id="ag-map-title">Correspondance des régies</h3>
+    <div class="table-wrap"><table id="ag-map"></table></div>
+    <form id="ag-map-form" class="row-form">
+      <label>Nom lu dans l'export<input id="ag-map-from" required></label>
+      <label>Régie retenue<input id="ag-map-to" required></label>
+      <button type="submit" class="secondary">Ajouter la règle</button>
+    </form>
+  </section>
+  <section aria-labelledby="ag-views-title">
+    <h3 id="ag-views-title">Vues enregistrées du tableau croisé</h3>
+    <div class="table-wrap"><table id="ag-views"></table></div>
+  </section>
+  <p id="ag-msg" role="status"></p>
+  <div class="actions"><button type="button" class="secondary" data-close>Fermer</button></div>
 </dialog>
 
 <dialog id="admin-dialog" aria-labelledby="ad-title">
@@ -1852,6 +1887,77 @@ for (const b of document.querySelectorAll("[data-diag]")) b.addEventListener("cl
       : `⛔ ${ADSERVER_LABEL[d.adserver]} : ${d.error}`;
   } catch (e) { out.textContent = "⛔ " + e.message; }
 });
+// Réglages de l'agence hors import : règles de régies et vues du croisé (lire, modifier, supprimer)
+async function agSave(key, value, done) {
+  const msg = $("ag-msg");
+  try { await Store.putSetting(key, value); } catch (e) { msg.className = "err"; msg.textContent = "Enregistrement impossible : " + e.message; return false; }
+  msg.className = "ok"; msg.textContent = "Enregistré.";
+  if (done) done();
+  return true;
+}
+function agRefreshImport() {
+  const f = typeof rpFile === "function" ? rpFile() : null;
+  if (f && f.parsed) rpApplyFile(f);
+}
+function agRenderMap() {
+  const map = RP.siteMap || {};
+  const keys = Object.keys(map).sort((a, b) => map[a].localeCompare(map[b], "fr") || a.localeCompare(b, "fr"));
+  $("ag-map").replaceChildren(
+    el("thead", {}, el("tr", {}, ...["Nom lu dans l'export", "Régie retenue", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...(keys.length ? keys.map((k) => {
+      const to = el("input", {value: map[k], "aria-label": `Régie retenue pour ${k}`});
+      to.addEventListener("change", () => {
+        const v = to.value.trim();
+        const next = {...map};
+        if (v && v !== k) next[k] = v; else delete next[k];
+        agSave("site_map", next, () => { RP.siteMap = next; agRenderMap(); agRefreshImport(); });
+      });
+      const rm = el("button", {type: "button", class: "secondary", "aria-label": "Supprimer la règle " + k}, "Supprimer");
+      rm.addEventListener("click", () => {
+        const next = {...map};
+        delete next[k];
+        agSave("site_map", next, () => { RP.siteMap = next; agRenderMap(); agRefreshImport(); });
+      });
+      return el("tr", {}, el("td", {}, k), el("td", {}, to), el("td", {}, rm));
+    }) : [el("tr", {}, el("td", {colspan: "3", class: "hint"}, "Aucune règle : les régies sont gardées telles qu'elles sont lues."))])));
+}
+function agRenderViews() {
+  const views = RP.views || [];
+  $("ag-views").replaceChildren(
+    el("thead", {}, el("tr", {}, ...["Nom", "Lignes × colonnes", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...(views.length ? views.map((v, i) => {
+      const name = el("input", {value: v.name, "aria-label": "Nom de la vue " + v.name});
+      name.addEventListener("change", () => {
+        const n = name.value.trim();
+        if (!n || views.some((w, j) => j !== i && w.name === n)) { name.value = v.name; return; }
+        const next = views.map((w, j) => (j === i ? {...w, name: n} : w));
+        agSave("pivot_views", next, () => { RP.views = next; agRenderViews(); pvRenderViews(); });
+      });
+      const rm = el("button", {type: "button", class: "secondary", "aria-label": "Supprimer la vue " + v.name}, "Supprimer");
+      rm.addEventListener("click", () => {
+        if (!window.confirm(`Supprimer la vue « ${v.name} » pour toute l'agence ?`)) return;
+        const next = views.filter((_, j) => j !== i);
+        agSave("pivot_views", next, () => { RP.views = next; agRenderViews(); pvRenderViews(); });
+      });
+      const sp = v.spec || {};
+      return el("tr", {}, el("td", {}, name), el("td", {}, (sp.rows || []).join(" / ") + (sp.col ? " × " + sp.col : "")), el("td", {}, rm));
+    }) : [el("tr", {}, el("td", {colspan: "3", class: "hint"}, "Aucune vue : enregistre-en une depuis le tableau croisé."))])));
+}
+$("open-agency").addEventListener("click", async () => {
+  $("ag-msg").textContent = "";
+  await Promise.all([rpLoadSiteMap(), (async () => { try { RP.views = (await Store.setting("pivot_views")) || []; } catch (e) { RP.views = []; handleAuth(e); } })()]);
+  agRenderMap();
+  agRenderViews();
+  $("agency-dialog").showModal();
+});
+$("ag-map-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const from = $("ag-map-from").value.trim(), to = $("ag-map-to").value.trim();
+  if (!from || !to || from === to) return;
+  const next = {...(RP.siteMap || {}), [from]: to};
+  agSave("site_map", next, () => { RP.siteMap = next; $("ag-map-form").reset(); agRenderMap(); agRefreshImport(); });
+});
+
 $("open-admin").addEventListener("click", () => {
   $("u-agency").value = me.agency_id || "";
   $("u-msg").textContent = "";
@@ -2733,6 +2839,12 @@ function pvOpen() {
   fill("pv-r1", dims, sp.rows[0]);
   fill("pv-r2", dims, sp.rows[1] || "", true);
   fill("pv-col", dims, sp.col || "", true);
+  const cmp = sp.compare || {};
+  $("pv-cmp").value = cmp.mode || "";
+  $("pv-cmp").disabled = !Pivot.periods(t, "7d");                  // sans colonne Date, pas de comparaison
+  $("pv-cmp-dates").hidden = cmp.mode !== "custom";
+  [$("pv-a1").value, $("pv-a2").value] = cmp.a || ["", ""];
+  [$("pv-b1").value, $("pv-b2").value] = cmp.b || ["", ""];
   $("pv-values").replaceChildren(...t.columns.filter((c) => c.kind === "metric").map((c) => {
     const cb = el("input", {type: "checkbox", value: c.label});
     cb.checked = (sp.values || []).includes(c.label);
@@ -2740,15 +2852,29 @@ function pvOpen() {
   }));
   pvRender();
 }
-function pvRead() {
+function pvRead(e) {
   const sp = pvSpec();
+  if (e && e.target && e.target.id === "pv-col" && e.target.value) $("pv-cmp").value = "";     // colonnes choisies : fin de la comparaison
   sp.rows = [$("pv-r1").value, $("pv-r2").value].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
   sp.col = $("pv-col").value && !sp.rows.includes($("pv-col").value) ? $("pv-col").value : "";
   sp.values = [...$("pv-values").querySelectorAll("input:checked")].map((x) => x.value);
+  const m = $("pv-cmp").value;
+  if (!m) delete sp.compare;
+  else {
+    // dates choisies : préremplies avec la période précédente (semaine) pour partir d'une base
+    if (m === "custom" && !$("pv-a1").value) {
+      const w = Pivot.periods(RP.table, "week");
+      if (w) [$("pv-a1").value, $("pv-a2").value, $("pv-b1").value, $("pv-b2").value] = [...w.a, ...w.b];
+    }
+    sp.compare = m === "custom" ? {mode: m, a: [$("pv-a1").value, $("pv-a2").value], b: [$("pv-b1").value, $("pv-b2").value]} : {mode: m};
+    sp.col = "";                                                    // comparaison : pas de colonnes
+    $("pv-col").value = "";
+  }
+  $("pv-cmp-dates").hidden = m !== "custom";
   saveSoon();
   pvRender();
 }
-for (const id of ["pv-r1", "pv-r2", "pv-col"]) $(id).addEventListener("change", pvRead);
+for (const id of ["pv-r1", "pv-r2", "pv-col", "pv-cmp", "pv-a1", "pv-a2", "pv-b1", "pv-b2"]) $(id).addEventListener("change", pvRead);
 $("pv-values").addEventListener("change", pvRead);
 
 function pvFmt(v, rate, label) {
@@ -2757,9 +2883,20 @@ function pvFmt(v, rate, label) {
   if (rate) return v.toLocaleString("fr-FR", {maximumFractionDigits: 2, minimumFractionDigits: 2}) + (/rate|ctr|taux|%/i.test(label) ? " %" : "");
   return Number.isInteger(v) ? v.toLocaleString("fr-FR") : v.toLocaleString("fr-FR", {maximumFractionDigits: 2});
 }
+const frDay = (d) => d.split("-").reverse().join("/");
 function pvRender() {
   const sp = pvSpec();
-  const r = Pivot.compute(RP.table, sp);
+  let r = null;
+  if (sp.compare && sp.compare.mode) {
+    r = Pivot.compare(RP.table, sp);
+    if (!r) {
+      pvLast = null;
+      $("pv-out").replaceChildren();
+      $("pv-chart").hidden = true;
+      $("pv-info").textContent = "Comparaison impossible : choisis deux périodes valides (début ≤ fin) sur la colonne Date.";
+      return;
+    }
+  } else r = Pivot.compute(RP.table, sp);
   pvLast = r;
   const valLabel = sp.col ? r.values[0] : "";
   const head = el("tr", {}, ...r.header.map((h, k) => {
@@ -2775,12 +2912,21 @@ function pvRender() {
   }));
   const MAX = 500;
   const label = (k) => (sp.col ? valLabel : r.header[k]);
-  const body = r.rows.slice(0, MAX).map((row) => el("tr", {}, ...row.map((v, k) =>
-    el("td", {class: k >= r.rowDims ? "num" : ""}, pvFmt(v, r.rateCols[k], label(k))))));
-  const tot = el("tr", {class: "total"}, ...r.total.map((v, k) => el("td", {class: k >= r.rowDims ? "num" : ""}, k < r.rowDims ? v : pvFmt(v, r.rateCols[k], label(k)))));
+  // variation : signe, unité, couleur (avec le signe, pas seulement la couleur)
+  const cell = (v, k, isTotal) => {
+    if (isTotal && k < r.rowDims) return el("td", {}, v);
+    const d = r.deltaCols && r.deltaCols[k];
+    if (!d) return el("td", {class: k >= r.rowDims ? "num" : ""}, pvFmt(v, r.rateCols[k], label(k)));
+    if (v === null || v === undefined) return el("td", {class: "num delta", title: "Absent de la période B"}, "—");
+    const t = (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toLocaleString("fr-FR", {maximumFractionDigits: d === "pts" ? 2 : 1}) + (d === "pts" ? " pt" : " %");
+    return el("td", {class: "num delta " + (v > 0 ? "up" : v < 0 ? "down" : "")}, t);
+  };
+  const body = r.rows.slice(0, MAX).map((row) => el("tr", {}, ...row.map((v, k) => cell(v, k))));
+  const tot = el("tr", {class: "total"}, ...r.total.map((v, k) => cell(v, k, true)));
   $("pv-out").replaceChildren(el("table", {class: "pv pivot", id: "pv-table"}, el("thead", {}, head), el("tbody", {}, ...body, tot)));
-  pvChart(r, sp);
-  $("pv-info").textContent = `${r.groups.toLocaleString("fr-FR")} ligne(s) croisée(s) à partir de ${r.sourceRows.toLocaleString("fr-FR")} ligne(s) de l'export`
+  if (r.compare) $("pv-chart").hidden = true; else pvChart(r, sp);
+  $("pv-info").textContent = (r.compare ? `A : ${frDay(r.periods.a[0])} → ${frDay(r.periods.a[1])} · B : ${frDay(r.periods.b[0])} → ${frDay(r.periods.b[1])}`
+    + (r.periods.a[1] > r.periods.last ? ` (données jusqu'au ${frDay(r.periods.last)})` : "") + " · " : "") + `${r.groups.toLocaleString("fr-FR")} ligne(s) croisée(s) à partir de ${r.sourceRows.toLocaleString("fr-FR")} ligne(s) de l'export`
     + (sp.col ? ` · valeur affichée : ${valLabel} (une seule valeur quand des colonnes sont choisies)` : "")
     + (r.truncatedCols ? " · 40 dernières colonnes affichées" : "")
     + (r.rows.length > MAX ? ` · ${MAX} premières lignes affichées (toutes dans l'Excel)` : "") + ".";
@@ -2917,7 +3063,8 @@ $("pv-save-view").addEventListener("click", async () => {
 $("pv-dl").addEventListener("click", async () => {
   if (!pvLast) return;
   const sp = pvSpec();
-  const title = `${RP.campaign.name} — ${sp.rows.join(" / ")}${sp.col ? " × " + sp.col : ""}`;
+  const title = `${RP.campaign.name} — ${sp.rows.join(" / ")}${sp.col ? " × " + sp.col : ""}`
+    + (pvLast.compare ? ` — A ${frDay(pvLast.periods.a[0])}-${frDay(pvLast.periods.a[1])} / B ${frDay(pvLast.periods.b[0])}-${frDay(pvLast.periods.b[1])}` : "");
   const fmtRow = (row) => row.map((v) => (typeof v === "number" ? Math.round(v * 100) / 100 : v));
   try {
     download(await call("export_pivot", {title, header: pvLast.header, rows: [...pvLast.rows.map(fmtRow), fmtRow(pvLast.total)], data: RP.table}),

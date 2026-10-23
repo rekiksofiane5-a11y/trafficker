@@ -231,6 +231,15 @@ def test_agency_nomenclature_and_site_unification():
     parts = reporting.split_name(nom, names[0])
     assert (parts["Éditeur"], parts["Format"], parts["Objectif"], parts["Device"]) == ("LEMONDE", "GRANDANGLE", "NOTORIETE", "Multidevice")
     assert reporting.split_name(nom, "Mon Espace Santé") == {}
+    # plusieurs gabarits dans le même export : chacun découpé avec ses propres positions
+    other = ["R-CPC-RTBHOUSE-RETARGETING-CARROUSEL-1x1-Multidevice-FR-ALL-Lagon_%d-CONVERSION-" % k for k in range(3)] + \
+            ["R-CPM-SOJERN-LOOKALIKE-NATIVEAD-0x0-Multidevice-NL-ALL-Plage_%d-NOTORIETE-" % k for k in range(3)]
+    noms = reporting.learn_nomenclatures(names[:4] * 2 + other, max_templates=4)
+    assert sorted(t["length"] for t in noms) == [11, 12]
+    p2 = reporting.split_name(noms, other[0])
+    assert (p2["Éditeur"], p2["Format"], p2["Pays"], p2["Objectif"]) == ("RTBHOUSE", "CARROUSEL", "FR", "CONVERSION")
+    assert reporting.split_name(noms, names[0])["Éditeur"] == "LEMONDE"
+    assert reporting.split_name(noms, "Mon Espace Santé") == {}
     m = reporting.unify_sites({"Teads FR": 50, "TEADS": 5, "teads.fr": 1, "AMNET": 90, "AMNET FR": 10, "amnet.fr": 1,
                                "Viadeo": 3, "ViadeoFR": 9, "Amplifi Programmatic_New": 40, "Amplifi Programmatic": 2,
                                "Meta FR": 7, "Facebook FR": 8})

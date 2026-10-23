@@ -540,7 +540,7 @@ def parse_export(path: str, campaign_name: str = "", keyword: str = "") -> Dict:
                 if col["site"] < len(r) and site_map.get(str(r[col["site"]]).strip()):
                     r[col["site"]] = site_map[str(r[col["site"]]).strip()]
     # Nomenclature d'agence apprise sur les noms d'emplacements
-    nom = learn_nomenclature(sorted({get(r, "placement") for r in rows if get(r, "placement")})) if "placement" in col else None
+    nom = learn_nomenclatures(sorted({get(r, "placement") for r in rows if get(r, "placement")})) if "placement" in col else []
     placements: Dict[str, Dict] = {}
     delivery, days, warnings = [], [], []
     starts, ends = [], []
@@ -579,9 +579,11 @@ def parse_export(path: str, campaign_name: str = "", keyword: str = "") -> Dict:
         warnings.append("Régies unifiées : " + " ; ".join(f"{', '.join(sorted(v))} → {k}" for k, v in sorted(groups.items())[:8])
                         + (" …" if len(groups) > 8 else "") + ".")
     if nom:
-        warnings.append("Nomenclature reconnue dans les noms d'emplacements ("
-                        + " · ".join(l for _, l in nom["fields"]) + f", {int(nom['coverage'] * 100)} % des noms) : "
-                        "dimensions ajoutées au tableau croisé.")
+        warnings.append(("Nomenclature reconnue" if len(nom) == 1 else f"{len(nom)} gabarits de nommage reconnus")
+                        + " dans les noms d'emplacements : "
+                        + " ; ".join(f"{t['length']} segments ({int(t['coverage'] * 100)} % des noms) : "
+                                     + " · ".join(l for _, l in t["fields"]) for t in nom)
+                        + ". Dimensions ajoutées au tableau croisé.")
     if len(names) > 1:
         warnings.append(f"{len(names)} campagnes dans le fichier : « {chosen} » retenue (choix possible ci-dessous).")
     n_sites = len({p["site"] for p in placements.values()})
@@ -642,9 +644,12 @@ NOM_VOCAB = [
     ("Format", {"PREROLL", "MIDROLL", "POSTROLL", "INSTREAM", "OUTSTREAM", "INREAD", "INTERSTITIEL", "COLLECTIONAD", "GRANDANGLE",
                 "PAVE", "VIDEOAD", "TRUEVIEW", "BUMPER", "NATIVE", "HABILLAGE", "BANNIERE", "MEGABANNIERE", "SKYSCRAPER",
                 "LINKAD", "CAROUSEL", "STORY", "STORIES", "DISPLAY", "VIDEO", "AUDIO", "SPOT", "CLICKTRACKER", "SPONSORING",
-                "INTERSCROLLER", "BILLBOARD", "LEADERBOARD", "RICHMEDIA", "EXPAND"}),
+                "INTERSCROLLER", "BILLBOARD", "LEADERBOARD", "RICHMEDIA", "EXPAND", "EMAILING", "NEWSLETTER", "NATIVEAD",
+                "LINKADVIDEO", "MASTHEAD", "CARROUSEL", "MPU", "LIENHYPERTEXTE", "SEARCH", "SPOTAUDIO", "VIDEOAD",
+                "INTERSTITIAL", "BANNER", "MREC"}),
     ("Device", {"MULTIDEVICE", "MULTIDEVICES", "MOBILE", "DESKTOP", "TV", "CTV", "TABLETTE", "TABLET", "MOBTAB", "MULTISCREEN",
-                "APP", "WEB", "SMARTPHONE"}),
+                "APP", "WEB", "SMARTPHONE", "PC", "MOBILES", "DESKTOPMOBILE"}),
+    ("Pays", {"FR", "NL", "DE", "UK", "GB", "BE", "ES", "IT", "CH", "US", "LU", "PT", "AT", "IE"}),
 ]
 
 
@@ -700,6 +705,8 @@ def learn_nomenclature(names: List[str], sep: str = "-") -> Optional[Dict]:
             labels[i] = "Audience"
         elif i == length - 1 and "Message" not in labels:
             labels[i] = "Message"
+        elif prev == "Éditeur" and "Ciblage" not in labels:
+            labels[i] = "Ciblage"
         elif "Éditeur" in labels and "Ciblage" not in labels[:i] and "Segment" not in labels:
             labels[i] = "Segment"
         else:
@@ -708,7 +715,28 @@ def learn_nomenclature(names: List[str], sep: str = "-") -> Optional[Dict]:
     return {"length": length, "sep": sep, "fields": fields, "coverage": round(len(parts) / len(names), 2)}
 
 
-def split_name(nom: Optional[Dict], name: str) -> Dict[str, str]:
+def learn_nomenclatures(names: List[str], sep: str = "-", max_templates: int = 4) -> List[Dict]:
+    """Plusieurs gabarits dans un même export (un par longueur de nom fréquente), du plus courant au
+    moins courant ; chacun garde ses libellés (Objectif, Éditeur, Format…)."""
+    from collections import Counter
+    names = [n for n in names if n]
+    out = []
+    for length, count in Counter(len(n.split(sep)) for n in names).most_common():
+        if len(out) >= max_templates or count < max(5, 0.03 * len(names)):
+            break
+        same = [n for n in names if len(n.split(sep)) == length]
+        nom = learn_nomenclature(same, sep)
+        if nom:
+            nom["coverage"] = round(count / len(names), 2)
+            out.append(nom)
+    return out
+
+
+def split_name(nom, name: str) -> Dict[str, str]:
+    """Découpe un nom avec le gabarit de même longueur (nom = un gabarit ou une liste)."""
+    if isinstance(nom, list):
+        n = len(str(name or "").split(nom[0]["sep"])) if nom else 0
+        return next((split_name(t, name) for t in nom if t["length"] == n), {})
     if not nom:
         return {}
     parts = str(name or "").split(nom["sep"])
@@ -792,7 +820,11 @@ def export_table(header: List, rows: List[List], nom: Optional[Dict] = None, pla
     if date_col:
         out_cols += [{"label": "Semaine", "kind": "dimension", "rate": False, "derived": True},
                      {"label": "Mois", "kind": "dimension", "rate": False, "derived": True}]
-    nom_labels = [l for _, l in nom["fields"]] if nom and placement_col is not None else []
+    templates = nom if isinstance(nom, list) else ([nom] if nom else [])
+    nom_labels = []
+    if placement_col is not None:
+        for t in templates:                                  # libellés de tous les gabarits, sans doublon
+            nom_labels += [l for _, l in t["fields"] if l not in nom_labels]
     out_cols += [{"label": l, "kind": "dimension", "rate": False, "derived": True, "nomenclature": True} for l in nom_labels]
     out_rows = []
     for row in rows:
@@ -814,7 +846,7 @@ def export_table(header: List, rows: List[List], nom: Optional[Dict] = None, pla
             else:
                 r += ["", ""]
         if nom_labels:
-            parts = split_name(nom, row[placement_col] if placement_col < len(row) else "")
+            parts = split_name(templates, row[placement_col] if placement_col < len(row) else "")
             r += [parts.get(l, "") or "(hors nomenclature)" for l in nom_labels]
         out_rows.append(r)
     return {"columns": out_cols, "rows": out_rows}

@@ -108,6 +108,78 @@
             groups: groups.size, truncatedCols, sourceRows: table.rows.length};
   }
 
+  // --- Comparaison de deux périodes (A = la plus récente, B = la précédente) ---
+  const dateCol = (cols) => find(cols, /^date$|^jour$|^day$/, "dimension");
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const shift = (s, days) => { const d = new Date(s + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + days); return iso(d); };
+
+  // mode : "7d" (7 derniers jours vs 7 précédents), "week" (semaine lun.-dim. du dernier jour vs la précédente),
+  // "month" (mois du dernier jour vs le précédent), "custom" ({a: [début, fin], b: [début, fin]})
+  function periods(table, mode, custom) {
+    const di = dateCol(table.columns);
+    if (di < 0) return null;
+    let last = "";
+    for (const r of table.rows) { const v = String(r[di] || ""); if (/^\d{4}-\d{2}-\d{2}$/.test(v) && v > last) last = v; }
+    if (!last) return null;
+    if (mode === "custom") {
+      const ok = (p) => Array.isArray(p) && p.length === 2 && p.every((x) => /^\d{4}-\d{2}-\d{2}$/.test(x || "")) && p[0] <= p[1];
+      return custom && ok(custom.a) && ok(custom.b) ? {a: custom.a, b: custom.b, last} : null;
+    }
+    if (mode === "7d") return {a: [shift(last, -6), last], b: [shift(last, -13), shift(last, -7)], last};
+    if (mode === "week") {
+      const dow = (new Date(last + "T00:00:00Z").getUTCDay() + 6) % 7;          // 0 = lundi
+      const mon = shift(last, -dow);
+      return {a: [mon, shift(mon, 6)], b: [shift(mon, -7), shift(mon, -1)], last};
+    }
+    if (mode === "month") {
+      const m0 = last.slice(0, 8) + "01";
+      const prev = shift(m0, -1);
+      return {a: [m0, shift(shift(m0, 32).slice(0, 8) + "01", -1)], b: [prev.slice(0, 8) + "01", prev], last};
+    }
+    return null;
+  }
+
+  function compare(table, spec) {
+    const cols = table.columns, di = dateCol(cols);
+    const per = periods(table, spec.compare && spec.compare.mode, spec.compare);
+    if (di < 0 || !per) return null;
+    const inRange = (p) => ({columns: cols, rows: table.rows.filter((r) => { const v = String(r[di] || ""); return v >= p[0] && v <= p[1]; })});
+    const base = {...spec, col: "", sort: null};
+    const A = compute(inRange(per.a), base), B = compute(inRange(per.b), base);
+    const nd = A.rowDims, vals = A.values;
+    const rate = vals.map((v) => !!(cols.find((c) => c.label === v) || {}).rate);
+    const delta = (a, b, k) => (a === null || b === null ? null : rate[k] ? a - b : b ? (a - b) / b * 100 : null);
+    const header = [...A.header.slice(0, nd)], rateCols = header.map(() => false), deltaCols = header.map(() => "");
+    vals.forEach((v, k) => {
+      header.push(v + " · A", v + " · B", "Δ " + v + (rate[k] ? " (pts)" : " (%)"));
+      rateCols.push(rate[k], rate[k], true);
+      deltaCols.push("", "", rate[k] ? "pts" : "%");
+    });
+    const keyOf = (row) => row.slice(0, nd).join("\u0001");
+    const map = new Map();
+    for (const row of A.rows) map.set(keyOf(row), {keys: row.slice(0, nd), a: row.slice(nd), b: null});
+    for (const row of B.rows) {
+      const g = map.get(keyOf(row));
+      if (g) g.b = row.slice(nd); else map.set(keyOf(row), {keys: row.slice(0, nd), a: null, b: row.slice(nd)});
+    }
+    const line = (keys, a, b) => [...keys, ...vals.flatMap((_, k) => {
+      const x = a ? a[k] : (rate[k] ? null : 0), y = b ? b[k] : (rate[k] ? null : 0);
+      return [x, y, delta(x, y, k)];
+    })];
+    let rows = [...map.values()].map((g) => line(g.keys, g.a, g.b));
+    const sortCol = spec.sort && header.includes(spec.sort.by) ? header.indexOf(spec.sort.by) : nd;
+    const dir = spec.sort && spec.sort.dir ? spec.sort.dir : (sortCol < nd ? 1 : -1);
+    rows.sort((p, q) => {
+      const x = p[sortCol], y = q[sortCol];
+      if (typeof x === "number" || typeof y === "number") return ((x ?? -Infinity) - (y ?? -Infinity)) * dir;
+      return String(x).localeCompare(String(y), "fr", {numeric: true}) * dir;
+    });
+    if (!nd) rows = [];
+    const total = line(A.total.slice(0, nd), A.total.slice(nd), B.total.slice(nd));
+    return {header, rows, total, rowDims: nd, values: vals, rateCols, deltaCols, periods: per, compare: true,
+            groups: map.size, truncatedCols: false, sourceRows: A.sourceRows + B.sourceRows};
+  }
+
   // Préréglages selon les colonnes présentes
   function presets(table) {
     const cols = table.columns;
@@ -142,7 +214,7 @@
     return out;
   }
 
-  const api = {compute, presets, filterRows, dimValues};
+  const api = {compute, presets, filterRows, dimValues, periods, compare};
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Pivot = api;
 })(typeof self !== "undefined" ? self : globalThis);

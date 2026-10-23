@@ -36,3 +36,21 @@ r = P.compute(t, {rows: ["Date"], values: ["Clicks"], filters: [{col: "Semaine",
 assert.deepEqual(r.rows, [["2026-10-06", 4]]);
 assert.deepEqual(P.dimValues(t, "Site (CM360)").map((v) => v.value), ["Le Monde", "Teads"]);    // les plus lourdes d'abord
 console.log("OK : tableau croisé (sommes, taux recalculés, colonnes, tri, préréglages).");
+
+// Comparaison de périodes : dernier jour 2026-10-06 (mardi) -> semaine du 05/10 contre celle du 28/09
+let per = P.periods(t, "week");
+assert.deepEqual([per.a, per.b], [["2026-10-05", "2026-10-11"], ["2026-09-28", "2026-10-04"]]);
+assert.deepEqual(P.periods(t, "7d").a, ["2026-09-30", "2026-10-06"]);
+assert.deepEqual(P.periods(t, "month").b, ["2026-09-01", "2026-09-30"]);
+assert.equal(P.periods(t, "custom", {a: ["2026-10-05", "2026-10-01"], b: ["2026-10-01", "2026-10-02"]}), null);   // dates à l'envers
+let c = P.compare(t, {rows: ["Site (CM360)"], values: ["Impressions", "Clicks", "Click Rate"],
+                      compare: {mode: "custom", a: ["2026-10-02", "2026-10-06"], b: ["2026-10-01", "2026-10-01"]}});
+assert.deepEqual(c.header.slice(0, 4), ["Site (CM360)", "Impressions · A", "Impressions · B", "Δ Impressions (%)"]);
+assert.equal(c.header[9], "Δ Click Rate (pts)");
+const lm = c.rows.find((x) => x[0] === "Le Monde"), td = c.rows.find((x) => x[0] === "Teads");
+assert.deepEqual(lm.slice(1, 4), [3000, 1000, 200]);                                    // +200 %
+assert.equal(lm[9], 15 / 3000 * 100 - 10 / 1000 * 100);                                  // écart de CTR en points
+assert.deepEqual(td.slice(1, 4), [2000, 0, null]);                                      // absent en B : variation non calculable
+assert.deepEqual(c.total.slice(0, 4), ["Total", 5000, 1000, 400]);
+assert.equal(P.compare({columns: t.columns.slice(1), rows: []}, {rows: ["Placement"], compare: {mode: "week"}}), null);  // sans colonne Date
+console.log("pivot compare ok");

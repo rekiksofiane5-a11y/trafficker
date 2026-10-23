@@ -668,6 +668,59 @@ def test_site_mapping_filters_and_saved_views(page):
     assert "Google" in page.locator("#pv-table tbody tr:not(.total) td:first-child").all_text_contents()
     page.click("#pv-saved button:has-text('Sans YouTube')")                   # la vue le remet
     assert "Google" not in page.locator("#pv-table tbody tr:not(.total) td:first-child").all_text_contents()
+    # écran « Réglages de l'agence » : règles et vues modifiables hors import
+    page.click("#account-btn")
+    page.click("#open-agency")
+    assert page.is_visible("#agency-dialog")
+    assert page.locator("#ag-map tbody tr").count() == 2
+    page.click('#ag-map button[aria-label="Supprimer la règle Youtube FR"]')
+    page.wait_for_function("document.querySelectorAll('#ag-map tbody tr').length === 1")
+    page.fill("#ag-map-from", "Teads FR")
+    page.fill("#ag-map-to", "Teads")
+    page.click("#ag-map-form button[type=submit]")
+    page.wait_for_function("document.getElementById('ag-map').textContent.includes('Teads FR')")
+    page.fill('#ag-views input[aria-label="Nom de la vue Sans YouTube"]', "Hors Google")
+    page.dispatch_event('#ag-views input[aria-label="Nom de la vue Sans YouTube"]', "change")
+    page.wait_for_selector("#pv-saved button:has-text('Hors Google')")
+    stored = page.evaluate("JSON.parse(localStorage.getItem('umnia_set_site_map'))")
+    assert stored == {"Facebook FR": "Meta", "Teads FR": "Teads"}
+    page.click("#agency-dialog [data-close]")
+    regies = page.locator("#pv-table tbody tr:not(.total) td:first-child").all_text_contents()
+    assert "Youtube FR" in regies or "Google" not in regies                   # import réappliqué sans la règle supprimée
     page.evaluate("localStorage.removeItem('umnia_set_site_map'); localStorage.removeItem('umnia_set_pivot_views')")
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []
+
+
+def test_pivot_period_comparison(page):
+    """Croisé : semaine A contre semaine B, variations signées, dates choisies, Excel."""
+    openpyxl = pytest.importorskip("openpyxl")
+    page.click(".modes [data-mode=reporting]")
+    _create_task(page, "Croisé comparaison")
+    page.set_input_files("#rp-file", os.path.join(ROOT, "web", "exemple_export_cm360.csv"))
+    page.wait_for_selector("#pv-table")
+    page.select_option("#pv-cmp", "week")
+    page.wait_for_function("document.querySelector('#pv-table thead').textContent.includes('Impressions · A')")
+    head = page.locator("#pv-table thead th").all_text_contents()
+    assert head[1:4] == ["Impressions · A", "Impressions · B", "Δ Impressions (%)"]
+    assert "Δ Click Rate (pts)" in head
+    assert "A : " in page.text_content("#pv-info") and not page.is_visible("#pv-chart")
+    deltas = page.locator("#pv-table tr.total td.delta").all_text_contents()
+    assert deltas and all(d == "—" or d[0] in "+−0" or d.endswith(("%", "pt")) for d in deltas)
+    page.select_option("#pv-cmp", "custom")
+    assert page.is_visible("#pv-cmp-dates") and page.input_value("#pv-a1")     # préremplies
+    page.fill("#pv-b1", "2030-01-02")
+    page.fill("#pv-b2", "2030-01-01")
+    page.dispatch_event("#pv-b2", "change")
+    assert "Comparaison impossible" in page.text_content("#pv-info")
+    page.select_option("#pv-cmp", "7d")
+    page.wait_for_selector("#pv-table")
+    with page.expect_download() as dl:
+        page.click("#pv-dl")
+    wb = openpyxl.load_workbook(io.BytesIO(open(dl.value.path(), "rb").read()))
+    ws = wb["Tableau croisé"]
+    assert any("Impressions · B" == c.value for row in ws.iter_rows() for c in row)
+    page.select_option("#pv-col", "Semaine")                                  # colonnes : fin de la comparaison
+    assert page.input_value("#pv-cmp") == ""
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
