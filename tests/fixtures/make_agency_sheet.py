@@ -42,22 +42,27 @@ def build(path):
         ["Notoriété", "Grand public", "Meta (Application taxe)", "Facebook & Instagram", "LinkAdVideo",
          "POV JEUNES A\nPOV JEUNES B", "LinkAdVideo_20s (feed story reels)", "RG ciblée", "Multidevice",
          "Jeune\n#Sociodemo : HF63+\n#LAL : VIEWERS", "06/07/2026", "26/07/2026", "dCPM", 3000000, 9000, "Clics"],
+        ["Considération", "Jeunes", "Amnet", "Amnet", "Display", "", "Pavé - GrandAngle", "RG ciblée", "Multidevice",
+         "#Sociodemo : HF1825\n#Comportementale : JeuneDiplome", "06/07/2026", "26/07/2026", "dCPM", 500000, 4000, "Classique"],
+        ["Notoriété", "Parent", "Amazon DSP", "AmplifiProgrammatic", "PreRoll", "cf. onglet", "TF1\nVideo_30s", "RG ciblée",
+         "Multidevice", "#Affinitaire : PackFamille", "06/07/2026", "26/07/2026", "CPM", 300000, 6000, "Video"],
     ]
     for r, line in enumerate(lines, start=46):
         for i, v in enumerate(line):
             pm.cell(r, 2 + i, v).fill = YELLOW
 
     v = wb.create_sheet("Feuil2")
-    cols = {"Type Emplacement": ["R", "G", "F"], "Objectif Emplacement": ["VISIBILITE", "NOTORIETE"],
-            "Mode d'Achat": ["CPM", "CPC", "dCPM"], "Régie": ["NETFLIX", "TF1", "META", "TEADSMEDIA"],
-            "Audience": ["GRANDPUBLIC", "SENIORS", "JEUNES"], "Ciblage": ["SOCIODEMO", "LOOKALIKE", "CUSTOM", "INTERETS"],
-            "Nom Format": ["PreRoll", "LinkAdVideo", "InRead"], "Taille Format": ["0x0", "1x1", "300x250"],
+    cols = {"Type Emplacement": ["R", "G", "F"], "Objectif Emplacement": ["VISIBILITE", "NOTORIETE", "CONSIDERATION"],
+            "Mode d'Achat": ["CPM", "CPC", "dCPM"], "Régie": ["NETFLIX", "TF1", "META", "TEADSMEDIA", "AMNET", "AMAZON"],
+            "Audience": ["GRANDPUBLIC", "SENIORS", "JEUNES", "PARENTS"],
+            "Ciblage": ["SOCIODEMO", "LOOKALIKE", "CUSTOM", "INTERETS", "COMPORTEMENTAL", "AFFINITAIRE"],
+            "Nom Format": ["PreRoll", "LinkAdVideo", "InRead", "Pave", "GrandAngle"], "Taille Format": ["0x0", "1x1", "300x250", "300x600"],
             "Device": ["Multidevice", "Mobile"], "Type Asset": ["P", "V", "I"]}
     for c, (label, vals) in enumerate(cols.items(), start=1):
         v.cell(4, c, label)
         for r, x in enumerate(vals, start=5):
             v.cell(r, c, x)
     cache = wb.create_sheet("_cache")                # casse écrite (comme une feuille de cache Google)
-    for c, x in enumerate(["Notoriete", "GrandPublic", "Seniors", "SocioDemo", "LookAlike", "Custom"], start=1):
+    for c, x in enumerate(["Notoriete", "Consideration", "GrandPublic", "Seniors", "SocioDemo", "LookAlike", "Custom", "Comportemental"], start=1):
         cache.cell(1, c, x)
     wb.save(path)

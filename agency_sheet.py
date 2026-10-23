@@ -35,7 +35,8 @@ NAME_LABELS = {"placement name": "placement", "line item name": "placement", "ad
 TARGET_SYNONYMS = {"SOCIO": "SOCIODEMO", "SOCIODEMOGRAPHIQUE": "SOCIODEMO", "INTERET": "INTERETS",
                    "LAL": "LOOKALIKE", "DATA": "CUSTOM", "AFFINITE": "AFFINITAIRE", "AFFINITY": "AFFINITAIRE"}
 GEO_WORDS = re.compile(r"&\s*(g[ée]oloc\w*|rural\w*|urbain\w*)", re.I)
-MAX_DETAIL = 25            # « Complementary Targeting (no mandatory) max 25 characters »
+MAX_DETAIL = 25            # « Complementary Targeting (no mandatory) max 25 characters », si le classeur le dit
+GENERIC_FORMATS = {"VIDEO", "AUDIO", "DISPLAY", "IMAGE", "SOCIAL"}
 DSP_HINT = re.compile(r"\bdsp\b|\bvia\b|programmatic|dv360|trade ?desk|xandr", re.I)
 
 
@@ -53,7 +54,7 @@ def _camel(s: str) -> str:
     """« Grand public » -> GrandPublic ; « Notoriété » -> Notoriete."""
     s = unicodedata.normalize("NFKD", str(s or ""))
     s = "".join(c for c in s if not unicodedata.combining(c))
-    words = [w for w in re.split(r"[^A-Za-z0-9]+", s) if w]
+    words = [w for w in re.split(r"[^A-Za-z0-9_]+", s) if w]
     return "".join(w[0].upper() + w[1:] for w in words)
 
 
@@ -64,6 +65,10 @@ class Vocab:
         self.lists = {tok: [str(v) for v in vals] for tok, vals in lists.items()}
         self.cased = cased                         # MAJUSCULES -> forme écrite (GrandPublic…)
 
+    def has(self, token: str, value: str) -> bool:
+        up = _camel(value).upper()
+        return bool(up) and up in {x.upper() for x in self.lists.get(token, [])}
+
     def snap(self, token: str, value: str, synonyms: Optional[Dict[str, str]] = None) -> str:
         v = _camel(value)
         if not v:
@@ -73,6 +78,11 @@ class Vocab:
             up = synonyms.get(up, up)
         allowed = {x.upper(): x for x in self.lists.get(token, [])}
         hit = up if up in allowed else next((a for a in allowed if a.startswith(up) and len(a) - len(up) <= 2), "")
+        if not hit:      # valeur un peu plus longue que la liste : Comportementale -> Comportemental, SingleImageAd -> SingleImage
+            hit = next((a for a in sorted(allowed, key=len, reverse=True)
+                        if up.startswith(a) and 0 < len(up) - len(a) <= 2 and len(a) >= 5), "")
+            if hit:
+                return self.cased.get(hit) or (allowed[hit] if allowed[hit] != hit else v[:len(hit)])
         if not hit:
             return v
         written = self.cased.get(hit) or (allowed[hit] if allowed[hit] != hit else "")
@@ -137,15 +147,23 @@ def read_convention(path: str):
             score = (len(found), sum(len(v) for v in found.values()))
             if score[1] >= 20 and score > best:
                 best, lists = score, found
+    detail_max = None                              # « max 25 characters » écrit dans le classeur
+    for ws in wb.worksheets:
+        for row in ws.iter_rows(min_row=1, max_row=min(ws.max_row, 30), values_only=True):
+            for v in row:
+                m = re.search(r"max\D{0,3}(\d{2})\s*(characters|caract)", str(v or ""), re.I)
+                if m and ("compl" in _plain(v) or "ciblage" in _plain(v)):
+                    detail_max = int(m.group(1))
     allowed = {str(v).upper() for vals in lists.values() for v in vals}
     cased: Dict[str, str] = {}
-    for ws in wb.worksheets:                      # casse écrite ailleurs dans le classeur
+    # casse écrite dans le classeur : la feuille de cache des listes (« _gg_caching »…) fait foi, puis les autres
+    for ws in sorted(wb.worksheets, key=lambda w: 0 if w.title.startswith("_") or "cach" in w.title.lower() else 1):
         for row in ws.iter_rows(values_only=True):
             for v in row:
                 if isinstance(v, str) and v.upper() in allowed and v != v.upper() and v.upper() not in cased:
                     cased[v.upper()] = v
     wb.close()
-    return {"patterns": patterns, "vocab": Vocab(lists, cased), "sheet": model_sheet}
+    return {"patterns": patterns, "vocab": Vocab(lists, cased), "sheet": model_sheet, "detail_max": detail_max}
 
 
 def nomenclature_json(conv) -> dict:
@@ -184,19 +202,22 @@ def _targetings(cell: str) -> Tuple[str, List[Tuple[str, str]]]:
     return (free[0] if free else ""), tags
 
 
-def clean_detail(seg: str) -> str:
-    """HF1834&Geoloc -> HF1834 ; 60+CSP-&rural -> 60plusCSPminus ; HF63+ -> HF63 ; 25 caractères max."""
+def clean_detail(seg: str, max_len: Optional[int] = MAX_DETAIL) -> str:
+    """HF1834&Geoloc -> HF1834 ; 60+CSP-&rural -> 60plusCSPminus ; HF63+ -> HF63 ; « _ » conservé ;
+    longueur limitée seulement si le classeur l'impose."""
     s = GEO_WORDS.sub("", seg)
     # « + » en fin de critère (HF63+) tombe ; ailleurs il devient « plus » (60+CSP -> 60plusCSP)
     parts = [re.sub(r"\+\s*$", "", p.strip()) for p in s.split("&")]
     s = " ".join(p.replace("+", "plus").replace("-", "minus") for p in parts)
     s = _camel(s)
     # trop long : on retire d'abord les qualificatifs CSP, puis on abrège, en dernier on coupe
+    if not max_len:
+        return s
     for short in (lambda x: re.sub(r"CSP(minus|plus|moins)?$", "", x) if not x.endswith("CSP") else x,
                   lambda x: x.replace("Affinitaire", "Aff"), lambda x: x.replace("Audience", "Aud")):
-        if len(s) > MAX_DETAIL:
+        if len(s) > max_len:
             s = short(s)
-    return s[:MAX_DETAIL]
+    return s[:max_len]
 
 
 def _partner(support: str, regie: str, free_line: str) -> Tuple[str, str]:
@@ -205,9 +226,37 @@ def _partner(support: str, regie: str, free_line: str) -> Tuple[str, str]:
     via = re.match(r"(.+?)\s+via\s+", support, re.I)
     is_dsp = bool(DSP_HINT.search(support)) or "programmatic" in _plain(regie)
     if is_dsp:
-        name = via.group(1) if via else (free_line or support)
+        # diffuseur : « X via DSP », sinon 1re ligne libre du ciblage, sinon la DSP sans « DSP » (Amazon DSP -> Amazon)
+        name = via.group(1) if via else (free_line or re.sub(r"\s*\bdsp\b", "", support, flags=re.I).strip() or support)
         return name, (regie if regie and "programmatic" in _plain(regie) else support)
-    return support, regie or support
+    # régie calculée du PM quand elle désigne un seul diffuseur (Instagram, Facebook, Web366…)
+    name = regie if regie and "&" not in regie else support
+    return name, regie or support
+
+
+def _formats(formats: str, details: str, vocab, video: bool) -> List[Dict[str, str]]:
+    """Format(s) de la ligne, avec taille et type d'asset.
+    - « Display » + « Pavé - GrandAngle - … » : un format par élément, taille IAB, asset I ;
+    - sinon le format précis de « Détails formats » s'il est dans la liste (Trueview_20s -> Trueview),
+      à défaut la colonne « Formats » (Video_30s est trop générique) ;
+    - vidéo servie en VAST (Type adserving « Video ») : asset V en 0x0, sinon tracker P en 1x1."""
+    lines = [re.sub(r"\(.*?\)", "", l).strip() for l in str(details or "").splitlines() if l.strip()]
+    lines = [re.sub(r"_\d+\s*s(ec)?$", "", l, flags=re.I).strip() for l in lines]
+    if _camel(formats).upper() == "DISPLAY" and lines:
+        out = []
+        for part in re.split(r"\s+-\s+|,|/", lines[-1]):
+            part = part.strip()
+            if not part:
+                continue
+            size = plan_agent.size_from_name(part)
+            out.append({"format_label": vocab.snap("format_label", part), "size": size or "1x1",
+                        "asset_type": "I" if size else "P", "placement_category": "display" if size else "tracking"})
+        if out:
+            return out
+    precise = next((l for l in reversed(lines) if vocab.has("format_label", l) and _camel(l).upper() not in GENERIC_FORMATS), "")
+    label = vocab.snap("format_label", precise or formats or (lines[-1] if lines else ""))
+    return [{"format_label": label, "size": "0x0" if video else "1x1", "asset_type": "V" if video else "P",
+             "placement_category": "video" if video else "tracking"}]
 
 
 def _partner_token(name: str) -> str:
@@ -233,6 +282,8 @@ def build_rows(path: str, grids, conv, highlights=None) -> Tuple[List[Dict[str, 
               f"(emplacement = {'-'.join(conv['patterns']['placement'])}), vocabulaire lu dans le classeur.",
               f"Feuille « {sheet} », en-tête ligne {h + 1}."]
     rows: List[Dict[str, str]] = []
+    seen_names: Dict[str, int] = {}              # nom d'emplacement -> ligne du PM qui l'a produit
+    merged: List[str] = []
     blanks = 0
     for raw in grid[h + 1:]:
         if not get(raw, "support"):
@@ -244,9 +295,9 @@ def build_rows(path: str, grids, conv, highlights=None) -> Tuple[List[Dict[str, 
         free, tags = _targetings(get(raw, "targeting"))
         name, site = _partner(get(raw, "support"), get(raw, "regie"), free)
         video = "video" in _plain(get(raw, "adserving"))
-        details = re.sub(r"\(.*?\)", "", get(raw, "details") or get(raw, "formats")).strip()
-        fmt = re.sub(r"_\d+\s*s(ec)?$", "", details, flags=re.I) or get(raw, "formats")
-        messages = [m.strip() for m in get(raw, "messages").splitlines() if m.strip()] or [""]
+        formats = _formats(get(raw, "formats"), get(raw, "details"), vocab, video)
+        messages = [m.strip() for m in get(raw, "messages").splitlines()
+                    if m.strip() and not _plain(m).startswith("cf")] or ["Generique"]
         base = {
             "advertiser_name": (context.get("advertiser_name") or ("", ""))[0],
             "campaign_name": (context.get("campaign_name") or ("", ""))[0],
@@ -258,25 +309,36 @@ def build_rows(path: str, grids, conv, highlights=None) -> Tuple[List[Dict[str, 
             "site_name": _camel(site) if "programmatic" in _plain(site) else site.strip(),
             "placement_type": vocab.snap("placement_type", get(raw, "placement")[:1]),
             "buy": get(raw, "buy"), "pricing_type": get(raw, "buy"),
-            "format_label": vocab.snap("format_label", fmt),
-            "size": "0x0" if video else "1x1", "asset_type": "V" if video else "P",
-            "placement_category": "video" if video else "tracking",
             "device": vocab.snap("device", get(raw, "device")),
         }
         tags = tags or [("", "")]
-        for k, (ttype, seg) in enumerate(tags):
-            line = dict(base, targeting_type=vocab.snap("targeting_type", ttype, TARGET_SYNONYMS),
-                        targeting_detail=clean_detail(seg), targeting=f"#{ttype} : {seg}" if ttype else free)
+        combos = [(t, f) for f in formats for t in tags]          # display : un emplacement par format et par ciblage
+        for k, ((ttype, seg), fm) in enumerate(combos):
+            line = dict(base, **fm, targeting_type=vocab.snap("targeting_type", ttype, TARGET_SYNONYMS),
+                        targeting_detail=clean_detail(seg, conv.get("detail_max")),
+                        targeting=f"#{ttype} : {seg}" if ttype else free)
             # budget et volume portés par le premier ciblage seulement (comme la trafficking sheet)
             budget, volume = (get(raw, "budget"), get(raw, "volume")) if k == 0 else ("", "")
             pname = "-".join(line.get(t, "") for t in conv["patterns"]["placement"] if line.get(t, ""))
+            # deux lignes du PM qui donnent le même nom (ex. Amazon DSP sur France TV puis sur TF1) :
+            # un seul emplacement, signalé pour qu'on les différencie si besoin
+            if seen_names.get(pname, id(raw)) != id(raw):
+                merged.append(pname)
+                continue
+            seen_names[pname] = id(raw)
             for j, msg in enumerate(messages):
                 r = dict(line, placement_name=pname, ad_name=pname,
                          message=re.sub(r"\s+", "", msg).upper(),
                          budget_eur=budget if j == 0 else "", objective_impressions=volume if j == 0 else "",
                          line_budget_eur=budget, line_volume=volume)
                 r["creative_name"] = "-".join(x for x in (r["asset_type"], r["format_label"], r["size"], r["message"]) if x)
+                r["message"] = r["message"] if r["message"] != "GENERIQUE" else "Generique"
+                r["creative_name"] = r["creative_name"].replace("-GENERIQUE", "-Generique")
                 rows.append(r)
+    plan_agent._campaign_period(rows, report)       # dates propres à chaque ligne : la campagne couvre l'ensemble
+    for name in dict.fromkeys(merged):
+        report.append(f"Deux lignes du PM donnent le même nom « {name} » : un seul emplacement créé — "
+                      "différenciez-les (diffuseur, ciblage) si ce sont deux achats distincts.")
     n_pl = len({r["placement_name"] for r in rows})
     report.append(f"{n_pl} emplacement(s) (un par ciblage « #… : … ») et {len(rows)} créative(s) "
                   "(une par message de la colonne « Nb messages »).")

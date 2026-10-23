@@ -30,10 +30,19 @@ def test_names_follow_the_workbook_convention(tmp_path):
         "R-Notoriete-CPM-TF1-Seniors-Custom-DataFoyerRetraite-PreRoll-0x0-Multidevice": "TF1 +",
         "R-Notoriete-dCPM-Meta-GrandPublic-SocioDemo-HF63-LinkAdVideo-1x1-Multidevice": "Facebook & Instagram",
         "R-Notoriete-dCPM-Meta-GrandPublic-LookAlike-VIEWERS-LinkAdVideo-1x1-Multidevice": "Facebook & Instagram",
+        # display : un emplacement par format (taille IAB) et par ciblage
+        "R-Consideration-dCPM-Amnet-Jeunes-SocioDemo-HF1825-Pave-300x250-Multidevice": "Amnet",
+        "R-Consideration-dCPM-Amnet-Jeunes-SocioDemo-HF1825-GrandAngle-300x600-Multidevice": "Amnet",
+        "R-Consideration-dCPM-Amnet-Jeunes-Comportemental-JeuneDiplome-Pave-300x250-Multidevice": "Amnet",
+        "R-Consideration-dCPM-Amnet-Jeunes-Comportemental-JeuneDiplome-GrandAngle-300x600-Multidevice": "Amnet",
+        # DSP sans diffuseur dans le ciblage : « Amazon DSP » -> Amazon ; vidéo servie en VAST
+        "R-Notoriete-CPM-Amazon-Parents-Affinitaire-PackFamille-PreRoll-0x0-Multidevice": "AmplifiProgrammatic",
     }
     creas = sorted({c["name"] for a in camp["ads"] for c in a["creatives"]})
-    assert creas == ["P-LinkAdVideo-1x1-POVJEUNESA", "P-LinkAdVideo-1x1-POVJEUNESB",    # partagées par les 2 ciblages Meta
-                     "P-PreRoll-1x1-POVJEUNESA", "P-PreRoll-1x1-POVJEUNESB", "V-PreRoll-0x0-CECIRETRAITESA"]
+    assert creas == ["I-GrandAngle-300x600-Generique", "I-Pave-300x250-Generique",        # sans message : « Generique »
+                     "P-LinkAdVideo-1x1-POVJEUNESA", "P-LinkAdVideo-1x1-POVJEUNESB",    # partagées par les 2 ciblages Meta
+                     "P-PreRoll-1x1-POVJEUNESA", "P-PreRoll-1x1-POVJEUNESB", "V-PreRoll-0x0-CECIRETRAITESA",
+                     "V-PreRoll-0x0-Generique"]
     assert any("Trafficking sheet d'agence" in l for l in d["ingest"])
     nomen = json.loads(d["nomenclature_auto"])                                      # gardée pour la réouverture
     assert nomen["defaults"]["placement"].startswith("{placement_type}-{objective}-{buy}-{partner}")
@@ -46,6 +55,7 @@ def test_targeting_detail_cleaning():
     assert agency_sheet.clean_detail("60+CSP-&rural") == "60plusCSPminus"
     assert agency_sheet.clean_detail("HF63+&DentsuAudienceCSP-") == "HF63DentsuAudience"      # 25 car. max
     assert agency_sheet.clean_detail("PackAffinitaireFamilleEnfants&géoloc") == "PackAffFamilleEnfants"
+    assert agency_sheet.clean_detail("Segment B2B_PQR_Apprentissage", None) == "SegmentB2B_PQR_Apprentissage"   # sans limite déclarée
 
 
 def test_plain_plan_is_not_taken_for_an_agency_sheet():
