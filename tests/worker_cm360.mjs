@@ -152,6 +152,9 @@ try {
   assert.equal((await api("GET", "settings/inconnu")).status, 404);
   assert.equal((await api("PUT", "settings/advertisers", {value: [{id: "9001", name: "UPSA", adserver: "cm360"}]})).status, 200);
   assert.equal((await api("PUT", "settings/requests", {value: [{id: "r1", name: "Client X", status: "pending"}]})).status, 200);
+  assert.equal((await api("PUT", "settings/corrections", {value: [{id: "c1", field: "format_label", from: "Pavé", to: "MPU"}]})).status, 200);
+  assert.equal((await api("PUT", "settings/client_rules", {value: [{id: "r1", kind: "required", field: "device"}]})).status, 200);
+  assert.equal((await api("GET", "settings/corrections")).data.value[0].to, "MPU");
   cookie = "";
   assert.equal((await api("GET", "adserver/status")).status, 401);                                // connexion requise
   console.log("OK : Worker + faux CM360 (jeton RS256, lecture, rapport asynchrone, programmation, pause / modification / suppression, carnet).");

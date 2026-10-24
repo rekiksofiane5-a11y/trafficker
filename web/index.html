@@ -267,6 +267,14 @@ table.pivot tr.total td { font-weight: 700; border-top: 2px solid var(--text); p
   font-size: .72rem; color: var(--muted); }
 .checks-list .sub { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
 .checks-list li.ok::before { content: "✓"; background: var(--ok); }
+.checks-list li.info::before { content: "i"; background: var(--gold); }
+.learn-bar { border: 1px solid var(--gold); background: var(--chip); border-radius: 12px; padding: 10px 12px; margin: 0 0 10px; font-size: .86rem; }
+.learn-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.learn-head select { width: auto; padding: 4px 8px; }
+.learn-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.learn-list li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.learn-actions { display: flex; gap: 6px; }
+.learn-bar .sm { padding: 4px 12px; font-size: .8rem; }
 .more-actions { justify-content: flex-start; opacity: .85; }
 .site-pick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .site-pick input { flex: 1 1 9rem; padding: 5px 8px; font-size: .8rem; }
@@ -788,6 +796,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
               <button type="button" id="bulk-delete" class="secondary danger">Supprimer</button>
               <button type="button" id="bulk-clear" class="secondary">Désélectionner</button>
             </div>
+            <div id="learn-bar" class="learn-bar" role="region" aria-label="Corrections à retenir" hidden></div>
             <div class="table-wrap" id="editor"></div>
             <div class="actions"><button id="add-row" class="secondary">+ Ajouter une ligne</button></div>
           </div>
@@ -991,6 +1000,24 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 <dialog id="agency-dialog" aria-labelledby="ag-title">
   <h2 id="ag-title">Réglages de l'agence</h2>
   <p class="hint">Partagés par tous les utilisateurs de l'agence et appliqués à chaque import d'export.</p>
+  <section aria-labelledby="ag-rules-title">
+    <h3 id="ag-rules-title">Règles par client</h3>
+    <p class="hint">Appliquées à chaque PM de l'annonceur (ou de toute l'agence) : valeurs par défaut ou imposées, contrôles remontés dans « Points à vérifier ». Modifiable par l'admin.</p>
+    <div class="table-wrap"><table id="ag-rules"></table></div>
+    <form id="ag-rule-form" class="row-form admin-only">
+      <label>Annonceur<input id="ag-rule-adv" list="ag-rule-advs" placeholder="Tous les annonceurs"><datalist id="ag-rule-advs"></datalist></label>
+      <label>Règle<select id="ag-rule-kind"></select></label>
+      <label>Champ<select id="ag-rule-field"></select></label>
+      <label>Valeur<input id="ag-rule-value" placeholder="ex. Desktop, Mobile"></label>
+      <label>Niveau<select id="ag-rule-level"><option value="warn">À vérifier</option><option value="block">Bloquant</option></select></label>
+      <button type="submit" class="secondary">Ajouter la règle</button>
+    </form>
+  </section>
+  <section aria-labelledby="ag-corr-title">
+    <h3 id="ag-corr-title">Corrections retenues</h3>
+    <p class="hint">Apprises des corrections faites dans le plan : la valeur lue dans le PM est remplacée automatiquement aux prochains imports.</p>
+    <div class="table-wrap"><table id="ag-corr"></table></div>
+  </section>
   <section aria-labelledby="ag-adv-title">
     <h3 id="ag-adv-title">Annonceurs du reporting</h3>
     <p class="hint">Liste proposée sur l'accueil Reporting. Les comptes connectés à l'API d'un ad server ajoutent ses annonceurs automatiquement. Modifiable par l'admin.</p>
@@ -1261,7 +1288,9 @@ function buildChecks(d) {
     checks.push({level: "warn", text: `${d.to_complete.length} information(s) à compléter dans le plan (cases orange)`,
                  sub: d.to_complete.map((t) => t.split(" — ")[0]).slice(0, 4).join(" · ")});
   for (const c of siteChecks()) checks.push(c);
-  checks.sort((x, y) => (x.level === "block" ? 0 : 1) - (y.level === "block" ? 0 : 1));
+  for (const c of memoryChecks(d)) checks.push(c);
+  const rank = {block: 0, warn: 1, info: 2};
+  checks.sort((x, y) => (rank[x.level] ?? 1) - (rank[y.level] ?? 1));
   return checks;
 }
 
@@ -1348,6 +1377,195 @@ function siteChecks() {
   });
 }
 
+// --- Mémoire de l'agence : corrections retenues (lu dans le PM -> corrigé) et règles par client ---
+// Chaque ligne garde dans `_o` les valeurs lues par le moteur : une correction faite à la main est
+// proposée « à retenir » ; retenue, elle est appliquée aux prochains PM (toute l'agence ou un annonceur).
+const LEARN_FIELDS = {objective: "Objectif", site_name: "Régie / site", audience: "Audience", targeting: "Ciblage",
+  targeting_detail: "Détail du ciblage", device: "Devices", placement_name: "Emplacement", format_label: "Format",
+  size: "Dimensions", placement_category: "Catégorie", pricing_type: "Achat", message: "Message"};
+const RULE_KINDS = {required: "Champ obligatoire", allowed: "Valeurs autorisées", forbidden: "Valeurs interdites",
+  default: "Valeur par défaut (si vide)", force: "Valeur imposée", max_budget: "Budget max par ligne (€)",
+  adserver: "Ad server par défaut"};
+const RULE_FIELDS = {...LEARN_FIELDS, landing_page_url: "URL de destination", creative_name: "Créative",
+  budget_eur: "Budget €", __names: "Noms générés (emplacements, annonces, créas)"};
+const normV = (v) => String(v ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+const listV = (v) => String(v || "").split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
+let MEM = {corrections: [], rules: []}, memLog = {applied: [], adserver: ""}, pendingLearn = new Map(), ignoredLearn = new Set();
+
+async function loadMemory() {
+  try { MEM.corrections = (await Store.setting("corrections")) || []; } catch (e) { MEM.corrections = []; handleAuth(e); }
+  try { MEM.rules = (await Store.setting("client_rules")) || []; } catch (e) { MEM.rules = []; handleAuth(e); }
+  return MEM;
+}
+function planAdvertiser() {
+  return (current && current.advertiser) || $("adv").value.trim() || (table[0] && table[0].advertiser_name) || "";
+}
+const forAdv = (x, adv) => !x.advertiser || normV(x.advertiser) === normV(adv);
+function rulesFor(adv) { return MEM.rules.filter((r) => forAdv(r, adv)); }
+function correctionFor(field, from, adv) {
+  const k = normV(from), hits = MEM.corrections.filter((c) => c.field === field && normV(c.from) === k && forAdv(c, adv));
+  return hits.find((c) => c.advertiser) || hits[0];                  // la règle de l'annonceur passe avant celle de l'agence
+}
+
+// Nouvelle analyse : valeurs lues gardées, corrections retenues puis règles « défaut / imposée » appliquées
+async function applyMemory() {
+  await loadMemory();
+  const adv = planAdvertiser(), counts = new Map();
+  memLog = {applied: [], adserver: ""};
+  pendingLearn.clear();
+  let changed = false;
+  for (const r of table) {
+    const o = {};
+    for (const k of Object.keys(LEARN_FIELDS)) if (r[k]) o[k] = r[k];
+    r._o = JSON.stringify(o);
+    for (const k of Object.keys(LEARN_FIELDS)) {
+      if (!r[k]) continue;
+      const c = correctionFor(k, r[k], adv);
+      if (!c || r[k] === c.to) continue;
+      r[k] = c.to; changed = true;
+      const key = c.id;
+      counts.set(key, {c, n: ((counts.get(key) || {}).n || 0) + 1});
+    }
+    for (const rule of rulesFor(adv)) {
+      if ((rule.kind === "default" && !String(r[rule.field] || "").trim()) || (rule.kind === "force" && r[rule.field] !== rule.value)) {
+        r[rule.field] = rule.value; changed = true;
+        const key = "rule:" + rule.id;
+        counts.set(key, {rule, n: ((counts.get(key) || {}).n || 0) + 1});
+      }
+    }
+  }
+  for (const {c, rule, n} of counts.values())
+    memLog.applied.push(c ? {text: `${LEARN_FIELDS[c.field]} : « ${c.from} » → « ${c.to} »`, n}
+                          : {text: `${RULE_FIELDS[rule.field] || rule.field} ${rule.kind === "force" ? "imposé" : "par défaut"} : « ${rule.value} »`, n});
+  const ad = rulesFor(adv).find((r) => r.kind === "adserver");
+  if (ad && $("adserver").value !== ad.value) {
+    $("adserver").value = ad.value;
+    $("adserver").dispatchEvent(new Event("change"));
+    memLog.adserver = ad.value;
+  }
+  // compteur d'usage des corrections (best effort)
+  const used = [...counts.values()].filter((x) => x.c);
+  if (used.length) {
+    const next = MEM.corrections.map((c) => { const u = used.find((x) => x.c.id === c.id); return u ? {...c, n: (c.n || 0) + u.n, last: Date.now() / 1000} : c; });
+    Store.putSetting("corrections", next).then(() => { MEM.corrections = next; }).catch(() => {});
+  }
+  for (const k of Object.keys(LEARN_FIELDS))
+    if (table.some((r) => r[k]) && !columns.some((c) => c.key === k)) columns.push({key: k, label: LEARN_FIELDS[k]});
+  if (changed) { renderEditor({table, columns}); scheduleRebuild(0); }
+  renderLearn();
+}
+
+// Correction à la main : proposée à retenir (ou à oublier si on revient à la valeur lue)
+function noteEdit(rowIdx, keys) {
+  const adv = planAdvertiser();
+  for (const k of keys) {
+    if (!LEARN_FIELDS[k]) continue;
+    for (const i of rowIdx) {
+      const r = table[i];
+      if (!r || !r._o) continue;
+      let o; try { o = JSON.parse(r._o); } catch (e) { continue; }
+      const from = o[k];
+      if (!from) continue;
+      const id = k + "|" + normV(from), to = String(r[k] || "").trim(), saved = correctionFor(k, from, adv);
+      if (!to) { pendingLearn.delete(id); continue; }
+      if (normV(to) === normV(from)) {
+        if (saved) pendingLearn.set(id, {id, field: k, from, to: from, forget: saved, rows: new Set([i])});
+        else pendingLearn.delete(id);
+      } else if (saved && saved.to === to) pendingLearn.delete(id);
+      else if (!ignoredLearn.has(id + "|" + to)) {
+        const p = pendingLearn.get(id);
+        const rows = p && p.to === to ? p.rows : new Set();
+        rows.add(i);
+        pendingLearn.set(id, {id, field: k, from, to, rows});
+      }
+    }
+  }
+  renderLearn();
+}
+function renderLearn() {
+  const bar = $("learn-bar"), items = [...pendingLearn.values()];
+  bar.hidden = !items.length;
+  if (!items.length) { bar.dataset.sig = ""; return; }
+  // même contenu : pas de nouveau rendu (le clic sur « Retenir » suit souvent la sortie du champ)
+  const sig = items.map((p) => `${p.id}>${p.to}>${p.rows.size}>${!!p.forget}`).join("|") + "@" + planAdvertiser();
+  if (bar.dataset.sig === sig && bar.childElementCount) return;
+  bar.dataset.sig = sig;
+  const adv = planAdvertiser();
+  const scope = el("select", {id: "learn-scope", "aria-label": "Portée des corrections"},
+    el("option", {value: ""}, "pour toute l'agence"), ...(adv ? [el("option", {value: adv}, "pour " + adv + " seulement")] : []));
+  scope.value = bar.dataset.scope && adv ? bar.dataset.scope : "";
+  scope.addEventListener("change", () => { bar.dataset.scope = scope.value; });
+  const all = el("button", {type: "button", class: "sm"}, "Tout retenir");
+  all.addEventListener("click", () => saveLearn(items));
+  bar.replaceChildren(
+    el("div", {class: "learn-head"}, el("strong", {}, items.length > 1 ? `Retenir ces ${items.length} corrections pour les prochains PM ?` : "Retenir cette correction pour les prochains PM ?"),
+      scope, items.length > 1 ? all : ""),
+    el("ul", {class: "learn-list"}, ...items.map((p) => {
+      const ok = el("button", {type: "button", class: "sm"}, p.forget ? "Oublier la règle" : "Retenir");
+      const no = el("button", {type: "button", class: "secondary sm"}, p.forget ? "Garder" : "Ignorer");
+      ok.addEventListener("click", () => saveLearn([p]));
+      no.addEventListener("click", () => { pendingLearn.delete(p.id); ignoredLearn.add(p.id + "|" + p.to); renderLearn(); });
+      const txt = p.forget ? `${LEARN_FIELDS[p.field]} : ne plus remplacer « ${p.from} » par « ${p.forget.to} »`
+                           : `${LEARN_FIELDS[p.field]} : « ${p.from} » → « ${p.to} »`;
+      return el("li", {}, el("span", {}, txt, el("span", {class: "hint"}, ` · ${p.rows.size} ligne(s)`)), el("span", {class: "learn-actions"}, ok, no));
+    })));
+}
+async function saveLearn(items) {
+  const scope = ($("learn-scope") && $("learn-scope").value) || "";
+  await loadMemory();
+  let next = [...MEM.corrections];
+  for (const p of items) {
+    const same = (c) => c.field === p.field && normV(c.from) === normV(p.from) && normV(c.advertiser || "") === normV(p.forget ? (p.forget.advertiser || "") : scope);
+    next = next.filter((c) => !same(c));
+    if (!p.forget) next.push({id: "c" + Date.now() + Math.random().toString(36).slice(2, 6), field: p.field, from: p.from, to: p.to,
+                              advertiser: scope, by: me.name || me.email || "", ts: Date.now() / 1000, n: 0});
+  }
+  try {
+    await Store.putSetting("corrections", next.slice(-1000));
+    MEM.corrections = next;
+    for (const p of items) pendingLearn.delete(p.id);
+    renderLearn();
+    $("sync").textContent = ` · ${items.length} correction(s) retenue(s) pour l'agence`;
+  } catch (e) { $("sync").textContent = " · enregistrement impossible : " + e.message; handleAuth(e); }
+}
+
+// Règles par client -> points à vérifier
+function memoryChecks(d) {
+  const out = [];
+  if (memLog.applied.length)
+    out.push({level: "info", text: `${memLog.applied.reduce((a, x) => a + x.n, 0)} correction(s) de l'agence appliquée(s)`,
+              sub: memLog.applied.slice(0, 5).map((x) => `${x.text} (${x.n})`).join(" · ") + (memLog.applied.length > 5 ? " …" : "")});
+  if (memLog.adserver) out.push({level: "info", text: `Ad server ${ADSERVER_LABEL[memLog.adserver]} choisi par la règle du client`});
+  const adv = planAdvertiser(), names = (d.campaigns || []).flatMap((c) => [...(c.placements || []).map((p) => p.name),
+    ...(c.ads || []).flatMap((a) => [a.name, ...a.creatives.map((x) => x.name)])]);
+  for (const rule of rulesFor(adv)) {
+    const lab = RULE_FIELDS[rule.field] || rule.field, who = rule.advertiser ? ` (règle ${rule.advertiser})` : " (règle de l'agence)";
+    const lvl = rule.level === "block" ? "block" : "warn";
+    const rows = (pred) => table.map((r, i) => (pred(r) ? i + 1 : 0)).filter(Boolean);
+    const say = (text, bad) => { if (bad.length) out.push({level: lvl, text: text + who, sub: `Ligne(s) ${bad.slice(0, 8).join(", ")}${bad.length > 8 ? " …" : ""}`}); };
+    if (rule.kind === "required") say(`${lab} obligatoire`, rows((r) => !String(r[rule.field] || "").trim()));
+    if (rule.kind === "allowed" && rule.field !== "__names") {
+      const ok = new Set(listV(rule.value).map(normV));
+      say(`${lab} : valeur hors liste (${listV(rule.value).join(", ")})`, rows((r) => String(r[rule.field] || "").trim() && !ok.has(normV(r[rule.field]))));
+    }
+    if (rule.kind === "forbidden") {
+      const words = listV(rule.value).map(normV);
+      if (rule.field === "__names") {
+        const bad = [...new Set(names.filter((n) => words.some((w) => normV(n).includes(w))))];
+        if (bad.length) out.push({level: lvl, text: `Mot interdit dans ${bad.length} nom(s) : ${listV(rule.value).join(", ")}${who}`,
+                                  sub: bad.slice(0, 3).join(" · ") + (bad.length > 3 ? " …" : "")});
+      } else say(`${lab} : valeur interdite (${listV(rule.value).join(", ")})`, rows((r) => words.some((w) => normV(r[rule.field]).includes(w))));
+    }
+    if (rule.kind === "force") say(`${lab} doit valoir « ${rule.value} »`, rows((r) => r[rule.field] !== rule.value));
+    if (rule.kind === "max_budget") {
+      const max = Number(String(rule.value).replace(/[^\d.,]/g, "").replace(",", "."));
+      const eur = (v) => Number(String(v || "").replace(/[^\d,.-]/g, "").replace(/\s/g, "").replace(",", "."));
+      if (max) say(`Budget au-dessus de ${rule.value} € par ligne`, rows((r) => eur(r.budget_eur) > max));
+    }
+  }
+  return out;
+}
+
 // Aperçu « comme dans CM360 » : Campagne > Site > Package > Emplacement > Annonce > Créative
 // Étape 1 : emplacements (sous le site/régie, packages) ; étape 2 : annonces et créatives.
 // Édition directe : double-clic = renommer ; glisser une ligne = la déplacer ; chaque
@@ -1371,6 +1589,7 @@ function setRowsFields(rowIdx, values) {
     for (const i of rowIdx) if (table[i]) table[i][k] = v;
     if (!columns.some((c) => c.key === k)) columns.push({key: k, label: EDIT_LABELS[k] || k});
   }
+  noteEdit(rowIdx, Object.keys(values));
   renderEditor({table, columns});
   highlightRows(rowIdx);
   scheduleRebuild(0);
@@ -1679,6 +1898,7 @@ function editorRow(row, i) {
     const mark = () => td.classList.toggle("cell-missing", REQUIRED_CELLS.has(c.key) && !input.value.trim());
     mark();
     input.addEventListener("input", () => { table[i][c.key] = input.value; mark(); scheduleRebuild(); });
+    input.addEventListener("change", () => noteEdit([i], [c.key]));
     tr.append(td);
   }
   const rm = el("button", {class: "rm", title: "Supprimer la ligne", "aria-label": `Supprimer la ligne ${i + 1}`}, "✕");
@@ -1848,7 +2068,7 @@ $("analyze").addEventListener("click", async () => {
     step = 1;
     selected.clear(); edSel.clear();
     applyResult(d);
-    if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); }
+    if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); await applyMemory(); }
     $("output").classList.add("hidden");
     if (!d.fatal) { collapsePlan(true); resolveSites(); }       // régies -> sites de l'ad server (API, sinon démo)
     if (!d.fatal && current) {
@@ -2244,6 +2464,7 @@ $("pm-reopen").addEventListener("click", () => { $("file").value = ""; pickFile(
 
 function resetWork() {
   planFile = null;
+  pendingLearn.clear(); memLog = {applied: [], adserver: ""}; $("learn-bar").hidden = true;
   pmState("idle");
   $("file").value = ""; $("nomen").value = ""; $("creas").value = "";
   $("file-name").textContent = "";
@@ -2299,6 +2520,7 @@ async function restoreWork(t) {
     selected.clear(); edSel.clear();
     applyResult(d);
     if (!d.fatal) { renderEditor(d); renderCampaignForm(d.campaign || {}); collapsePlan(true); resolveSites(); }
+    if (!d.fatal) loadMemory().then(() => { if (t === current && lastResult) renderChecks(buildChecks(lastResult)); });   // règles du client
   } catch (e) {
     $("result").classList.remove("hidden");
     $("summary").replaceChildren(el("p", {class: "err"}, "Restauration impossible : " + e.message));
@@ -2577,8 +2799,66 @@ $("ag-tpl-form").addEventListener("submit", (e) => {
   agSave("report_templates", next, () => { RP.agencyTpls = next; $("ag-tpl-form").reset(); agRenderTpl(); });
 });
 
+// Règles par client et corrections retenues (mémoire de l'agence)
+function agRenderRules() {
+  const admin = me.role === "admin", rules = MEM.rules;
+  $("ag-rules").replaceChildren(
+    el("thead", {}, el("tr", {}, ...["Annonceur", "Règle", "Champ", "Valeur", "Niveau", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...(rules.length ? rules.map((r, i) => {
+      const rm = el("button", {type: "button", class: "secondary", "aria-label": "Supprimer la règle " + (i + 1)}, "Supprimer");
+      rm.disabled = !admin;
+      rm.addEventListener("click", () => {
+        const next = rules.filter((_, j) => j !== i);
+        agSave("client_rules", next, () => { MEM.rules = next; agRenderRules(); });
+      });
+      const val = r.kind === "adserver" ? ADSERVER_LABEL[r.value] || r.value : r.value || "—";
+      return el("tr", {}, el("td", {}, r.advertiser || "Tous"), el("td", {}, RULE_KINDS[r.kind] || r.kind),
+        el("td", {}, r.kind === "adserver" || r.kind === "max_budget" ? "—" : RULE_FIELDS[r.field] || r.field), el("td", {}, val),
+        el("td", {}, ["default", "force", "adserver"].includes(r.kind) ? "appliquée" : r.level === "block" ? "Bloquant" : "À vérifier"), el("td", {}, rm));
+    }) : [el("tr", {}, el("td", {colspan: "6", class: "hint"}, "Aucune règle : ajoute-en une (ex. Devices autorisés pour un client)."))])));
+}
+function agRuleForm() {
+  const kind = $("ag-rule-kind").value;
+  $("ag-rule-field").disabled = kind === "adserver" || kind === "max_budget";
+  $("ag-rule-value").disabled = kind === "required";
+  $("ag-rule-value").placeholder = {allowed: "ex. Desktop, Mobile", forbidden: "ex. test, copie", default: "ex. Multidevice",
+    force: "ex. Notoriete", max_budget: "ex. 20000", adserver: "cm360 ou adform", required: ""}[kind] || "";
+  const names = $("ag-rule-field").querySelector('option[value="__names"]');
+  if (names) names.disabled = kind !== "forbidden";
+}
+$("ag-rule-kind").replaceChildren(...Object.entries(RULE_KINDS).map(([k, v]) => el("option", {value: k}, v)));
+$("ag-rule-field").replaceChildren(...Object.entries(RULE_FIELDS).map(([k, v]) => el("option", {value: k}, v)));
+$("ag-rule-kind").addEventListener("change", agRuleForm);
+agRuleForm();
+$("ag-rule-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const kind = $("ag-rule-kind").value, field = kind === "max_budget" ? "budget_eur" : kind === "adserver" ? "" : $("ag-rule-field").value;
+  let value = $("ag-rule-value").value.trim();
+  if (kind === "adserver") { value = /adform/i.test(value) ? "adform" : /cm|campaign/i.test(value) ? "cm360" : ""; }
+  if (kind !== "required" && !value) { $("ag-msg").className = "err"; $("ag-msg").textContent = "Indique une valeur pour cette règle."; return; }
+  if (field === "__names" && kind !== "forbidden") { $("ag-msg").className = "err"; $("ag-msg").textContent = "Les noms générés n'acceptent que « Valeurs interdites »."; return; }
+  const next = [...MEM.rules, {id: "r" + Date.now(), advertiser: $("ag-rule-adv").value.trim(), kind, field, value, level: $("ag-rule-level").value}];
+  agSave("client_rules", next, () => { MEM.rules = next; $("ag-rule-form").reset(); agRuleForm(); agRenderRules(); });
+});
+function agRenderCorr() {
+  const list = MEM.corrections, admin = me.role === "admin";
+  $("ag-corr").replaceChildren(
+    el("thead", {}, el("tr", {}, ...["Champ", "Lu dans le PM", "Corrigé en", "Annonceur", "Utilisée", "Par", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...(list.length ? list.map((c) => {
+      const rm = el("button", {type: "button", class: "secondary", "aria-label": `Oublier la correction ${c.from}`}, "Oublier");
+      rm.disabled = !admin && c.by !== (me.name || me.email || "");
+      rm.addEventListener("click", () => {
+        const next = MEM.corrections.filter((x) => x.id !== c.id);
+        agSave("corrections", next, () => { MEM.corrections = next; agRenderCorr(); });
+      });
+      return el("tr", {}, el("td", {}, LEARN_FIELDS[c.field] || c.field), el("td", {}, c.from), el("td", {}, c.to),
+        el("td", {}, c.advertiser || "Toute l'agence"), el("td", {}, (c.n || 0) + " fois"), el("td", {}, c.by || ""), el("td", {}, rm));
+    }) : [el("tr", {}, el("td", {colspan: "7", class: "hint"}, "Aucune correction retenue : corrige une valeur dans le plan, Umnia propose de la retenir."))])));
+}
+
 $("open-agency").addEventListener("click", async () => {
   $("ag-msg").textContent = "";
+  await loadMemory();
   try { agAdv = (await Store.setting("advertisers")) || []; } catch (e) { agAdv = []; handleAuth(e); }
   try { RP.agencyTpls = (await Store.setting("report_templates")) || []; } catch (e) { RP.agencyTpls = []; handleAuth(e); }
   for (const f of document.querySelectorAll("#agency-dialog .admin-only")) f.hidden = me.role !== "admin";
@@ -2588,6 +2868,9 @@ $("open-agency").addEventListener("click", async () => {
   agRenderViews();
   agRenderAdv();
   agRenderTpl();
+  agRenderRules();
+  agRenderCorr();
+  $("ag-rule-advs").replaceChildren(...agAdv.map((a) => el("option", {value: a.name})));
   $("agency-dialog").showModal();
 });
 $("ag-map-form").addEventListener("submit", (e) => {
@@ -3067,8 +3350,13 @@ const EMAIL_RE = /^[^\s@<>,;]+@[^\s@<>,;]+\.[a-z]{2,}$/i;
 
 function rpSchedule() {
   const data = rpData();
-  data.schedule = data.schedule || {frequency: (rpTplConfig().frequency || "daily"), weekdays: ["MONDAY"], range: "cumul",
-    start: RP.campaign.start > isoToday() ? RP.campaign.start : addDays(isoToday(), 1), end: addDays(RP.campaign.end || isoToday(), 1), message: ""};
+  if (!data.schedule) {
+    // campagne terminée : le calendrier proposé ne finit jamais avant son premier envoi
+    const start = RP.campaign.start > isoToday() ? RP.campaign.start : addDays(isoToday(), 1);
+    const end = addDays(RP.campaign.end || isoToday(), 1);
+    data.schedule = {frequency: (rpTplConfig().frequency || "daily"), weekdays: ["MONDAY"], range: "cumul",
+                     start, end: end < start ? start : end, message: ""};
+  }
   return data.schedule;
 }
 

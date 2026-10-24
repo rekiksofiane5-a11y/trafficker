@@ -926,3 +926,53 @@ def test_rename_task(page):
     page.wait_for_function("document.getElementById('task-title').textContent === 'Bilan banque'")
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
+
+
+def test_agency_memory_corrections_and_client_rules(page, tmp_path):
+    """Correction faite à la main -> « Retenir » -> appliquée au PM suivant ; règles par client -> points à vérifier."""
+    from fixtures.make_upsa import build
+    path = tmp_path / "upsa.xlsx"
+    build(str(path))
+    _create_task(page, "UPSA mémoire", advertiser="UPSA")
+    _analyze(page, str(path), validate=False)
+    cell = page.locator('#editor tr[data-row="0"] input[data-key="format_label"]')
+    before = cell.input_value()
+    same = [page.locator(f'#editor tr[data-row="{i}"] input[data-key="format_label"]').input_value()
+            for i in range(page.locator("#editor tbody tr").count())].count(before)
+    cell.fill("Format Maison")
+    cell.dispatch_event("change")
+    page.wait_for_selector("#learn-bar:not([hidden])")
+    assert f"« {before} » → « Format Maison »" in page.text_content("#learn-bar")
+    page.select_option("#learn-scope", "UPSA")
+    page.click("#learn-bar button:has-text('Retenir')")
+    page.wait_for_selector("#learn-bar", state="hidden")
+    # règles du client : devices autorisés + mot interdit dans les noms
+    page.click("#account-btn")
+    page.click("#open-agency")
+    for kind, field, value in [("allowed", "device", "Tablette"), ("forbidden", "__names", "Format")]:
+        page.fill("#ag-rule-adv", "UPSA")
+        page.select_option("#ag-rule-kind", kind)
+        page.select_option("#ag-rule-field", field)
+        page.fill("#ag-rule-value", value)
+        page.click("#ag-rule-form button[type=submit]")
+        page.wait_for_function(f"document.getElementById('ag-rules').textContent.includes('{value}')")
+    assert "Format Maison" in page.text_content("#ag-corr") and "UPSA" in page.text_content("#ag-corr")
+    page.click("#agency-dialog [data-close]")
+    _analyze(page, str(path), validate=False)                       # PM suivant : correction appliquée
+    page.wait_for_function("document.getElementById('checks-list').textContent.includes('appliquée')")
+    vals = [page.locator(f'#editor tr[data-row="{i}"] input[data-key="format_label"]').input_value()
+            for i in range(page.locator("#editor tbody tr").count())]
+    assert vals.count("Format Maison") == same
+    checks = page.text_content("#checks-list")
+    assert f"{same} correction(s) de l'agence appliquée(s)" in checks
+    assert "Devices : valeur hors liste (Tablette) (règle UPSA)" in checks
+    page.wait_for_function("document.getElementById('checks-list').textContent.includes('Mot interdit')")
+    cell = page.locator('#editor tr[data-row="0"] input[data-key="format_label"]')   # revenir à la valeur lue : oublier ?
+    cell.fill(before)
+    cell.dispatch_event("change")
+    page.wait_for_selector("#learn-bar:not([hidden])")
+    assert "ne plus remplacer" in page.text_content("#learn-bar")
+    page.click("#learn-bar button:has-text('Oublier la règle')")
+    assert page.evaluate("MEM.corrections.length") == 0
+    page.evaluate("Store.putSetting('client_rules', []).then(() => { MEM.rules = []; })")
+    assert page.errors == []
