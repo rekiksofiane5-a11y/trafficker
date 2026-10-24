@@ -39,20 +39,46 @@ def site():
 
 
 @pytest.fixture(scope="module")
-def page(site):
+def context(site):
+    """Un navigateur par module ; le cache HTTP (moteur Pyodide) est partagé entre les tests."""
     with sync_api.sync_playwright() as p:
         kw = {"executable_path": os.path.realpath(CHROMIUM)} if os.path.exists(CHROMIUM) else {}
         if hasattr(os, "geteuid") and os.geteuid() == 0:
             kw["args"] = ["--no-sandbox", "--disable-gpu", "--no-zygote"]
         browser = p.chromium.launch(**kw)
-        pg = browser.new_page(accept_downloads=True)
-        pg.errors = []
-        pg.on("pageerror", lambda e: pg.errors.append(str(e)))
-        pg.goto(site)
-        pg.wait_for_selector("text=Moteur prêt", timeout=120000)
-        _create_task(pg, "Tâche de test")
-        yield pg
+        ctx = browser.new_context(accept_downloads=True)
+        yield ctx
         browser.close()
+
+
+@pytest.fixture(scope="module")
+def _page(context, site):
+    pg = context.new_page()
+    pg.errors = []
+    pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+    pg.goto(site)
+    pg.wait_for_selector("text=Moteur prêt", timeout=120000)
+    yield pg
+    pg.close()
+
+
+@pytest.fixture
+def page(_page):
+    """Même page (le moteur Pyodide n'est chargé qu'une fois) remise à zéro avant chaque test : stockage du
+    navigateur vidé (tâches, réglages, alertes), fenêtres fermées, mode Trafficking, une tâche neuve."""
+    _page.evaluate("""() => {
+      for (const d of document.querySelectorAll("dialog[open]")) d.close();
+      localStorage.clear(); sessionStorage.clear();
+      closeMenus(); setHistory(false); setHelp(false);
+      helpMsgs = []; urlRes.clear(); siteDir = null;
+      if (current) { current = null; resetWork(); $("task-view").hidden = true; $("empty-view").hidden = false; }
+      $("adserver").value = "cm360";
+      setMode("trafficking");
+      refreshNotifs();
+    }""")
+    _page.errors.clear()
+    _create_task(_page, "Tâche de test")
+    yield _page
 
 
 def _history(page):
@@ -277,8 +303,9 @@ def test_adform_preview_with_views(page, tmp_path):
                  "SPF Fertilité,Notoriété,Amnet,Contextuel Santé,Audio,21/10/2026,22/11/2027,151619,11544211,https://x.fr\n"
                  "SPF Fertilité,Notoriété,Amnet,Comportemental,Audio,21/10/2026,22/11/2027,151619,11544211,https://x.fr\n",
                  encoding="utf-8")
-    page.select_option("#adserver", "adform")
     _analyze(page, str(p))
+    page.select_option("#adserver", "adform")                # choix dans la carte « prêt »
+    page.wait_for_function("document.getElementById('preview-pane').innerText.includes('Aperçu dans Adform')")
     pane = page.inner_text("#preview-pane")
     assert "Aperçu dans Adform" in pane and "Direct Line Item" in pane and "Amnet" in pane
     assert "151\u202f619,00 €" in pane and "Imps" in pane and "21/10/2026" in pane
