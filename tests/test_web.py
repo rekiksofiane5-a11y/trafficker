@@ -1042,3 +1042,36 @@ def test_campaign_monitoring_alerts_bell_and_thresholds(page):
     assert page.evaluate("Store.setting('alerts').then((a) => a.filter((x) => x.status === 'open').length)") == 0
     page.click(".modes [data-mode=trafficking]")
     assert page.errors == []
+
+
+def test_help_assistant_guides_without_task_data(page):
+    """Assistant d'aide : conversation + nom de l'écran seulement, e-mails et URL masqués, réponse mise en forme."""
+    page.evaluate("""() => {
+      window.__asked = [];
+      window.assistantAsk = async (messages, screen) => {
+        window.__asked.push({messages: JSON.parse(JSON.stringify(messages)), screen});
+        return "Voici comment faire :\\n1. Ouvrez **Reporting**\\n2. Choisissez l'annonceur\\n- puis « Espace report »";
+      };
+    }""")
+    _report_space(page, "UPSA")
+    page.click("#help-btn")
+    assert page.is_visible("#help-panel") and "ne collez pas de données client" in page.text_content("#help-panel")
+    assert page.locator("#help-suggest button").count() == 4
+    page.fill("#help-input", "Comment envoyer à jean@agence.fr le report de https://client.fr/promo ?")
+    page.click("#help-send")
+    page.wait_for_selector(".help-a ol li")
+    asked = page.evaluate("window.__asked")[-1]
+    assert asked["screen"].startswith("Reporting — espace report")
+    assert asked["messages"] == [{"role": "user", "content": "Comment envoyer à [e-mail] le report de [URL] ?"}]
+    assert page.locator(".help-a ol li").count() == 2 and page.locator(".help-a strong").text_content() == "Reporting"
+    assert page.locator(".help-a ul li").count() == 1
+    page.fill("#help-input", "Et ensuite ?")
+    page.press("#help-input", "Enter")
+    page.wait_for_function("window.__asked.length === 2")
+    assert [m["role"] for m in page.evaluate("window.__asked")[-1]["messages"]] == ["user", "assistant", "user"]
+    page.click("#help-clear")
+    assert page.locator("#help-suggest button").count() == 4
+    page.keyboard.press("Escape")
+    assert not page.is_visible("#help-panel")
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []

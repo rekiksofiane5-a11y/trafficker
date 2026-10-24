@@ -30,6 +30,14 @@ const fake = createServer(async (req, res) => {
     return send({access_token: "tok-123", expires_in: 3600});
   }
   // pages de destination (contrôle des URL) et faux service d'e-mail (Resend)
+  // faux service Claude (assistant d'aide)
+  if (url.pathname === "/v1/messages") {
+    const b = JSON.parse(raw), last = b.messages[b.messages.length - 1].content;
+    if (req.headers["x-api-key"] !== "sk-ant-test") return send({type: "error", error: {type: "authentication_error"}}, 401);
+    if (last.includes("REFUS")) return send({content: [], stop_reason: "refusal", stop_details: {type: "refusal"}, usage: {input_tokens: 5, output_tokens: 0}});
+    return send({content: [{type: "thinking", thinking: "", signature: "sig"}, {type: "text", text: "1. Ouvrez « Reporting »\n2. Choisissez l'annonceur"}],
+                 stop_reason: "end_turn", usage: {input_tokens: 1200, output_tokens: 40, cache_read_input_tokens: 3000}});
+  }
   if (url.pathname === "/page-ok") { res.writeHead(200, {"content-type": "text/html"}); return res.end("<p>ok</p>"); }
   if (url.pathname === "/page-moved") { res.writeHead(301, {location: "/page-ok"}); return res.end(); }
   if (url.pathname === "/page-404") { res.writeHead(404); return res.end(); }
@@ -68,7 +76,7 @@ const F = `http://127.0.0.1:${fake.address().port}`;
 writeFileSync(ROOT + ".dev.vars", [
   `CM360_SA_JSON='${JSON.stringify(SA)}'`, "CM360_PROFILE_ID=777",
   `CM360_API_BASE=${F}/dfareporting/v5`, `GOOGLE_TOKEN_URL=${F}/token`, "TRAFFICKER_PASSWORD=cle-test-123",
-  "URLCHECK_ALLOW_LOCAL=1", "RESEND_API_KEY=re_test", "MAIL_FROM=alertes@umnia.test", `RESEND_URL=${F}/resend`].join("\n"));
+  "URLCHECK_ALLOW_LOCAL=1", "ANTHROPIC_API_KEY=sk-ant-test", `ANTHROPIC_BASE_URL=${F}`, "ASSISTANT_DAILY_LIMIT=3", "RESEND_API_KEY=re_test", "MAIL_FROM=alertes@umnia.test", `RESEND_URL=${F}/resend`].join("\n"));
 rmSync(ROOT + ".wrangler/state", {recursive: true, force: true});
 const port = 8800 + Math.floor(Math.random() * 100);
 const wd = spawn("npx", ["wrangler", "dev", "--port", String(port)], {cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], detached: true});
@@ -183,6 +191,21 @@ try {
   assert.equal((await api("POST", "monitors/run")).data.runs[0].fresh, 0);              // rien de neuf : pas de nouvel e-mail
   assert.equal(seen.filter((x) => x.path === "/resend").length, 1);
   assert.equal((await api("POST", "alerts/notify", {monitor_id: "m1", alert_ids: alerts.map((a) => a.id)})).data.sent, false);
+  // Assistant d'aide : clé Umnia côté Worker, guide en prompt système, écran courant, plafond quotidien
+  assert.deepEqual((await api("GET", "assistant/status")).data, {enabled: true, remaining: 3});
+  const ask = await api("POST", "assistant", {messages: [{role: "user", content: "Comment lancer un check ?"}], screen: "Reporting — accueil"});
+  assert.equal(ask.status, 200, JSON.stringify(ask.data));
+  assert.equal(ask.data.answer, "1. Ouvrez « Reporting »\n2. Choisissez l'annonceur");
+  const sent = JSON.parse(seen.filter((x) => x.path === "/v1/messages").pop().body);
+  assert.equal(sent.model, "claude-opus-5-5");
+  assert.equal(sent.fallbacks, "default");
+  assert.match(sent.system[0].text, /MODE D'EMPLOI D'UMNIA/);
+  assert.equal(sent.system[0].cache_control.type, "ephemeral");
+  assert.equal(sent.messages[0].content, "[Écran : Reporting — accueil]\nComment lancer un check ?");
+  assert.equal((await api("POST", "assistant", {messages: [{role: "assistant", content: "x"}]})).status, 400);       // conversation invalide
+  assert.match((await api("POST", "assistant", {messages: [{role: "user", content: "REFUS"}]})).data.answer, /ne peux pas répondre/);
+  await api("POST", "assistant", {messages: [{role: "user", content: "Encore ?"}]});
+  assert.equal((await api("POST", "assistant", {messages: [{role: "user", content: "Et encore ?"}]})).status, 429);   // 3 questions par jour ici
   cookie = "";
   assert.equal((await api("GET", "adserver/status")).status, 401);                                // connexion requise
   console.log("OK : Worker + faux CM360 (jeton RS256, lecture, rapport asynchrone, programmation, pause / modification / suppression, carnet).");

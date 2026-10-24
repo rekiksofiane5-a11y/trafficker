@@ -268,6 +268,26 @@ table.pivot tr.total td { font-weight: 700; border-top: 2px solid var(--text); p
 .checks-list .sub { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
 .checks-list li.ok::before { content: "✓"; background: var(--ok); }
 .checks-list li.info::before { content: "i"; background: var(--gold); }
+.help-btn { position: fixed; right: 20px; bottom: 20px; z-index: 40; border-radius: 999px; padding: 10px 18px;
+  box-shadow: 0 6px 20px #0003; display: inline-flex; gap: 6px; align-items: center; }
+.help-btn[hidden], .help-panel[hidden] { display: none; }
+.help-panel { position: fixed; right: 20px; bottom: 72px; z-index: 41; width: min(400px, calc(100vw - 32px)); height: min(560px, calc(100vh - 140px));
+  display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 18px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); box-shadow: 0 16px 48px #0004; }
+.help-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.help-head .sm { padding: 4px 10px; font-size: .78rem; }
+.help-note { margin: 0; font-size: .76rem; color: var(--muted); }
+.help-log { flex: 1; overflow: auto; display: grid; align-content: start; gap: 8px; font-size: .88rem; }
+.help-q { justify-self: end; max-width: 85%; background: var(--chip); padding: 8px 12px; border-radius: 14px 14px 4px 14px; white-space: pre-wrap; }
+.help-a { max-width: 95%; border: 1px solid var(--border); padding: 8px 12px; border-radius: 14px 14px 14px 4px; }
+.help-a p { margin: 0 0 6px; } .help-a p:last-child { margin: 0; }
+.help-a ul, .help-a ol { margin: 4px 0 6px; padding-left: 20px; }
+.help-wait { color: var(--muted); }
+.help-suggest { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-btn { background: var(--chip); color: var(--text); font-weight: 400; font-size: .78rem; padding: 6px 10px; border-radius: 999px; text-align: left; }
+.help-form { display: flex; gap: 8px; align-items: end; }
+.help-form textarea { flex: 1; resize: none; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--paper); color: inherit; font: inherit; }
+#help-err:empty { display: none; }
 .rp-watch { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
 .rp-watch h3 { margin: 0 0 4px; font-size: 1.05rem; }
 .rp-watch-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
@@ -981,6 +1001,27 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
   </div>
 </div>
 
+<button type="button" id="help-btn" class="help-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="help-panel" hidden>
+  <span aria-hidden="true">✦</span> Aide
+</button>
+<section id="help-panel" class="help-panel" role="dialog" aria-labelledby="help-title" hidden>
+  <div class="help-head">
+    <strong id="help-title">Assistant Umnia</strong>
+    <span>
+      <button type="button" id="help-clear" class="ghost sm">Nouvelle question</button>
+      <button type="button" id="help-close" class="ghost icon-only" aria-label="Fermer l'assistant">✕</button>
+    </span>
+  </div>
+  <p class="help-note">Je vous guide dans Umnia. Je ne vois ni vos tâches, ni vos fichiers, ni vos campagnes : ne collez pas de données client.</p>
+  <div id="help-log" class="help-log" aria-live="polite"></div>
+  <div id="help-suggest" class="help-suggest"></div>
+  <p id="help-err" class="err" role="alert"></p>
+  <form id="help-form" class="help-form">
+    <textarea id="help-input" rows="2" maxlength="2000" aria-label="Votre question" placeholder="Votre question…"></textarea>
+    <button type="submit" id="help-send">Envoyer</button>
+  </form>
+</section>
+
 <dialog id="create-dialog" aria-labelledby="cd-title">
   <form id="create-form" method="dialog">
     <h2 id="cd-title">Nouvelle tâche <span id="cd-mode" class="chip"></span></h2>
@@ -1402,6 +1443,101 @@ function siteChecks() {
       + (siteDir.source === "API" ? "" : " (répertoire de démo)"), sub: `${iss.rows.length} ligne(s) du plan`, node};
   });
 }
+
+// --- Assistant d'aide : guide l'utilisateur dans Umnia (Claude via le Worker, clé Umnia) ---
+// N'envoie que la conversation et le nom de l'écran : jamais de tâche, de plan ni de fichier.
+// E-mails et adresses web saisis sont masqués avant l'envoi.
+let helpMsgs = [];
+try { helpMsgs = JSON.parse(sessionStorage.getItem("umnia_help") || "[]"); } catch (e) { helpMsgs = []; }
+const HELP_SUGGEST = {
+  trafficking: ["Comment préparer un PM pour l'analyse ?", "Que signifient les cases orange ?", "Comment exporter vers CM360 ?",
+                "Comment retenir une correction pour l'agence ?"],
+  reporting: ["Comment lancer un check de mise en ligne ?", "Comment programmer les reports aux régies ?",
+              "Comment surveiller une campagne ?", "Mon annonceur n'est pas dans la liste"],
+};
+function helpScreen() {
+  if (!current) return mode === "reporting" ? "Reporting — accueil (choix de l'annonceur)" : "Trafficking — accueil (dépôt du PM)";
+  if (current.mode === "reporting") {
+    const tpl = (document.querySelector(".tpl.on") || {}).textContent || "";
+    return "Reporting — espace report" + (tpl ? `, template « ${tpl.trim().split("\n")[0].slice(0, 40)} »` : "");
+  }
+  const st = $("pm-step").dataset.state;
+  return "Trafficking — tâche" + (st === "ready" ? `, PM analysé (étape ${step === 2 ? "annonces et créatives" : "emplacements"})` : ", dépôt du PM");
+}
+const helpMask = (t) => t.replace(/[^\s@<>,;]+@[^\s@<>,;]+\.[a-z]{2,}/gi, "[e-mail]").replace(/https?:\/\/\S+/gi, "[URL]");
+// Réponse de l'assistant : texte brut, listes « - » / « 1. » et **gras** (jamais de HTML interprété)
+function helpRender(text) {
+  const box = el("div", {class: "help-a"});
+  let list = null;
+  const inline = (line) => line.split(/(\*\*[^*]+\*\*)/).map((part) =>
+    /^\*\*[^*]+\*\*$/.test(part) ? el("strong", {}, part.slice(2, -2)) : document.createTextNode(part));
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    const m = line.match(/^(?:[-•]|\d+[.)])\s+(.*)$/);
+    if (m) {
+      const ordered = /^\d/.test(line);
+      if (!list || (list.tagName === "OL") !== ordered) { list = el(ordered ? "ol" : "ul", {}); box.append(list); }
+      list.append(el("li", {}, ...inline(m[1])));
+    } else {
+      list = null;
+      if (line) box.append(el("p", {}, ...inline(line)));
+    }
+  }
+  return box;
+}
+function helpDraw() {
+  const log = $("help-log");
+  log.replaceChildren(...(helpMsgs.length ? helpMsgs.map((m) => m.role === "user"
+    ? el("div", {class: "help-q"}, m.content) : helpRender(m.content)) : [el("p", {class: "hint"},
+      "Posez une question sur l'utilisation d'Umnia : je vous guide pas à pas.")]));
+  const sugg = HELP_SUGGEST[current ? current.mode : mode] || [];
+  $("help-suggest").replaceChildren(...(helpMsgs.length ? [] : sugg.map((q) => {
+    const b = el("button", {type: "button", class: "chip-btn"}, q);
+    b.addEventListener("click", () => { $("help-input").value = q; helpSend(); });
+    return b;
+  })));
+  log.scrollTop = log.scrollHeight;
+  try { sessionStorage.setItem("umnia_help", JSON.stringify(helpMsgs.slice(-20))); } catch (e) { /* stockage indisponible */ }
+}
+async function assistantAsk(messages, screen) {
+  if (Store.local) throw new Error("L'assistant est disponible dans la version en ligne d'Umnia.");
+  return (await Store.api("POST", "assistant", {messages, screen})).answer;
+}
+async function helpSend() {
+  const input = $("help-input"), q = helpMask(input.value.trim());
+  if (!q || $("help-send").disabled) return;
+  input.value = "";
+  helpMsgs.push({role: "user", content: q.slice(0, 4000)});
+  helpDraw();
+  $("help-send").disabled = true;
+  const wait = el("div", {class: "help-a help-wait", role: "status"}, "…");
+  $("help-log").append(wait);
+  $("help-log").scrollTop = $("help-log").scrollHeight;
+  try {
+    const answer = await assistantAsk(helpMsgs.slice(-20), helpScreen());
+    helpMsgs.push({role: "assistant", content: answer});
+  } catch (e) {
+    helpMsgs.pop();                                         // la question reste à reposer
+    input.value = q;
+    handleAuth(e);
+    $("help-err").textContent = e.message;
+  } finally {
+    $("help-send").disabled = false;
+    helpDraw();
+    input.focus();
+  }
+}
+function setHelp(open) {
+  $("help-panel").hidden = !open;
+  $("help-btn").setAttribute("aria-expanded", String(open));
+  if (open) { $("help-err").textContent = ""; helpDraw(); $("help-input").focus(); }
+}
+$("help-btn").addEventListener("click", () => setHelp($("help-panel").hidden));
+$("help-close").addEventListener("click", () => { setHelp(false); $("help-btn").focus(); });
+$("help-clear").addEventListener("click", () => { helpMsgs = []; helpDraw(); $("help-input").focus(); });
+$("help-form").addEventListener("submit", (e) => { e.preventDefault(); helpSend(); });
+$("help-input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); helpSend(); } });
+$("help-panel").addEventListener("keydown", (e) => { if (e.key === "Escape") { setHelp(false); $("help-btn").focus(); } });
 
 // --- Surveillance après lancement : campagnes surveillées, alertes (cloche + e-mail) ---
 // Ad server connecté : le Worker vérifie toutes les ~6 h (déclencheur). Démo : la page vérifie
@@ -2454,6 +2590,7 @@ function enterApp(user) {
   $("logout").hidden = Store.local;
   setMode(mode);
   refreshNotifs();
+  $("help-btn").hidden = false;
 }
 
 // Barre latérale : modes, recherche, récents (mes tâches / agence)

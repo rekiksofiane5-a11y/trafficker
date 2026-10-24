@@ -78,3 +78,10 @@ Non requise a priori : pas de suivi à grande échelle, pas de données sensible
 - Reports programmés CM360 : Google (CM360) génère et envoie les fichiers aux adresses indiquées — sous-traitance déjà couverte par le contrat CM360 de l'agence.
 - Clés d'ad server : secrets chiffrés du Worker Cloudflare, jamais transmises à la page ni stockées en base.
 
+
+## 12. Mise à jour v7 — assistant d'aide (Claude, Anthropic)
+
+- Bouton « Aide » : assistant qui explique l'utilisation d'Umnia. Appel par le Worker à l'API Anthropic avec la clé d'Umnia (secret `ANTHROPIC_API_KEY`, jamais dans la page).
+- **Aucune donnée de tâche, de plan média, de campagne ou de fichier n'est envoyée** : seulement la conversation de l'utilisateur et le nom de l'écran (ex. « Reporting — accueil »). Les e-mails et adresses web tapés dans une question sont masqués avant l'envoi ; l'interface demande de ne pas coller de données client.
+- Anthropic est **sous-traitant** pour ce traitement (questions d'aide, rattachées au compte utilisateur côté Umnia) : à inscrire au registre, DPA à signer. Conditions commerciales de l'API : pas d'entraînement sur les données envoyées.
+- Conservation côté Umnia : aucune conversation stockée ; seuls le nombre de questions et de jetons par utilisateur et par jour (table D1 `assistant_usage`, plafond quotidien `ASSISTANT_DAILY_LIMIT`, 60 par défaut). La conversation en cours reste dans l'onglet du navigateur (sessionStorage) et disparaît à sa fermeture.

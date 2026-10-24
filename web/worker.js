@@ -5,6 +5,7 @@
 
 import {HttpError, adserverStatus, client} from "./adserver.js";
 import {evaluate, mergeAlerts, mailText} from "./quality.js";
+import {ASSISTANT_RULES, ASSISTANT_GUIDE} from "./assistant_guide.js";
 
 const SESSION_HOURS = 12;
 const PBKDF2_ITERATIONS = 10000;      // offre gratuite : ~10 ms de CPU par requête
@@ -28,6 +29,9 @@ const SCHEMA = [
   // Réglages partagés par l'agence (correspondance des régies, vues enregistrées du tableau croisé)
   `CREATE TABLE IF NOT EXISTS agency_settings (agency_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
      updated REAL NOT NULL, PRIMARY KEY (agency_id, key))`,
+  // Assistant d'aide : nombre de questions et jetons par utilisateur et par jour (plafond, suivi du coût)
+  `CREATE TABLE IF NOT EXISTS assistant_usage (user_id INTEGER NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL,
+     tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL, PRIMARY KEY (user_id, day))`,
 ];
 const SETTING_KEYS = new Set(["site_map", "pivot_views", "advertisers", "report_templates", "requests", "corrections", "client_rules",
                               "monitors", "alerts", "alert_thresholds"]);
@@ -46,6 +50,8 @@ async function ensureSchema(db) {
 }
 
 const now = () => Date.now() / 1000;
+const today = () => new Date().toISOString().slice(0, 10);
+const dailyQuota = (env) => Number(env.ASSISTANT_DAILY_LIMIT) || 60;
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {status, headers: {"content-type": "application/json; charset=utf-8",
     "cache-control": "no-store", ...headers}});
@@ -298,6 +304,53 @@ async function api(request, env, url) {
       await putSetting(db, user.agency_id, "alerts", alerts);
     }
     return json(res);
+  }
+
+  // --- Assistant d'aide (Claude, clé Umnia) : guide l'utilisateur, sans accès aux tâches ni aux données ---
+  if (path === "/api/assistant/status" && method === "GET") {
+    const used = await db.prepare("SELECT n FROM assistant_usage WHERE user_id = ? AND day = ?").bind(user.id, today()).first();
+    return json({enabled: !!env.ANTHROPIC_API_KEY, remaining: Math.max(0, dailyQuota(env) - (used ? used.n : 0))});
+  }
+  if (path === "/api/assistant" && method === "POST") {
+    if (!env.ANTHROPIC_API_KEY) return fail("Assistant non configuré (secret ANTHROPIC_API_KEY du Worker).", 503);
+    const b = await body(request);
+    const msgs = Array.isArray(b.messages) ? b.messages.slice(-20) : [];
+    const ok = msgs.length && msgs.every((m, i) => ["user", "assistant"].includes(m.role) && typeof m.content === "string"
+      && m.content.trim() && m.content.length <= 4000 && (i === msgs.length - 1 ? m.role === "user" : true))
+      && msgs[0].role === "user" && msgs.every((m, i) => i === 0 || m.role !== msgs[i - 1].role);
+    if (!ok) return fail("Conversation invalide.");
+    const used = await db.prepare("SELECT n FROM assistant_usage WHERE user_id = ? AND day = ?").bind(user.id, today()).first();
+    if ((used ? used.n : 0) >= dailyQuota(env)) return fail("Limite de questions atteinte pour aujourd'hui.", 429);
+    const screen = clean(b.screen, 120);
+    const messages = msgs.map((m, i) => ({role: m.role, content: i === msgs.length - 1 && screen ? `[Écran : ${screen}]\n${m.content}` : m.content}));
+    let r;
+    try {
+      r = await fetch((env.ANTHROPIC_BASE_URL || "https://api.anthropic.com") + "/v1/messages", {method: "POST",
+        headers: {"x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01",
+                  "anthropic-beta": "server-side-fallback-2026-07-01", "content-type": "application/json"},
+        body: JSON.stringify({model: env.ASSISTANT_MODEL || "claude-opus-5-5", max_tokens: 4000,
+          output_config: {effort: "low"}, fallbacks: "default",
+          system: [{type: "text", text: ASSISTANT_RULES + "\n\n" + ASSISTANT_GUIDE, cache_control: {type: "ephemeral"}}],
+          messages})});
+    } catch (e) {
+      return fail("Assistant injoignable, réessayez dans un instant.", 502);
+    }
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const msg = r.status === 401 || r.status === 403 ? "Clé de l'assistant refusée : prévenez l'administrateur."
+        : r.status === 429 || r.status === 529 || r.status >= 500 ? "Assistant surchargé, réessayez dans un instant."
+        : "Question refusée par l'assistant.";
+      return fail(msg, r.status === 429 || r.status >= 500 ? 503 : 502);
+    }
+    const u = d.usage || {};
+    const tin = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+    await db.prepare(`INSERT INTO assistant_usage (user_id, day, n, tokens_in, tokens_out) VALUES (?, ?, 1, ?, ?)
+      ON CONFLICT (user_id, day) DO UPDATE SET n = n + 1, tokens_in = tokens_in + excluded.tokens_in, tokens_out = tokens_out + excluded.tokens_out`)
+      .bind(user.id, today(), tin, u.output_tokens || 0).run();
+    if (d.stop_reason === "refusal") return json({answer: "Je ne peux pas répondre à cette demande. Posez-moi une question sur l'utilisation d'Umnia."});
+    const answer = (d.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
+    return json({answer: answer || "Je n'ai pas de réponse : reformulez votre question.",
+                 truncated: d.stop_reason === "max_tokens"});
   }
 
   // Vérification immédiate des campagnes surveillées (administrateurs ; sinon toutes les ~6 h)
