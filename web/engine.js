@@ -1,6 +1,7 @@
 // Moteur Umnia exécuté dans un Web Worker : Pyodide et l'analyse tournent hors du
 // fil principal, la page reste réactive même sur un gros classeur.
 "use strict";
+/* global loadPyodide */
 importScripts("pyodide/pyodide.js");
 
 let py = null, api = null;

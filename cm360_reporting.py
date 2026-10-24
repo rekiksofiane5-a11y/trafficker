@@ -40,10 +40,8 @@ from datetime import date
 from typing import Callable, Dict, List, Optional, Tuple
 
 from cm360_trafficker import (
-    build_adapter,            # réutilise la factory pour l'authentification CM360
     cm360_authenticate,
     cm360_pick_profile,
-    load_rows_from_source,
 )
 
 
@@ -233,7 +231,7 @@ class MockReportingAdapter(ReportingAdapter):
             camp.spend = round(camp.impressions * cpm / 1000, 2)
             # Emplacements du plan (fournis par report_for_plan), répartis à parts égales
             pls = self.plan_placements.get(name, [])
-            for i, pname in enumerate(pls):
+            for pname in pls:
                 share = 1.0 / len(pls)
                 pl = PlacementDelivery(name=pname,
                                        impressions=int(camp.impressions * share),
@@ -277,7 +275,7 @@ def extract_flights(rows: List[Dict[str, str]]
     L'objectif vient de la colonne optionnelle `objective_impressions`."""
     flights: Dict[str, Tuple[str, str, Optional[int]]] = {}
     for r in rows:
-        get = lambda k: (r.get(k) or "").strip()
+        get = lambda k, r=r: (r.get(k) or "").strip()
         name = get("campaign_name")
         if not name:
             continue

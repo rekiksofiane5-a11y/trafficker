@@ -325,10 +325,6 @@ table.pivot tr.total td { font-weight: 700; border-top: 2px solid var(--text); p
 button.sm { padding: 4px 9px; font-size: .78rem; }
 tr.paused td { opacity: .65; }
 #rp-sched-edit input, #rp-sched-edit select { width: 100%; }
-.pick-list { display: grid; gap: 2px; max-height: 15rem; overflow: auto; margin-top: 6px; }
-.pick-list button { justify-content: space-between; background: var(--chip); color: var(--text); font-weight: 400; padding: 7px 10px; text-align: left; }
-.pick-list button.on { background: var(--accent); color: var(--accent-text); font-weight: 600; }
-.pick-list .s { font-size: .75rem; opacity: .8; white-space: nowrap; }
 .rp-pick input { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); font: inherit; }
 .tpl-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 12px; }
 .tpl { display: grid; gap: 4px; text-align: left; background: var(--card); color: var(--text); border: 2px solid var(--border); padding: 14px; font-weight: 400; }
@@ -3297,11 +3293,6 @@ function demoCampaign(c) {
           start: addDays(today, c.start_offset), end: addDays(today, c.end_offset)};
 }
 
-async function rpAdvertisers(q) {
-  if (RP.live) return (await Store.api("GET", `adserver/advertisers?adserver=${$("adserver").value}&q=${encodeURIComponent(q)}`)).advertisers;
-  const s = q.toLowerCase();
-  return RP.demo.advertisers.filter((a) => a.name.toLowerCase().includes(s));
-}
 async function rpCampaigns(advId, q) {
   if (RP.live) return (await Store.api("GET", `adserver/campaigns?adserver=${$("adserver").value}&advertiser_id=${encodeURIComponent(advId)}&q=${encodeURIComponent(q)}`)).campaigns;
   const s = q.toLowerCase();
@@ -3324,15 +3315,6 @@ async function rpDelivery() {
   }
   if (d.pending) throw new Error("Le rapport de l'ad server n'est pas prêt, réessayez dans quelques minutes.");
   return d.delivery;
-}
-
-function pickList(box, items, sel, label, sub, onPick) {
-  box.replaceChildren(...(items.length ? items.map((it) => {
-    const b = el("button", {type: "button", role: "option", "aria-selected": String(it.id === sel), class: it.id === sel ? "on" : ""},
-      el("span", {}, label(it)), el("span", {class: "s"}, sub(it)));
-    b.addEventListener("click", () => onPick(it));
-    return b;
-  }) : [el("p", {class: "hint"}, "Aucun résultat.")]));
 }
 
 // Campagnes de l'annonceur (API, sinon démo) dans la liste déroulante ; dates préremplies
@@ -4833,6 +4815,6 @@ boot();
 start();
 </script>
 <script src="grid.js"></script>
-<script type="module">import * as Q from "./quality.js"; window.UQ = Q;</script>
+<script type="module" src="boot.js"></script>
 </body>
 </html>

@@ -4,13 +4,18 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "check": "wrangler deploy --dry-run"
+    "check": "wrangler deploy --dry-run",
+    "lint": "eslint . && ruff check .",
+    "test:worker": "node tests/worker_cm360.mjs"
   },
   "dependencies": {
     "@cloudflare/containers": "0.3.7",
     "pyodide": "0.29.5"
   },
   "devDependencies": {
+    "eslint": "9.39.5",
+    "eslint-plugin-html": "8.2.1",
+    "globals": "15.15.0",
     "wrangler": "4.151.3"
   }
 }

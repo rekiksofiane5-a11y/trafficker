@@ -10,10 +10,9 @@ export rempli est disponible.
 
 Une ligne = une assignation placement + annonce + créative.
 """
-import os
 import re
 import sys
-from datetime import date, datetime
+from datetime import datetime
 from typing import Dict, List, Optional
 
 BULK_SHEET = "Campaign spreadsheet"
@@ -256,7 +255,7 @@ def plan_to_bulk_rows(plan) -> List[List[str]]:
                 for c in ad["creatives"]:
                     r = [""] * len(BULK_HEADERS)
 
-                    def put(header: str, value) -> None:
+                    def put(header: str, value, r=r) -> None:
                         r[_COL[header]] = "" if value is None else str(value)
 
                     ctype, ccompat = VOCAB["creative"][c.ctype]

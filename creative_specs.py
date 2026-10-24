@@ -119,7 +119,7 @@ def mp4_info(data: bytes) -> dict:
                 if ts:
                     info["duration"] = dur / ts
             elif k2 == b"trak":
-                for k3, s3, e3 in _boxes(data, s2, e2):
+                for k3, _s3, e3 in _boxes(data, s2, e2):
                     if k3 == b"tkhd":
                         w, h = struct.unpack(">II", data[e3 - 8:e3])
                         if w and h and "width" not in info:

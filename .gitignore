@@ -9,3 +9,4 @@ node_modules/
 .wrangler/
 web/dist/
 .dev.vars
+.ruff_cache/

@@ -110,7 +110,7 @@ def read_convention(path: str):
     for ws in wb.worksheets:
         rows = list(ws.iter_rows(min_row=1, max_row=min(ws.max_row, 80), values_only=True))
         for r, row in enumerate(rows):
-            for c, v in enumerate(row):
+            for v in row:
                 kind = NAME_LABELS.get(_plain(v)) if isinstance(v, str) else None
                 if not kind or kind in patterns or r + 1 >= len(rows):
                     continue

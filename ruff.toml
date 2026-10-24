@@ -1,0 +1,10 @@
+# Lint Python (CI : ruff check .)
+target-version = "py311"
+line-length = 130
+extend-exclude = ["node_modules", "web/dist", "web/wheels"]
+
+[lint]
+# F : erreurs (imports inutiles, noms indéfinis) ; B : bugs probables ; E9 : erreurs de syntaxe
+select = ["F", "B", "E9"]
+# zip() sans strict= : longueurs différentes tolérées volontairement (lignes de tableur incomplètes)
+ignore = ["B905"]

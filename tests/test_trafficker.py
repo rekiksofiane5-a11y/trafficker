@@ -1,5 +1,3 @@
-import csv
-import io
 import os
 from datetime import date
 
@@ -11,7 +9,7 @@ from cm360_trafficker import (
 )
 from cm360_reporting import (
     CampaignDelivery, MockReportingAdapter, extract_budgets, reconcile,
-    report_for_plan, delivery_to_dict, extract_flights,
+    report_for_plan, delivery_to_dict,
 )
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -443,7 +443,7 @@ def plan_from_rows(rows: List[Dict[str, str]], allow_incomplete: bool = False
         return out
 
     for idx, r in enumerate(rows):
-        get = lambda k: (r.get(k) or "").strip()
+        get = lambda k, r=r: (r.get(k) or "").strip()
 
         campaign_name = get("campaign_name")
         placement_name = get("placement_name")

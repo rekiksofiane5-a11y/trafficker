@@ -3,7 +3,6 @@ trafficking -> rapport de diffusion. Ignoré si Playwright/Chromium absents."""
 import os
 import socket
 import threading
-import time
 
 import pytest
 

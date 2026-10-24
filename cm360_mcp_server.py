@@ -56,7 +56,6 @@ from cm360_trafficker import (
     build_adapter,
     load_nomenclature,
     load_rows_from_path,
-    load_rows_from_source,
     plan_from_rows,
     resolve_plan_source,
     traffic_plan,

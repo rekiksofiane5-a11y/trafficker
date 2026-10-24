@@ -359,7 +359,7 @@ def preview_adform(plan) -> dict:
             tags.append({"name": p.name, "media": media, "size": f"{p.width}x{p.height}",
                          "tag_type": "Tracking (1x1)" if tracking else "Adform tag",
                          "banners": n_banners, "status": "Nouveau"})
-            for an, ad in ads:
+            for _an, ad in ads:
                 for c in ad["creatives"]:
                     banners.append({"name": c.name, "type": ADFORM_BANNER_TYPE.get(c.ctype, c.ctype),
                                     "rows": ad.get("rows") or list(p.rows), "edit": "creative_final",

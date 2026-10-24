@@ -37,6 +37,7 @@ def main() -> None:
     shutil.copy(os.path.join(WEB, "pivot.js"), DIST)
     shutil.copy(os.path.join(WEB, "grid.js"), DIST)
     shutil.copy(os.path.join(WEB, "quality.js"), DIST)
+    shutil.copy(os.path.join(WEB, "boot.js"), DIST)
     shutil.copytree(os.path.join(WEB, "assets"), os.path.join(DIST, "assets"))   # sphères, polices
     shutil.copy(os.path.join(WEB, "exemple_export_cm360.csv"), os.path.join(DIST, "exemples"))
     shutil.copy(os.path.join(WEB, "exemple_export_cm360_une_campagne.xlsx"), os.path.join(DIST, "exemples"))

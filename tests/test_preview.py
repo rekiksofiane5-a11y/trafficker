@@ -84,7 +84,6 @@ def test_package_per_regie_and_objective_and_devices():
 
 
 def test_adform_preview_line_items_banners_tags():
-    import ingest
     rows = [dict(ROWS[2], site_name="Amnet", line_budget_eur="151619", line_volume="11544211"),
             dict(ROWS[0])]
     plan, errors = plan_from_rows(rows)

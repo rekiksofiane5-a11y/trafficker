@@ -18,7 +18,7 @@ Valeurs par défaut reprises de l'exemple fourni : à adapter à chaque agence (
 import os
 import sys
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         "templates", "adform_bulk_template.xlsx")
