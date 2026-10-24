@@ -34,7 +34,7 @@ def site():
     handler.log_message = lambda *a: None
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{srv.server_address[1]}/"
+    yield f"http://127.0.0.1:{srv.server_address[1]}/app/"           # site vitrine à la racine, application sous /app/
     srv.shutdown()
 
 

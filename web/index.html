@@ -3,36 +3,35 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Umnia</title>
-<script>try { const t = localStorage.getItem("umnia_theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<title>Agopis</title>
+<script>try { const t = localStorage.getItem("agopis_theme") || localStorage.getItem("umnia_theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
-:root { color-scheme: light;
-  --bg: #fbf8f2; --card: #fffdf9; --paper: #ffffff; --text: #13203a; --muted: #625e57; --border: #e6dccb;
-  --accent: #13213a; --accent-text: #ffffff; --ok: #1d6a43; --warn: #8a4a00; --err: #a3261e;
-  --chip: #f4ece0; --code: #f1eadf; --gold: #9a7440; --side: #f7f2ea; --sub: #6c7282;
-  --halo: rgba(255, 255, 255, .7);
+:root { color-scheme: dark;
+  /* Charte Agopis (site vitrine) : bleu nuit, cyan néon, violet ; thème sombre par défaut */
+  --bg: #0c1128; --card: #151c3a; --paper: #111731; --text: #f2f4fb; --muted: #aab3c7; --border: rgba(255, 255, 255, .13);
+  --accent: #ffffff; --accent-text: #10152d; --ok: #71e3c5; --warn: #ffb27d; --err: #ff8597;
+  --chip: rgba(255, 255, 255, .07); --code: #131a36; --gold: #00f0ff; --side: #0f1530; --sub: #aeb7c9;
+  --halo: rgba(0, 240, 255, .10); --neon: #00f0ff; --purple: #b026ff; --nav: rgba(19, 25, 50, .65);
+  --amb1: rgba(39, 27, 140, .42); --amb2: rgba(0, 76, 116, .38);
+  --grad: linear-gradient(110deg, #77b7ff 4%, #ac8cff 48%, #d0a3f9 97%);
 }
-/* Thème : auto (système) par défaut, ou forcé par data-theme sur <html> */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) { color-scheme: dark;
-  --bg: #0e1621; --card: #152031; --text: #ede6d4; --muted: #a8a08e; --border: #2b3749;
-  --accent: #d9cdb3; --accent-text: #0e1621; --ok: #7fd3a6; --warn: #f0b45a; --err: #ff8a80; --paper: #17233a; --sub: #a8a08e;
-  --chip: #1d293b; --code: #1a2535; --gold: #b5a27a; --side: #111b29;
-  --halo: rgba(120, 160, 205, .14);
-  }
-}
-:root[data-theme="dark"] { color-scheme: dark;
-  --bg: #0e1621; --card: #152031; --text: #ede6d4; --muted: #a8a08e; --border: #2b3749;
-  --accent: #d9cdb3; --accent-text: #0e1621; --ok: #7fd3a6; --warn: #f0b45a; --err: #ff8a80; --paper: #17233a; --sub: #a8a08e;
-  --chip: #1d293b; --code: #1a2535; --gold: #b5a27a; --side: #111b29;
-  --halo: rgba(120, 160, 205, .14);
+/* Thème clair (choix mémorisé, partagé avec le site vitrine) */
+:root[data-theme="light"] { color-scheme: light;
+  --bg: #f4f5fb; --card: #fdfdff; --paper: #ffffff; --text: #131b37; --muted: #4c5873; --border: rgba(21, 34, 70, .16);
+  --accent: #131b37; --accent-text: #ffffff; --ok: #066d66; --warn: #a14c00; --err: #b42318;
+  --chip: #e9ecf8; --code: #eef1fa; --gold: #006ab9; --side: #eef1f9; --sub: #4c5873;
+  --halo: rgba(0, 106, 185, .08); --neon: #006ab9; --purple: #7740c5; --nav: rgba(255, 255, 255, .82);
+  --amb1: rgba(119, 64, 197, .10); --amb2: rgba(0, 106, 185, .08);
+  --grad: linear-gradient(110deg, #006ab9 4%, #7740c5 60%, #9b4fd6 97%);
 }
 @font-face { font-family: "Inter"; src: url("assets/inter-var.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 * { box-sizing: border-box; }
 body { margin: 0; color: var(--text); font: 15px/1.55 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-       background: radial-gradient(1200px 900px at 108% 70%, color-mix(in srgb, var(--gold) 9%, transparent), transparent 60%),
-                   radial-gradient(900px 700px at 100% 0%, color-mix(in srgb, var(--chip) 70%, transparent), transparent 70%),
-                   var(--bg) fixed; }
+       background: radial-gradient(900px 700px at 88% 18%, var(--amb1), transparent 62%),
+                   radial-gradient(800px 640px at 8% 100%, var(--amb2), transparent 62%),
+                   var(--bg) fixed; -webkit-font-smoothing: antialiased; }
+::selection { background: #0a9bec77; color: #fff; }
+:focus-visible { outline: 3px solid var(--neon); outline-offset: 3px; }
 .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 14px; }
 @media (max-width: 1100px) { .split { grid-template-columns: minmax(0, 1fr); } }
 .pane { border: 1px solid var(--border); border-radius: 12px; padding: 12px; min-width: 0; }
@@ -535,8 +534,7 @@ body { overflow: hidden; }
 .badge.b-done { background: var(--chip); color: var(--muted); }
 .badge.b-plan { background: color-mix(in srgb, #3b6fd4 16%, transparent); color: #3b6fd4; }
 .badge.b-draft { border: 1px solid var(--border); color: var(--muted); }
-:root[data-theme="dark"] .badge.b-plan { color: #8fb0ff; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .badge.b-plan { color: #8fb0ff; } }
+:root:not([data-theme="light"]) .badge.b-plan { color: #8fb0ff; }
 .history-foot { padding: 8px 16px 12px; font-size: .75rem; }
 #main { flex: 1; overflow: auto; padding: 0 24px 60px; position: relative; }
 .engine-pill { position: fixed; left: 18px; bottom: 10px; margin: 0; padding: 0; font-size: .72rem; z-index: 1; opacity: .75; }
@@ -568,6 +566,46 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 .ok { color: var(--ok); }
 @media (max-width: 1000px) { .appbar { flex-wrap: wrap; gap: 10px; }
   .who { display: none; } }
+/* --- Charte Agopis (site vitrine) appliquée à l'app --- */
+.logo { display: inline-flex; align-items: center; gap: 9px; font-weight: 900; letter-spacing: -.075em; color: var(--text); line-height: 1; white-space: nowrap; }
+.logo-icon { position: relative; display: inline-grid; place-items: center; width: 1.15em; height: 1.15em; border-radius: .37em;
+  border: 1px solid color-mix(in srgb, var(--text) 35%, transparent); background: linear-gradient(135deg, #00e1ef32, #ae4cf42b);
+  font-size: .92em; letter-spacing: -.07em; font-weight: 800; }
+.logo-icon i { position: absolute; right: .1em; top: -.05em; font-size: .33em; font-style: normal; color: var(--neon); }
+.logo-dot { color: var(--neon); margin-left: -.36em; }
+.brand { font-size: 27px; margin-right: 4px; text-decoration: none; color: var(--text); }
+.brand-lg { display: grid; justify-items: center; gap: 10px; margin: 4px 0 18px; font-size: 2.6rem; }
+.brand-lg .tag { font-size: .8rem; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.appbar { background: var(--nav); border: 1px solid var(--border); border-radius: 99px; padding: 9px 12px 9px 23px;
+  backdrop-filter: blur(16px) saturate(140%); -webkit-backdrop-filter: blur(16px) saturate(140%); box-shadow: 0 10px 40px #0003; }
+.modes button { border-radius: 99px; font-weight: 600; font-size: .9rem; }
+.modes button.on { background: var(--chip); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+.modes button.on .ico { color: var(--neon); }
+button, .btn { border-radius: 99px; font-weight: 700; }
+button:not(.secondary):not(.ghost):not(.tpl):not(.task-item):not(.ti-rename):not(.chip-btn):not(.icon-only):hover:not(:disabled) { box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 25%, transparent); }
+button.secondary { background: var(--chip); color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+.hero-btn { border-radius: 99px; font-weight: 800; box-shadow: 0 0 26px color-mix(in srgb, var(--accent) 14%, transparent); transition: transform .25s, box-shadow .25s; }
+.hero-btn:hover:not(:disabled) { transform: scale(1.03); filter: none; box-shadow: 0 0 32px color-mix(in srgb, var(--accent) 28%, transparent); }
+.serif { font-family: Inter, system-ui, sans-serif; font-weight: 800; letter-spacing: -.035em; }
+.hero h1, .pm-hero .pm-h, h1.serif { font-weight: 900; letter-spacing: -.065em; line-height: 1.02; }
+.hero-sub, .hero-sub.serif { font-weight: 500; letter-spacing: -.01em; color: var(--sub); }
+.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.kicker { display: inline-flex; align-items: center; gap: 10px; font-size: .68rem; font-weight: 800; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--sub); margin: 0 0 18px; }
+.kicker::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 5px color-mix(in srgb, var(--warn) 12%, transparent); }
+.hero[data-mode="reporting"] .kicker::before { background: var(--ok); box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 12%, transparent); }
+.up-card, .card, .checks, .pane, .help-panel, dialog, .pop { border-color: var(--border); }
+.up-card { background: color-mix(in srgb, var(--card) 88%, transparent); backdrop-filter: blur(10px); box-shadow: 0 30px 80px -40px #0008; }
+.card { background: color-mix(in srgb, var(--card) 92%, transparent); }
+input[type=text], select, textarea { background: var(--paper); color: var(--text); }
+.tpl.on, .tpl[aria-checked="true"] { box-shadow: 0 0 0 2px var(--neon) inset; }
+.help-btn { background: var(--grad); color: #10152d; }
+:root[data-theme="light"] .help-btn { color: #ffffff; }
+/* Cibles tactiles ≥ 44px sur mobile (WCAG 2.5.5) */
+@media (max-width: 760px) { .appbar .icon-only, .bell { width: 44px; height: 44px; } .modes button, #history-btn, .brand, .linkish { min-height: 44px; } }
+.tpl, .task-item, .ti-rename, .notif-item, .pv-toggle, .chev { border-radius: 16px; }
+.task-head h1, .title-input { font-weight: 800; letter-spacing: -.035em; }
+.checks h3, .card h2, .rp-head h2 { letter-spacing: -.025em; }
 </style>
 </head>
 <body>
@@ -577,14 +615,14 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
     <svg class="ico moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
   </button>
   <form id="login-form" class="login-card" autocomplete="on">
-    <div class="brand-lg wordmark" role="img" aria-label="Umnia, Autonomous Ad Operations"><span aria-hidden="true">UMNIΛ<span class="tag">Autonomous Ad Operations</span></span></div>
+    <div class="brand-lg" role="img" aria-label="Agopis"><span class="logo" aria-hidden="true"><span class="logo-icon">a<i>✦</i></span>agopis<span class="logo-dot">.</span></span><span class="tag" aria-hidden="true">Du plan média à la campagne prête</span></div>
     <label>E-mail<input id="login-email" type="email" autocomplete="username" required></label>
     <label>Mot de passe<input id="login-password" type="password" autocomplete="current-password" required></label>
     <p id="login-error" class="err" role="alert"></p>
     <button type="submit" id="login-submit">Se connecter</button>
   </form>
   <form id="setup-form" class="login-card" hidden>
-    <div class="brand-lg wordmark" role="img" aria-label="Umnia, Autonomous Ad Operations"><span aria-hidden="true">UMNIΛ<span class="tag">Autonomous Ad Operations</span></span></div>
+    <div class="brand-lg" role="img" aria-label="Agopis"><span class="logo" aria-hidden="true"><span class="logo-icon">a<i>✦</i></span>agopis<span class="logo-dot">.</span></span><span class="tag" aria-hidden="true">Du plan média à la campagne prête</span></div>
     <p class="hint">Première connexion : créez le compte administrateur de l'agence.</p>
     <label>Nom<input id="setup-name" required></label>
     <label>E-mail<input id="setup-email" type="email" autocomplete="username" required></label>
@@ -599,7 +637,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 
 <div id="app" class="app" hidden>
   <header class="appbar">
-    <div class="brand wordmark" role="img" aria-label="Umnia"><span aria-hidden="true">UMNIΛ</span><span class="dot" aria-hidden="true"></span></div>
+    <a class="brand" href="../" aria-label="Agopis — site"><span class="logo" aria-hidden="true"><span class="logo-icon">a<i>✦</i></span>agopis<span class="logo-dot">.</span></span></a>
     <span class="sep" aria-hidden="true"></span>
     <div class="modes" role="tablist" aria-label="Mode">
       <button role="tab" data-mode="trafficking" class="on" aria-selected="true"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="5" rx="1"/><rect x="2" y="16" width="6" height="5" rx="1"/><rect x="9" y="16" width="6" height="5" rx="1"/><rect x="16" y="16" width="6" height="5" rx="1"/><path d="M12 8v4M5 16v-4h14v4"/></svg>Trafficking</button>
@@ -660,8 +698,9 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 
     <div id="empty-view" class="empty hero" data-state="idle">
       <div class="hero-main">
-        <h1 id="empty-title" class="serif">Un nouveau projet ?</h1>
-        <p class="hero-sub serif" id="empty-sub">Partagez-moi votre PM.</p>
+        <p class="kicker" id="empty-kicker">Pour les équipes adops en agence</p>
+        <h1 id="empty-title" class="serif">Un nouveau <span class="grad">projet ?</span></h1>
+        <p class="hero-sub serif" id="empty-sub">Déposez votre plan média, Agopis s'occupe du reste.</p>
         <div class="up-card">
           <div id="hero-drop" class="hero-drop" tabindex="0" role="button" aria-label="Importer mon plan média (Excel ou CSV)">
             <span class="up-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg></span>
@@ -736,13 +775,13 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
           </div>
           <div id="pm-input">
             <h2 id="t-plan" class="pm-h serif">Un nouveau projet ?</h2>
-            <p class="hero-sub serif">Partagez-moi votre PM.</p>
+            <p class="hero-sub serif">Déposez votre plan média, Agopis s'occupe du reste.</p>
             <div class="up-card">
               <div id="drop" class="hero-drop" tabindex="0" role="button" aria-describedby="drop-hint">
                 <span class="up-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4"/><path d="m7.5 8.5 4.5-4.5 4.5 4.5"/><path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg></span>
                 <span class="hero-btn">Importer mon PM</span>
                 <span id="drop-hint" class="hint">Glissez-déposez votre fichier ici ou cliquez pour le sélectionner.<br>
-                  Surlignez en <mark>jaune fluo</mark> les cases à lire : elles guident Umnia.</span>
+                  Surlignez en <mark>jaune fluo</mark> les cases à lire : elles guident Agopis.</span>
               </div>
               <div id="file-chip" class="file-chip" hidden>
                 <span class="fc-ico" aria-hidden="true"><svg class="xl" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="18" rx="3" fill="#1f7a46"/><path d="M8 8l8 8M16 8l-8 8" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/></svg></span>
@@ -751,7 +790,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
               </div>
               <div id="file-name" class="hint"></div>
               <input id="file" type="file" accept=".csv,.xlsx,.xlsm,.xls" hidden>
-              <label for="instructions" class="lbl">Consignes pour Umnia <span class="hint">(facultatif)</span></label>
+              <label for="instructions" class="lbl">Consignes pour Agopis <span class="hint">(facultatif)</span></label>
             <textarea id="instructions" rows="2" placeholder="Une par ligne, par exemple :&#10;Période : du 02/11 au 15/12/2026&#10;URL : https://www.annonceur.fr&#10;Régie : Teads"></textarea>
             <details class="more">
               <summary>Options : nomenclature client, fichiers créatifs</summary>
@@ -778,7 +817,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
           </div>
           <div id="pm-progress" hidden>
             <h2 class="pm-h serif">Analyse en cours…</h2>
-            <p class="hero-sub serif">Umnia lit et structure votre plan média.</p>
+            <p class="hero-sub serif">Agopis lit et structure votre plan média.</p>
             <div class="up-card">
               <ol class="stepper" id="pm-stages" aria-label="Étapes de l'analyse"></ol>
               <p id="pm-stage-live" class="sr-only" role="status" aria-live="polite"></p>
@@ -791,7 +830,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
       <section id="result" class="card hidden" aria-labelledby="t-res" aria-live="polite">
         <div class="result-grid">
         <div class="result-main">
-        <h2 id="t-res" class="serif">Plan média classé par Umnia <span class="hint">— modifiable</span></h2>
+        <h2 id="t-res" class="serif">Plan média classé par Agopis <span class="hint">— modifiable</span></h2>
         <div id="summary"></div>
         <div class="split" id="workspace">
           <div class="pane" aria-labelledby="t-pm">
@@ -930,7 +969,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 
         <section class="card" id="rp-prompt" aria-labelledby="pp-title" hidden>
           <h2 id="pp-title">Prompt de rapport CM360</h2>
-          <p class="hint">Décrivez le rapport voulu, même en quelques mots. Umnia demande ce qui manque puis écrit le prompt à coller dans
+          <p class="hint">Décrivez le rapport voulu, même en quelques mots. Agopis demande ce qui manque puis écrit le prompt à coller dans
             CM360 → Report builder → Instant reporting → New → « Generate report », avec les réglages équivalents.</p>
           <div id="pp-presets" class="sugg-row" aria-label="Exemples de demandes"></div>
           <label for="pp-input" class="lbl">Votre demande</label>
@@ -1002,13 +1041,13 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 </button>
 <section id="help-panel" class="help-panel" role="dialog" aria-labelledby="help-title" hidden>
   <div class="help-head">
-    <strong id="help-title">Assistant Umnia</strong>
+    <strong id="help-title">Assistant Agopis</strong>
     <span>
       <button type="button" id="help-clear" class="ghost sm">Nouvelle question</button>
       <button type="button" id="help-close" class="ghost icon-only" aria-label="Fermer l'assistant">✕</button>
     </span>
   </div>
-  <p class="help-note">Je vous guide dans Umnia. Je ne vois ni vos tâches, ni vos fichiers, ni vos campagnes : ne collez pas de données client.</p>
+  <p class="help-note">Je vous guide dans Agopis. Je ne vois ni vos tâches, ni vos fichiers, ni vos campagnes : ne collez pas de données client.</p>
   <div id="help-log" class="help-log" aria-live="polite"></div>
   <div id="help-suggest" class="help-suggest"></div>
   <p id="help-err" class="err" role="alert"></p>
@@ -1296,7 +1335,7 @@ function renderSummary(d) {
     more.append(el("details", {class: "report"}, el("summary", {}, `${title} (${lines.length})`),
       ...lines.map((l) => el("div", {class: "info"}, icon + " " + l))));
   };
-  det("🔎 Ce qu'Umnia a lu dans le plan", d.ingest.filter((l) => l !== yellow), "🔎");
+  det("🔎 Ce qu'Agopis a lu dans le plan", d.ingest.filter((l) => l !== yellow), "🔎");
   det("🏷️ Noms appliqués (nomenclature)", d.renames, "🏷️");
   const cm360 = $("adserver").value === "cm360";
   if (cm360 && d.cm360_campaign) {
@@ -1440,7 +1479,7 @@ function siteChecks() {
   });
 }
 
-// --- Assistant d'aide : guide l'utilisateur dans Umnia (Claude via le Worker, clé Umnia) ---
+// --- Assistant d'aide : guide l'utilisateur dans Agopis (Claude via le Worker, clé Agopis) ---
 // N'envoie que la conversation et le nom de l'écran : jamais de tâche, de plan ni de fichier.
 // E-mails et adresses web saisis sont masqués avant l'envoi.
 let helpMsgs = [];
@@ -1485,7 +1524,7 @@ function helpDraw() {
   const log = $("help-log");
   log.replaceChildren(...(helpMsgs.length ? helpMsgs.map((m) => m.role === "user"
     ? el("div", {class: "help-q"}, m.content) : helpRender(m.content)) : [el("p", {class: "hint"},
-      "Posez une question sur l'utilisation d'Umnia : je vous guide pas à pas.")]));
+      "Posez une question sur l'utilisation d'Agopis : je vous guide pas à pas.")]));
   const sugg = HELP_SUGGEST[current ? current.mode : mode] || [];
   $("help-suggest").replaceChildren(...(helpMsgs.length ? [] : sugg.map((q) => {
     const b = el("button", {type: "button", class: "chip-btn"}, q);
@@ -1496,7 +1535,7 @@ function helpDraw() {
   try { sessionStorage.setItem("umnia_help", JSON.stringify(helpMsgs.slice(-20))); } catch (e) { /* stockage indisponible */ }
 }
 async function assistantAsk(messages, screen) {
-  if (Store.local) throw new Error("L'assistant est disponible dans la version en ligne d'Umnia.");
+  if (Store.local) throw new Error("L'assistant est disponible dans la version en ligne d'Agopis.");
   return (await Store.api("POST", "assistant", {messages, screen})).answer;
 }
 async function helpSend() {
@@ -1660,7 +1699,7 @@ async function rpWatchRender(ctx) {
     })));
   box.replaceChildren(
     el("div", {class: "rp-head"}, el("h3", {}, "🔔 Campagne surveillée"), stop),
-    el("p", {class: "hint"}, `${m.live ? "Vérifiée par Umnia toutes les 6 h (ad server)" : "Démonstration : vérifiée à l'ouverture de l'app et à chaque check"}`
+    el("p", {class: "hint"}, `${m.live ? "Vérifiée par Agopis toutes les 6 h (ad server)" : "Démonstration : vérifiée à l'ouverture de l'app et à chaque check"}`
       + ` · dernière vérification ${fr(m.last_run)} · alertes par e-mail à ${(m.emails || []).join(", ") || "personne"}.`),
     rules,
     open.length ? el("ul", {class: "rp-alerts"}, ...open.map((a) => el("li", {class: a.level},
@@ -1694,7 +1733,7 @@ function urlChecks() {
   const used = new Map();
   table.forEach((r, i) => { const u = String(r.landing_page_url || "").trim(); if (u) { if (!used.has(u)) used.set(u, []); used.get(u).push(i + 1); } });
   if (!used.size) return [];
-  if (Store.local) return [{level: "info", text: "Disponibilité des URL de destination : vérifiée en ligne (serveur Umnia), pas en mode local."}];
+  if (Store.local) return [{level: "info", text: "Disponibilité des URL de destination : vérifiée en ligne (serveur Agopis), pas en mode local."}];
   const res = [...used.keys()].map((u) => urlRes.get(u)).filter(Boolean);
   const out = [], pending = res.filter((r) => r.pending), bad = res.filter((r) => !r.pending && (r.error || r.status >= 400));
   const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } };
@@ -2094,14 +2133,17 @@ function resizable(tableEl, prefix, keys, fallback = 140) {
   const apply = () => {
     widths.forEach((w, i) => { cols[i].style.width = w + "px"; });
     tableEl.style.width = widths.reduce((a, b) => a + b, 0) + "px";
+    // séparateur focusable : largeur annoncée aux lecteurs d'écran (WCAG 4.1.2)
+    for (const g of tableEl.querySelectorAll(".col-grip")) g.setAttribute("aria-valuenow", String(widths[Number(g.dataset.i)]));
   };
   tableEl.prepend(el("colgroup", {}, ...cols));
   tableEl.classList.add("rz");
   ths.forEach((th, i) => {
     if (!keys[i]) return;
     th.title = th.textContent;
-    const grip = el("span", {class: "col-grip", role: "separator", "aria-orientation": "vertical",
-                             "aria-label": "Largeur de la colonne " + th.textContent, tabindex: "0"});
+    const grip = el("span", {class: "col-grip", role: "separator", "aria-orientation": "vertical", "data-i": String(i),
+                             "aria-label": "Largeur de la colonne " + th.textContent, tabindex: "0",
+                             "aria-valuemin": "50", "aria-valuemax": "1200", "aria-valuenow": String(widths[i])});
     const save = () => {
       COL_WIDTHS[`${prefix}:${keys[i]}`] = widths[i];
       try { localStorage.setItem("umnia_cols", JSON.stringify(COL_WIDTHS)); } catch (e) { /* stockage indisponible */ }
@@ -2602,10 +2644,12 @@ function setMode(m) {
   mode = m;
   setTabs(".modes button", "mode", m);
   $("empty-view").dataset.mode = m;
-  $("empty-title").textContent = m === "reporting" ? "Quel reporting voulez-vous lancer ?" : "Un nouveau projet ?";
+  $("empty-title").replaceChildren(...(m === "reporting" ? ["Quel reporting voulez-vous ", el("span", {class: "grad"}, "lancer ?")]
+                                                          : ["Un nouveau ", el("span", {class: "grad"}, "projet ?")]));
+  $("empty-kicker").textContent = m === "reporting" ? "Du lancement au suivi de diffusion" : "Pour les équipes adops en agence";
   $("empty-sub").textContent = m === "reporting"
     ? "Choisissez l'annonceur, puis ouvrez son espace report : template, campagne et dates."
-    : "Partagez-moi votre PM.";
+    : "Déposez votre plan média, Agopis s'occupe du reste.";
   $("empty-new").textContent = m === "reporting" ? "＋ Créer une tâche" : "ou créer une tâche vide";
   if (current && current.mode !== m) closeTask();
   if (m === "reporting" && !current) rpHome();
@@ -2785,7 +2829,7 @@ function collapsePlan(on) {
   const d = lastResult || {};
   const pl = (d.campaigns || []).reduce((a, c) => a + (c.placements || []).length, 0);
   const gaps = (d.to_complete || []).length;
-  $("pm-compact-text").textContent = `Umnia a analysé ${name}` + (pl ? ` : ${pl} emplacement(s)` : "")
+  $("pm-compact-text").textContent = `Agopis a analysé ${name}` + (pl ? ` : ${pl} emplacement(s)` : "")
     + (gaps ? `, ${gaps} champ(s) à compléter` : "") + (n ? ` · ${n} consigne(s)` : "") + ".";
   const ads = (d.campaigns || []).reduce((a, c) => a + (c.ads || []).length, 0);
   const creas = new Set((d.campaigns || []).flatMap((c) => (c.ads || []).flatMap((a) => a.creatives.map((x) => x.name)))).size;
@@ -3186,7 +3230,7 @@ function agRenderCorr() {
       });
       return el("tr", {}, el("td", {}, LEARN_FIELDS[c.field] || c.field), el("td", {}, c.from), el("td", {}, c.to),
         el("td", {}, c.advertiser || "Toute l'agence"), el("td", {}, (c.n || 0) + " fois"), el("td", {}, c.by || ""), el("td", {}, rm));
-    }) : [el("tr", {}, el("td", {colspan: "7", class: "hint"}, "Aucune correction retenue : corrige une valeur dans le plan, Umnia propose de la retenir."))])));
+    }) : [el("tr", {}, el("td", {colspan: "7", class: "hint"}, "Aucune correction retenue : corrige une valeur dans le plan, Agopis propose de la retenir."))])));
 }
 
 async function agRenderWatch() {
@@ -3854,7 +3898,7 @@ $("rp-launch").addEventListener("click", async () => {
     msg.textContent = RP.live
       ? `${done.length} report(s) programmé(s).`
       : RP.source === "file"
-        ? `${done.length} report(s) enregistré(s). Sans API, Umnia n'envoie rien : téléchargez l'Excel de chaque régie, ou programmez l'envoi dans CM360 (template « Prompt de rapport CM360 » → « Report régie »).`
+        ? `${done.length} report(s) enregistré(s). Sans API, Agopis n'envoie rien : téléchargez l'Excel de chaque régie, ou programmez l'envoi dans CM360 (template « Prompt de rapport CM360 » → « Report régie »).`
         : `${done.length} report(s) enregistré(s) en démonstration : aucun e-mail n'est envoyé tant que l'ad server n'est pas connecté.`;
     rpRenderSend();
   }
@@ -3972,7 +4016,7 @@ async function rpDeleteSchedule(i) {
   renderScheduled();
 }
 
-// --- Mode fichier : export de rapport CM360 déposé dans Umnia (sans API) ---
+// --- Mode fichier : export de rapport CM360 déposé dans Agopis (sans API) ---
 $("rp-file-btn").addEventListener("click", () => $("rp-file").click());
 $("rp-file").addEventListener("change", async () => {
   const f = $("rp-file").files[0];
@@ -4797,21 +4841,20 @@ function applyTheme(t) {
     b.title = dark ? "Thème clair" : "Thème sombre";
   }
 }
-// Thème réellement affiché : choix mémorisé, sinon celui du système
+// Thème réellement affiché : choix mémorisé (partagé avec le site vitrine), sinon sombre
 function effectiveDark(t) {
-  return t === "dark" || (t === "auto" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  return t !== "light";                                  // sombre par défaut, comme le site vitrine
 }
 function setTheme(t) {
   theme = t;
   applyTheme(t);
-  try { t === "auto" ? localStorage.removeItem("umnia_theme") : localStorage.setItem("umnia_theme", t); } catch (e) { /* stockage indisponible */ }
+  try { localStorage.setItem("agopis_theme", t); localStorage.removeItem("umnia_theme"); } catch (e) { /* stockage indisponible */ }
 }
 let theme = document.documentElement.dataset.theme || "auto";
 applyTheme(theme);
 // Un clic : clair <-> sombre (icône soleil / lune, sans texte)
 for (const b of [$("theme-btn"), ...document.querySelectorAll("[data-theme-toggle]")])
   b.addEventListener("click", () => setTheme(effectiveDark(theme) ? "light" : "dark"));
-if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyTheme(theme));
 
 boot();
 start();

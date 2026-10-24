@@ -1,4 +1,4 @@
-# Specs Umnia
+# Specs Agopis
 
 Une page par fonction. Chaque page décrit **ce que fait le produit aujourd'hui** (référence pour les tests et l'assistant d'aide) et liste **ce qui reste à trancher**. Ordre de lecture conseillé : 01 → 10.
 

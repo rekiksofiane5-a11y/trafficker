@@ -1,4 +1,4 @@
-# Connaissances CM360 apprises par Umnia
+# Connaissances CM360 apprises par Agopis
 
 Règles appliquées par l'agent (contrôles « Avant l'import dans CM360 », fiche de création, prompt de rapport).
 Source de chaque règle entre parenthèses ; « constaté » = vérifié sur un vrai compte.
@@ -28,9 +28,9 @@ Source de chaque règle entre parenthèses ; « constaté » = vérifié sur un 
 - Désactivation : rapport programmé non téléchargé depuis 60 jours ou en échec depuis 30 jours ; arrêt si le propriétaire devient inactif ou perd ses droits.
 
 ## Exports réels (constaté sur un export Instant reporting, compte agence)
-- L'Excel téléchargé n'est pas un .xlsx standard (workbook.xml à la racine, feuille `xl/worksheets/data.xml`, styles incomplets) : Excel l'ouvre, mais openpyxl échoue → Umnia le lit directement par son XML.
+- L'Excel téléchargé n'est pas un .xlsx standard (workbook.xml à la racine, feuille `xl/worksheets/data.xml`, styles incomplets) : Excel l'ouvre, mais openpyxl échoue → Agopis le lit directement par son XML.
 - Bloc d'en-tête : Date/Time Generated, Report Time Zone, Account ID, Date Range, mention « Reporting numbers are finalized after seven days », puis « Report Fields » / « Report Metrics », colonnes, et « Grand Total: ».
-- « Generate report » peut ignorer le filtre campagne donné par son nom et exporter tout le compte : le prompt d'Umnia impose maintenant « Campaign ID = … », ajoute Campaign et Campaign ID en colonnes et rappelle de vérifier « Filter » avant « Run report ».
+- « Generate report » peut ignorer le filtre campagne donné par son nom et exporter tout le compte : le prompt d'Agopis impose maintenant « Campaign ID = … », ajoute Campaign et Campaign ID en colonnes et rappelle de vérifier « Filter » avant « Run report ».
 - Nombreux emplacements 1x1 avec des clics sans impression (click trackers, diffusion achetée en DSP) : comptés comme « données reçues ».
 - La colonne Site (CM360) contient souvent la plateforme d'achat (The Trade Desk, AMNET, BidManager_DfaSite = DV360) ; l'éditeur est dans le nom d'emplacement (ex. R-NOTORIETE-CPM-LEMONDE--CUSTOM-LeMonde-GRANDANGLE-1x1-Multidevice-NA).
 

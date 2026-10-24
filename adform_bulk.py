@@ -122,7 +122,7 @@ def write_adform_bulk(plan, path: str, campaign_type: str = "",
             o["AC"] = budget
         for col, v in o.items():
             wo[f"{col}{r}"] = v
-    wb.properties.creator = "Umnia"
-    wb.properties.lastModifiedBy = "Umnia"
+    wb.properties.creator = "Agopis"
+    wb.properties.lastModifiedBy = "Agopis"
     wb.save(path)
     return len(plan)

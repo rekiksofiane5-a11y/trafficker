@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Pont entre la page web (JavaScript) et le moteur Umnia, exécuté dans le
+"""Pont entre la page web (JavaScript) et le moteur Agopis, exécuté dans le
 navigateur par Pyodide. Aucune donnée ne quitte le navigateur : pas de serveur,
 pas d'appel réseau. Les fonctions renvoient du JSON (ou des octets pour les exports).
 """
@@ -167,7 +167,7 @@ def _normalize(rows: list) -> list:
             if r.get(f) and f not in ("campaign_start", "campaign_end"):
                 r[f] = fn(r[f])
         out.append(r)
-    # Ligne ajoutée à la main : annonce et créative nommées comme le fait Umnia
+    # Ligne ajoutée à la main : annonce et créative nommées comme le fait Agopis
     seen = {(r.get("ad_name"), r.get("creative_name")) for r in out}
     for r in out:
         if r.get("placement_name") and not r.get("ad_name"):

@@ -158,7 +158,7 @@
   function build(spec) {
     const camp = splitCampaign(spec.campaign);
     const dims = spec.dimensions.map((k) => DIMENSIONS[k].cm);
-    // Campagne en colonnes : l'export prouve le filtre (et Umnia peut filtrer si CM360 l'a ignoré)
+    // Campagne en colonnes : l'export prouve le filtre (et Agopis peut filtrer si CM360 l'a ignoré)
     if (camp.name || camp.id) {
       for (const d of ["Campaign ID", "Campaign"].filter((x) => !dims.includes(x))) dims.unshift(d);
       if (dims[0] !== "Campaign") { dims.splice(dims.indexOf("Campaign"), 1); dims.unshift("Campaign"); }

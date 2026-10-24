@@ -1,5 +1,5 @@
 {
-  // Déploiement de l'UI Umnia sur Cloudflare Containers (offre Workers payante).
+  // Déploiement de l'UI Agopis sur Cloudflare Containers (offre Workers payante).
   "name": "trafficker",
   "main": "cloudflare/worker.js",
   "compatibility_date": "2026-06-01",

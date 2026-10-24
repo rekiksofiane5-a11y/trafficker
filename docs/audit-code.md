@@ -1,4 +1,4 @@
-# Audit du code Umnia — 24/10/2026
+# Audit du code Agopis — 24/10/2026
 
 Périmètre : tout le dépôt depuis le premier commit (69 commits, 21/10 → 24/10/2026). Objectif : nettoyer, solidifier, et préparer la réécriture des specs. Aucune modification de code dans ce lot.
 
@@ -23,7 +23,7 @@ Lint Python (ruff, règles F/B) : 23 alertes, dont 11 imports inutilisés ; 414 
    - `GET /api/users` renvoie les comptes **de toutes les agences** à n'importe quel admin ;
    - `POST /api/users` laisse un admin créer un compte (admin compris) **dans une autre agence** ;
    - `DELETE /api/users/:id` supprime un compte **de n'importe quelle agence**.
-   Sans conséquence tant qu'une seule agence utilise l'instance ; bloquant dès la deuxième. Il faut un rôle « super-admin Umnia » distinct de « admin d'agence ».
+   Sans conséquence tant qu'une seule agence utilise l'instance ; bloquant dès la deuxième. Il faut un rôle « super-admin Agopis » distinct de « admin d'agence ».
 2. **Réglages d'agence écrits en entier par le navigateur, sans contrôle fin** : `requests`, `alerts`, `monitors`, `corrections` sont des blocs JSON remplacés d'un coup par `PUT /api/settings/:clé`.
    - N'importe quel utilisateur de l'agence peut effacer toutes les corrections retenues ou toutes les campagnes surveillées (l'interface le cache, l'API le permet).
    - Deux personnes qui écrivent en même temps s'écrasent (lecture → modification → écriture complète). Cas réel : une alerte calculée par le Worker et une saisie de chiffres régie au même moment.
@@ -67,7 +67,7 @@ Lint Python (ruff, règles F/B) : 23 alertes, dont 11 imports inutilisés ; 414 
 
 19. **README trop dense et en partie périmé** (ex. « ＋ Nouvelle tâche » et « Historique repliable à droite », remplacés depuis). Il mêle installation serveur, version web, specs fonctionnelles et réglages.
     → Séparer : `README.md` (démarrage et déploiement), `docs/specs/*.md` (une page par fonction : lecture PM, nomenclature, contrôles, reporting, surveillance, réglages, assistant), `docs/exploitation.md` (secrets, déclencheurs, coûts).
-20. **Noms hérités** : « Trafficker » (Worker, secrets, modules `cm360_*` qui gèrent aussi Adform) à côté d'« Umnia ». À trancher une fois, au moment du découpage.
+20. **Noms hérités** : « Trafficker » (Worker, secrets, modules `cm360_*` qui gèrent aussi Adform) à côté d'« Agopis ». À trancher une fois, au moment du découpage.
 
 ## 3. Décisions à prendre dans les specs
 

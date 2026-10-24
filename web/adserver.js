@@ -99,7 +99,7 @@ function cm360(env) {
 
   // Diffusion jour x emplacement d'une campagne (rapport CSV éphémère)
   const reportBody = (campaign, extra = {}) => ({
-    name: `Umnia - ${campaign.name}`.slice(0, 250), type: "STANDARD", format: "CSV",
+    name: `Agopis - ${campaign.name}`.slice(0, 250), type: "STANDARD", format: "CSV",
     criteria: {dateRange: {startDate: campaign.start, endDate: minDay(campaign.end, isoDay(new Date()))},
                dimensions: [{name: "date"}, {name: "placementId"}], metricNames: ["impressions", "clicks"],
                dimensionFilters: [{dimensionName: "campaign", id: String(campaign.id), kind: "dfareporting#dimensionValue"}]},
@@ -183,7 +183,7 @@ function cm360(env) {
     const dateRange = sched.range === "period" && relative ? {relativeDateRange: relative}
       : {startDate: campaign.start, endDate: campaign.end};
     const body = {
-      name: `Umnia - ${campaign.name} - ${site.name}`.slice(0, 250), type: "STANDARD", format: "EXCEL",
+      name: `Agopis - ${campaign.name} - ${site.name}`.slice(0, 250), type: "STANDARD", format: "EXCEL",
       criteria: {dateRange, dimensions: [{name: "date"}, {name: "site"}, {name: "placement"}, {name: "placementId"}],
                  metricNames: ["impressions", "clicks"],
                  dimensionFilters: [{dimensionName: "campaign", id: String(campaign.id), kind: "dfareporting#dimensionValue"},
@@ -294,7 +294,7 @@ function adform(env) {
     async deliveryFile() { throw new HttpError("Adform : pas de rapport asynchrone.", 400); },
     async schedule() {
       // Pas de création de rapport programmé par l'API Adform : le calendrier est enregistré
-      // dans Umnia et le rapport est à programmer dans Adform (Excel prêt à télécharger).
+      // dans Agopis et le rapport est à programmer dans Adform (Excel prêt à télécharger).
       return {report_id: "", sent_by: "manual"};
     },
     async updateSchedule() { throw new HttpError("Adform : rapport programmé à modifier dans Adform.", 400); },

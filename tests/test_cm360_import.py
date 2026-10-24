@@ -1,5 +1,5 @@
 """Import du Campaign spreadsheet dans CM360 : sans site, CM360 ne crée que les créatives
-(constaté sur un vrai compte). Umnia le signale avant l'export et exporte l'ID de site saisi."""
+(constaté sur un vrai compte). Agopis le signale avant l'export et exporte l'ID de site saisi."""
 import json
 import os
 import sys

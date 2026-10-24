@@ -63,10 +63,10 @@ const fake = createServer(async (req, res) => {
   }
   if (p === "/download/f1" || url.pathname === "/download/f1") {
     res.writeHead(200, {"content-type": "text/csv"});
-    return res.end("Umnia\nDate Range,x\n\nReport Fields\nDate,Placement ID,Impressions,Clicks\n2026-10-01,11,1000,4\n2026-10-02,11,1500,2\nGrand Total:,,2500,6\n");
+    return res.end("Agopis\nDate Range,x\n\nReport Fields\nDate,Placement ID,Impressions,Clicks\n2026-10-01,11,1000,4\n2026-10-02,11,1500,2\nGrand Total:,,2500,6\n");
   }
   if (p === "/reports/r1" && req.method === "DELETE") { res.writeHead(204); return res.end(); }
-  if (p === "/reports/r1" && req.method === "GET") return send({id: "r1", name: "Umnia - Citrate 2026 - Le Monde"});
+  if (p === "/reports/r1" && req.method === "GET") return send({id: "r1", name: "Agopis - Citrate 2026 - Le Monde"});
   if (p === "/reports/r1" && req.method === "PUT") return send(JSON.parse(raw));
   send({error: {message: "inconnu " + p}}, 404);
 });
@@ -191,7 +191,7 @@ try {
   assert.equal((await api("POST", "monitors/run")).data.runs[0].fresh, 0);              // rien de neuf : pas de nouvel e-mail
   assert.equal(seen.filter((x) => x.path === "/resend").length, 1);
   assert.equal((await api("POST", "alerts/notify", {monitor_id: "m1", alert_ids: alerts.map((a) => a.id)})).data.sent, false);
-  // Assistant d'aide : clé Umnia côté Worker, guide en prompt système, écran courant, plafond quotidien
+  // Assistant d'aide : clé Agopis côté Worker, guide en prompt système, écran courant, plafond quotidien
   assert.deepEqual((await api("GET", "assistant/status")).data, {enabled: true, remaining: 3});
   const ask = await api("POST", "assistant", {messages: [{role: "user", content: "Comment lancer un check ?"}], screen: "Reporting — accueil"});
   assert.equal(ask.status, 200, JSON.stringify(ask.data));
@@ -243,6 +243,23 @@ try {
   assert.equal((await api("PUT", "settings/monitors", {value: []})).status, 403);                      // surveillance de l'admin
   cookie = asAdmin;
   assert.equal((await api("PUT", "settings/corrections", {value: []})).status, 200);                   // l'admin : tout
+  // Site vitrine (/), application (/app/), demande de démo (sans compte), lecture par le super-admin
+  const home = await (await fetch(U + "/")).text();
+  assert.match(home, /agopis/i);
+  assert.match(await (await fetch(U + "/app/")).text(), /id="empty-view"/);
+  const demo = (fields) => {
+    const body = new FormData();
+    for (const [k, v] of Object.entries(fields)) body.append(k, v);
+    return fetch(U + "/api/demo", {method: "POST", body, headers: {origin: U}});
+  };
+  assert.equal((await demo({email: "pas-un-mail"})).status, 400);
+  assert.equal((await demo({email: "contact@agence.fr", agency: "Agence Test"})).status, 200);
+  assert.equal((await demo({email: "robot@spam.fr", website: "http://spam"})).status, 200);      // champ piège : ignoré
+  cookie = asAdmin;
+  const leads = (await api("GET", "leads")).data.leads;
+  assert.deepEqual(leads.map((l) => l.email), ["contact@agence.fr"]);
+  assert.ok(seen.some((x) => x.path === "/resend" && x.body.includes("contact@agence.fr")));     // e-mail au super-admin
+  assert.equal((await api("DELETE", "leads/" + leads[0].id)).status, 200);
   cookie = "";
   assert.equal((await api("GET", "adserver/status")).status, 401);                                // connexion requise
   console.log("OK : Worker + faux CM360 (jeton RS256, lecture, rapport asynchrone, programmation, pause / modification / suppression, carnet).");

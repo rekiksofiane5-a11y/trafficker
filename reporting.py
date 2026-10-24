@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Templates de reporting Umnia (à partir des données de l'ad server).
+"""Templates de reporting Agopis (à partir des données de l'ad server).
 
 Deux templates :
 - **Check de mise en ligne** : toutes les régies et tous les emplacements de la campagne,
@@ -403,7 +403,7 @@ def _fr(iso: str) -> str:
 
 
 def _save(wb) -> bytes:
-    wb.properties.creator = "Umnia"
+    wb.properties.creator = "Agopis"
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
@@ -932,7 +932,7 @@ def export_pivot(title: str, header: List[str], rows: List[List], data: Dict) ->
     ws.title = "Tableau croisé"
     body = [r for r in rows if r and r[0] != "Total"]
     total = next((r for r in rows if r and r[0] == "Total"), None)
-    _sheet(ws, [title, "Calculé par Umnia à partir de l'export. Taux recalculés (ex. CTR = clics / impressions)."],
+    _sheet(ws, [title, "Calculé par Agopis à partir de l'export. Taux recalculés (ex. CTR = clics / impressions)."],
            header, body, [34] + [16] * (len(header) - 1), total=total)
     wd = wb.create_sheet("Données")
     labels = [c["label"] for c in data.get("columns", [])]

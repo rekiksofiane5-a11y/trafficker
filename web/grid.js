@@ -1,4 +1,4 @@
-// Fond animé de l'accueil : trame de points or, traversée de vagues. Suit l'état du conteneur
+// Fond animé de l'accueil : trame de points bleus, traversée de vagues. Suit l'état du conteneur
 // [data-state] : idle / file (la trame respire, vague discrète toutes les ~9 s), busy (vagues bleu
 // acier continues pendant l'analyse), ready (points « en ligne » vert d'eau, frémissement lent).
 // Halo doux sous la souris ; un clic sur le fond lance une vague depuis ce point (au repos, les
@@ -7,12 +7,12 @@
 (function () {
   "use strict";
   const PAL = {
-    dark: {line: [214, 182, 124], busy: [130, 180, 235], ready: [111, 211, 181]},
-    light: {line: [176, 140, 86], busy: [64, 112, 168], ready: [36, 150, 120]},
+    dark: {line: [140, 170, 255], busy: [0, 240, 255], ready: [113, 227, 197]},     // charte Agopis : bleu, cyan néon, vert d'eau
+    light: {line: [70, 100, 170], busy: [119, 64, 197], ready: [8, 122, 113]},
   };
   const SPACING = 34, WAVE_SPEED = 250, HALO = 130;
   const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const isDark = () => document.documentElement.classList.contains("is-dark");
+  const isDark = () => document.documentElement.dataset.theme !== "light";
   const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
   const INTERACTIVE = "button, a, input, select, textarea, label, summary, .up-card, .hero-drop, [role=button]";
 

@@ -12,7 +12,7 @@ CSV (`;` `,` tabulation `|`, UTF-8 ou Windows-1252), XLSX, XLS ; toutes les feui
 | 1 | Trafficking sheet d'agence (noms construits par formule, onglet de listes) | `agency_sheet.py` | Nomenclature du classeur, vocabulaire, ciblages « #Type : segment », formats précis |
 | 2 | Cases surlignées en jaune | `plan_agent.extract` (mode jaune) | Uniquement les cases jaunes + libellés |
 | 3 | Export « Campaign spreadsheet » CM360 | `cm360_bulk` | Plan reconstruit depuis l'export |
-| 4 | Colonnes canoniques | `ingest` | Colonnes standard (gabarit Umnia) |
+| 4 | Colonnes canoniques | `ingest` | Colonnes standard (gabarit Agopis) |
 | 5 | Tout autre PM | `plan_agent.extract` | En-têtes (synonymes FR/EN), puis contenu des colonnes, bloc d'informations au-dessus du tableau |
 
 ## Règles

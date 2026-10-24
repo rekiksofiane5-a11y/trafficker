@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Construit le site 100 % navigateur dans web/dist :
+"""Construit le site dans web/dist : site vitrine (racine, depuis site/) et application (app/) :
 page, moteur Python (exécuté par Pyodide), modèle Adform, wheels pures Python et
 cœur Pyodide auto-hébergé (aucun CDN : le site fonctionne sans dépendance externe).
 Prérequis : `npm ci` (fournit node_modules/pyodide). Lancé par `wrangler deploy`."""
@@ -13,6 +13,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB = os.path.join(ROOT, "web")
 DIST = os.path.join(WEB, "dist")
+APP = os.path.join(DIST, "app")
 
 PY_MODULES = ["cm360_trafficker.py", "cm360_reporting.py", "cm360_bulk.py",
               "adform_bulk.py", "ingest.py", "plan_agent.py", "agency_sheet.py", "creative_specs.py", "reporting.py",
@@ -27,34 +28,37 @@ def main() -> None:
     if not os.path.isdir(pyo):
         sys.exit("node_modules/pyodide absent : lancez « npm ci » avant le build.")
     shutil.rmtree(DIST, ignore_errors=True)
+    # Site vitrine à la racine (/), application sous /app/
+    shutil.copytree(os.path.join(ROOT, "site"), DIST)
+    shutil.copy(os.path.join(WEB, "assets", "inter-var.woff2"), os.path.join(DIST, "inter-var.woff2"))
     for d in ("py", "py/templates", "wheels", "pyodide", "exemples"):
-        os.makedirs(os.path.join(DIST, d), exist_ok=True)
-    shutil.copy(os.path.join(WEB, "index.html"), DIST)
-    shutil.copy(os.path.join(WEB, "_headers"), DIST)
-    shutil.copy(os.path.join(WEB, "engine.js"), DIST)
-    shutil.copy(os.path.join(WEB, "demo_adserver.json"), DIST)
-    shutil.copy(os.path.join(WEB, "cm_prompt.js"), DIST)
-    shutil.copy(os.path.join(WEB, "pivot.js"), DIST)
-    shutil.copy(os.path.join(WEB, "grid.js"), DIST)
-    shutil.copy(os.path.join(WEB, "quality.js"), DIST)
-    shutil.copy(os.path.join(WEB, "boot.js"), DIST)
-    shutil.copytree(os.path.join(WEB, "assets"), os.path.join(DIST, "assets"))   # sphères, polices
-    shutil.copy(os.path.join(WEB, "exemple_export_cm360.csv"), os.path.join(DIST, "exemples"))
-    shutil.copy(os.path.join(WEB, "exemple_export_cm360_une_campagne.xlsx"), os.path.join(DIST, "exemples"))
+        os.makedirs(os.path.join(APP, d), exist_ok=True)
+    shutil.copy(os.path.join(WEB, "index.html"), APP)
+    shutil.copy(os.path.join(WEB, "engine.js"), APP)
+    shutil.copy(os.path.join(WEB, "demo_adserver.json"), APP)
+    shutil.copy(os.path.join(WEB, "cm_prompt.js"), APP)
+    shutil.copy(os.path.join(WEB, "pivot.js"), APP)
+    shutil.copy(os.path.join(WEB, "grid.js"), APP)
+    shutil.copy(os.path.join(WEB, "quality.js"), APP)
+    shutil.copy(os.path.join(WEB, "boot.js"), APP)
+    shutil.copytree(os.path.join(WEB, "assets"), os.path.join(APP, "assets"))   # sphères, polices
+    shutil.copy(os.path.join(WEB, "exemple_export_cm360.csv"), os.path.join(APP, "exemples"))
+    shutil.copy(os.path.join(WEB, "exemple_export_cm360_une_campagne.xlsx"), os.path.join(APP, "exemples"))
     for m in PY_MODULES:
-        shutil.copy(os.path.join(ROOT, m), os.path.join(DIST, "py"))
+        shutil.copy(os.path.join(ROOT, m), os.path.join(APP, "py"))
     shutil.copy(os.path.join(ROOT, "templates", "adform_bulk_template.xlsx"),
-                os.path.join(DIST, "py", "templates"))
-    os.makedirs(os.path.join(DIST, "py", "specs"), exist_ok=True)
+                os.path.join(APP, "py", "templates"))
+    os.makedirs(os.path.join(APP, "py", "specs"), exist_ok=True)
     shutil.copy(os.path.join(ROOT, "specs", "cm360_creative_specs.json"),
-                os.path.join(DIST, "py", "specs"))
+                os.path.join(APP, "py", "specs"))
     wheels = sorted(f for f in os.listdir(os.path.join(WEB, "wheels")) if f.endswith(".whl"))
     for w in wheels:
-        shutil.copy(os.path.join(WEB, "wheels", w), os.path.join(DIST, "wheels"))
+        shutil.copy(os.path.join(WEB, "wheels", w), os.path.join(APP, "wheels"))
     for f in PYODIDE_FILES:
-        shutil.copy(os.path.join(pyo, f), os.path.join(DIST, "pyodide"))
+        shutil.copy(os.path.join(pyo, f), os.path.join(APP, "pyodide"))
     for f in EXAMPLES:
-        shutil.copy(os.path.join(ROOT, f), os.path.join(DIST, "exemples"))
+        shutil.copy(os.path.join(ROOT, f), os.path.join(APP, "exemples"))
+    shutil.copy(os.path.join(WEB, "_headers"), DIST)
     # Version = empreinte du moteur : affichée sur la page, et ajoutée aux URL pour
     # qu'aucun navigateur ne garde un ancien moteur en cache après un déploiement
     h = hashlib.sha1()
@@ -65,7 +69,7 @@ def main() -> None:
                 "modules": [os.path.basename(m) for m in PY_MODULES],
                 "templates": ["adform_bulk_template.xlsx"],
                 "specs": ["cm360_creative_specs.json"], "wheels": wheels}
-    with open(os.path.join(DIST, "py", "manifest.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(APP, "py", "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f)
     size = sum(os.path.getsize(os.path.join(dp, f)) for dp, _, fs in os.walk(DIST) for f in fs)
     print(f"web/dist construit ({size / 1e6:.1f} Mo).")

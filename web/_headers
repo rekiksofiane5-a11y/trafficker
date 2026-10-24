@@ -3,13 +3,15 @@
   Referrer-Policy: no-referrer
   X-Frame-Options: DENY
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'
-/pyodide/*
+/app/pyodide/*
   Cache-Control: public, max-age=604800
-/py/*
+/app/py/*
   Cache-Control: no-cache
-/index.html
+/app/index.html
   Cache-Control: no-cache
-/engine.js
+/app/engine.js
   Cache-Control: no-cache
 /
+  Cache-Control: no-cache
+/app/
   Cache-Control: no-cache

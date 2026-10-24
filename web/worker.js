@@ -1,4 +1,4 @@
-// Worker Umnia : sert l'application (fichiers statiques) et l'API /api/*
+// Worker Agopis : sert le site vitrine (/), l'application (/app/) et l'API /api/*
 // (connexion, tâches partagées par agence, administration). Données : base D1 « DB ».
 // Le moteur d'analyse reste dans le navigateur ; ne sont stockés ici que les comptes
 // et les tâches (paramètres + plan classé par l'agent).
@@ -29,6 +29,8 @@ const SCHEMA = [
   // Réglages partagés par l'agence (correspondance des régies, vues enregistrées du tableau croisé)
   `CREATE TABLE IF NOT EXISTS agency_settings (agency_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
      updated REAL NOT NULL, PRIMARY KEY (agency_id, key))`,
+  // Demandes de démo du site vitrine (e-mail professionnel, agence) : conservées 180 jours
+  `CREATE TABLE IF NOT EXISTS leads (id TEXT PRIMARY KEY, email TEXT NOT NULL, agency TEXT, ip_hash TEXT, created REAL NOT NULL)`,
   // Assistant d'aide : nombre de questions et jetons par utilisateur et par jour (plafond, suivi du coût)
   `CREATE TABLE IF NOT EXISTS assistant_usage (user_id INTEGER NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL,
      tokens_in INTEGER NOT NULL, tokens_out INTEGER NOT NULL, PRIMARY KEY (user_id, day))`,
@@ -89,7 +91,7 @@ function readCookie(request) {
 const publicUser = (u) => u && {id: u.id, email: u.email, name: u.name, agency_id: u.agency_id, role: u.role};
 // Itérations des nouveaux hachages : secret PBKDF2_ITERATIONS (plus coûteux en CPU), sinon 10 000 (offre gratuite)
 const iterationsFor = (env) => Math.max(PBKDF2_ITERATIONS, Number(env.PBKDF2_ITERATIONS) || 0);
-// Super-admin Umnia (secret SUPERADMIN_EMAILS) : gère toutes les agences ; un admin d'agence reste dans la sienne
+// Super-admin Agopis (secret SUPERADMIN_EMAILS) : gère toutes les agences ; un admin d'agence reste dans la sienne
 const isSuper = (user, env) => user.role === "admin"
   && String(env.SUPERADMIN_EMAILS || "").toLowerCase().split(/[,;\s]+/).includes(String(user.email).toLowerCase());
 const clean = (v, max = 200) => String(v ?? "").trim().slice(0, max);
@@ -130,6 +132,27 @@ async function api(request, env, url) {
     await db.prepare(`INSERT INTO users (email, name, agency_id, role, pw_hash, pw_salt, pw_iter, created)
                       VALUES (?, ?, ?, 'admin', ?, ?, ?, ?)`)
       .bind(clean(b.email).toLowerCase(), clean(b.name) || clean(b.email), clean(b.agency_id) || "agence", hash, salt, iter, now()).run();
+    return json({ok: true});
+  }
+
+  // Site vitrine : « Demander une démo » (sans compte)
+  if (path === "/api/demo" && method === "POST") {
+    if ((Number(request.headers.get("content-length")) || 0) > 5000) return fail("Requête trop volumineuse.", 413);
+    let f;
+    try { f = await request.formData(); } catch { return fail("Formulaire invalide."); }
+    if (String(f.get("website") || "")) return json({ok: true});                 // champ piège anti-robots
+    const email = clean(f.get("email"), 254).toLowerCase(), agency = clean(f.get("agency"), 100);
+    if (!EMAIL.test(email)) return fail("Adresse e-mail invalide.");
+    const ipHash = b64(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("agopis|" + ip))).slice(0, 22);
+    const recent = await db.prepare("SELECT COUNT(*) AS n FROM leads WHERE ip_hash = ? AND created > ?").bind(ipHash, now() - 3600).first();
+    if (recent.n >= 5) return fail("Trop de demandes, réessayez plus tard.", 429);
+    await db.batch([
+      db.prepare("DELETE FROM leads WHERE created < ?").bind(now() - 180 * 86400),
+      db.prepare("INSERT INTO leads (id, email, agency, ip_hash, created) VALUES (?, ?, ?, ?, ?)").bind(randomToken(12), email, agency, ipHash, now()),
+    ]);
+    const to = String(env.SUPERADMIN_EMAILS || "").split(/[,;\s]+/).filter((e) => EMAIL.test(e));
+    if (to.length) await sendMail(env, to, `Agopis · demande de démo · ${agency || email}`,
+      `Nouvelle demande de démo depuis le site.\n\nE-mail : ${email}\nAgence : ${agency || "—"}`).catch(() => null);
     return json({ok: true});
   }
 
@@ -322,7 +345,7 @@ async function api(request, env, url) {
     return json(res);
   }
 
-  // --- Assistant d'aide (Claude, clé Umnia) : guide l'utilisateur, sans accès aux tâches ni aux données ---
+  // --- Assistant d'aide (Claude, clé Agopis) : guide l'utilisateur, sans accès aux tâches ni aux données ---
   if (path === "/api/assistant/status" && method === "GET") {
     const used = await db.prepare("SELECT n FROM assistant_usage WHERE user_id = ? AND day = ?").bind(user.id, today()).first();
     return json({enabled: !!env.ANTHROPIC_API_KEY, remaining: Math.max(0, dailyQuota(env) - (used ? used.n : 0))});
@@ -363,10 +386,22 @@ async function api(request, env, url) {
     await db.prepare(`INSERT INTO assistant_usage (user_id, day, n, tokens_in, tokens_out) VALUES (?, ?, 1, ?, ?)
       ON CONFLICT (user_id, day) DO UPDATE SET n = n + 1, tokens_in = tokens_in + excluded.tokens_in, tokens_out = tokens_out + excluded.tokens_out`)
       .bind(user.id, today(), tin, u.output_tokens || 0).run();
-    if (d.stop_reason === "refusal") return json({answer: "Je ne peux pas répondre à cette demande. Posez-moi une question sur l'utilisation d'Umnia."});
+    if (d.stop_reason === "refusal") return json({answer: "Je ne peux pas répondre à cette demande. Posez-moi une question sur l'utilisation d'Agopis."});
     const answer = (d.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n").trim();
     return json({answer: answer || "Je n'ai pas de réponse : reformulez votre question.",
                  truncated: d.stop_reason === "max_tokens"});
+  }
+
+  // Demandes de démo : super-admin seulement
+  if (path === "/api/leads" && method === "GET") {
+    if (!isSuper(user, env)) return fail("Réservé au super-admin.", 403);
+    return json({leads: (await db.prepare("SELECT id, email, agency, created FROM leads ORDER BY created DESC LIMIT 200").all()).results});
+  }
+  const lm = path.match(/^\/api\/leads\/([A-Za-z0-9]+)$/);
+  if (lm && method === "DELETE") {
+    if (!isSuper(user, env)) return fail("Réservé au super-admin.", 403);
+    await db.prepare("DELETE FROM leads WHERE id = ?").bind(lm[1]).run();
+    return json({ok: true});
   }
 
   // Vérification immédiate des campagnes surveillées (administrateurs ; sinon toutes les ~6 h)
@@ -495,7 +530,7 @@ async function mailAlerts(env, db, agency, monitor, alerts) {
   const to = [...new Set([].concat(monitor.emails || []).map((e) => String(e).toLowerCase()))].filter((e) => users.includes(e)).slice(0, 20);
   if (!to.length) return {sent: false, reason: "Aucun destinataire de l'agence."};
   const c = monitor.campaign || {};
-  return sendMail(env, to, `Umnia · ${alerts.length} alerte(s) · ${c.name || "campagne"}`, mailText(monitor, alerts));
+  return sendMail(env, to, `Agopis · ${alerts.length} alerte(s) · ${c.name || "campagne"}`, mailText(monitor, alerts));
 }
 
 const PRIVATE_HOST = /^(localhost|.*\.local|.*\.localhost|.*\.internal|0\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.\d+\.\d+\.\d+|169\.254\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+|\[.*\])$/i;
@@ -511,7 +546,7 @@ async function checkUrl(raw, env) {
       let r;
       try {
         r = await fetch(u.toString(), {method: "GET", redirect: "manual", signal: ctl.signal,
-                                       headers: {"user-agent": "Umnia-URL-check/1.0", accept: "text/html,*/*"}});
+                                       headers: {"user-agent": "Agopis-URL-check/1.0", accept: "text/html,*/*"}});
       } finally { clearTimeout(timer); }
       try { await r.body?.cancel(); } catch { /* corps déjà lu */ }
       const loc = r.headers.get("location");

@@ -1,4 +1,4 @@
-// Contrôles qualité Umnia, partagés par la page et le Worker (module ES sans dépendance) :
+// Contrôles qualité Agopis, partagés par la page et le Worker (module ES sans dépendance) :
 // - avant mise en ligne : UTM des URL de destination, cohérence budgets / volumes du PM ;
 // - après lancement : alertes de surveillance (aucune impression, rythme, budget à mi-campagne,
 //   écart régie / ad server, emplacement à l'arrêt), fusionnées avec les alertes déjà connues.
@@ -297,7 +297,7 @@ export function mergeAlerts(existing, monitor, found, now = Date.now() / 1000) {
 
 export function mailText(monitor, alerts) {
   const c = monitor.campaign || {};
-  return [`Umnia — ${alerts.length} nouvelle(s) alerte(s) sur la campagne « ${c.name || ""} »${c.advertiser ? ` (${c.advertiser})` : ""}.`, "",
+  return [`Agopis — ${alerts.length} nouvelle(s) alerte(s) sur la campagne « ${c.name || ""} »${c.advertiser ? ` (${c.advertiser})` : ""}.`, "",
     ...alerts.map((a) => `• ${a.text}${a.sub ? `\n  ${a.sub}` : ""}`), "",
     "Détail et réglages : onglet Reporting > Check de mise en ligne de la campagne."].join("\n");
 }

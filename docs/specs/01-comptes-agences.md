@@ -1,14 +1,14 @@
 # 01 — Comptes et agences
 
 ## Objectif
-Chaque agence travaille dans un espace isolé ; Umnia (super-admin) peut gérer plusieurs agences.
+Chaque agence travaille dans un espace isolé ; Agopis (super-admin) peut gérer plusieurs agences.
 
 ## Rôles
 | Rôle | Droits |
 |---|---|
 | Utilisateur | Ses tâches et celles de son agence ; ajoute ses corrections, demandes, surveillances ; supprime les siennes |
 | Admin d'agence | + comptes de **son** agence, réglages de l'agence (règles client, annonceurs, templates, seuils), réponses aux demandes, diagnostic ad servers |
-| Super-admin Umnia | + toutes les agences (e-mail listé dans le secret `SUPERADMIN_EMAILS`) |
+| Super-admin Agopis | + toutes les agences (e-mail listé dans le secret `SUPERADMIN_EMAILS`) |
 
 ## Parcours
 1. Premier lancement : création du premier admin avec la clé d'installation (secret `TRAFFICKER_PASSWORD`).

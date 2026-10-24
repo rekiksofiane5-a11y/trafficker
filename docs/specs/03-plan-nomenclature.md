@@ -5,7 +5,7 @@
 
 ## Écran
 - Carte « Votre PM est prêt » : emplacements, annonces / créatives, points à vérifier ; choix de l'ad server ; export.
-- « Plan média classé par Umnia » : plan modifiable à gauche (cases orange à compléter, édition en masse), aperçu tel que dans l'ad server à droite (CM360 : Campagne > Site > Package > Emplacement > Annonce > Créative ; Adform : campagne, line items, bannières, tags).
+- « Plan média classé par Agopis » : plan modifiable à gauche (cases orange à compléter, édition en masse), aperçu tel que dans l'ad server à droite (CM360 : Campagne > Site > Package > Emplacement > Annonce > Créative ; Adform : campagne, line items, bannières, tags).
 - Validation en deux étapes : « Valider les emplacements », puis annonces et créatives.
 - Aperçu : double-clic = renommer (nom imposé, prioritaire sur la nomenclature), glisser-déposer, « Créer un package avec la sélection ».
 

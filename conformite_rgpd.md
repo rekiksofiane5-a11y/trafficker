@@ -1,5 +1,5 @@
 
-# Conformité RGPD — Umnia (CM360 / Adform)
+# Conformité RGPD — Agopis (CM360 / Adform)
 
 Document de conformité de l'outil de génération de trafficking à partir d'un plan média (CSV/XLSX/Google Sheets). À conserver à jour et à compléter avec les informations de l'entité éditrice dès la mise en production.
 
@@ -81,7 +81,7 @@ Non requise a priori : pas de suivi à grande échelle, pas de données sensible
 
 ## 12. Mise à jour v7 — assistant d'aide (Claude, Anthropic)
 
-- Bouton « Aide » : assistant qui explique l'utilisation d'Umnia. Appel par le Worker à l'API Anthropic avec la clé d'Umnia (secret `ANTHROPIC_API_KEY`, jamais dans la page).
+- Bouton « Aide » : assistant qui explique l'utilisation d'Agopis. Appel par le Worker à l'API Anthropic avec la clé d'Agopis (secret `ANTHROPIC_API_KEY`, jamais dans la page).
 - **Aucune donnée de tâche, de plan média, de campagne ou de fichier n'est envoyée** : seulement la conversation de l'utilisateur et le nom de l'écran (ex. « Reporting — accueil »). Les e-mails et adresses web tapés dans une question sont masqués avant l'envoi ; l'interface demande de ne pas coller de données client.
-- Anthropic est **sous-traitant** pour ce traitement (questions d'aide, rattachées au compte utilisateur côté Umnia) : à inscrire au registre, DPA à signer. Conditions commerciales de l'API : pas d'entraînement sur les données envoyées.
-- Conservation côté Umnia : aucune conversation stockée ; seuls le nombre de questions et de jetons par utilisateur et par jour (table D1 `assistant_usage`, plafond quotidien `ASSISTANT_DAILY_LIMIT`, 60 par défaut). La conversation en cours reste dans l'onglet du navigateur (sessionStorage) et disparaît à sa fermeture.
+- Anthropic est **sous-traitant** pour ce traitement (questions d'aide, rattachées au compte utilisateur côté Agopis) : à inscrire au registre, DPA à signer. Conditions commerciales de l'API : pas d'entraînement sur les données envoyées.
+- Conservation côté Agopis : aucune conversation stockée ; seuls le nombre de questions et de jetons par utilisateur et par jour (table D1 `assistant_usage`, plafond quotidien `ASSISTANT_DAILY_LIMIT`, 60 par défaut). La conversation en cours reste dans l'onglet du navigateur (sessionStorage) et disparaît à sa fermeture.

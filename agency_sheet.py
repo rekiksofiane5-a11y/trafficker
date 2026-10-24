@@ -15,7 +15,7 @@ trafficker à la main :
 - format : « Détails formats » sans la durée ni la parenthèse (Preroll_20s -> PreRoll) ;
 - vidéo servie en VAST (Type adserving « Video ») : asset V en 0x0, sinon tracker P en 1x1 ;
 - une créative par message de la colonne « Nb messages ».
-La nomenclature lue est renvoyée au format des fichiers de nomenclature d'Umnia."""
+La nomenclature lue est renvoyée au format des fichiers de nomenclature d'Agopis."""
 import re
 import unicodedata
 from typing import Dict, List, Optional, Tuple
@@ -167,7 +167,7 @@ def read_convention(path: str):
 
 
 def nomenclature_json(conv) -> dict:
-    """Nomenclature au format Umnia (motifs {jeton}, séparateur « - », casse conservée)."""
+    """Nomenclature au format Agopis (motifs {jeton}, séparateur « - », casse conservée)."""
     def pat(kind):
         return "-".join("{" + t + "}" for t in conv["patterns"].get(kind, []))
     rules = {"placement": pat("placement"),
