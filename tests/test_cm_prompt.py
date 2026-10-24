@@ -18,3 +18,9 @@ def test_cm_prompt_rules():
 def test_pivot_rules():
     r = subprocess.run(["node", os.path.join(ROOT, "tests", "pivot_check.mjs")], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr + r.stdout
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="Node absent")
+def test_quality_checks_and_monitoring_rules():
+    r = subprocess.run(["node", os.path.join(ROOT, "tests", "quality.test.mjs")], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr + r.stdout

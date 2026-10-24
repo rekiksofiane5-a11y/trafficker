@@ -29,6 +29,11 @@ const fake = createServer(async (req, res) => {
     if (!ok || claims.iss !== SA.client_email || !claims.scope.includes("dfareporting")) return send({error: "invalid_grant"}, 400);
     return send({access_token: "tok-123", expires_in: 3600});
   }
+  // pages de destination (contrôle des URL) et faux service d'e-mail (Resend)
+  if (url.pathname === "/page-ok") { res.writeHead(200, {"content-type": "text/html"}); return res.end("<p>ok</p>"); }
+  if (url.pathname === "/page-moved") { res.writeHead(301, {location: "/page-ok"}); return res.end(); }
+  if (url.pathname === "/page-404") { res.writeHead(404); return res.end(); }
+  if (url.pathname === "/resend") return send(req.headers.authorization === "Bearer re_test" ? {id: "mail-1"} : {error: "auth"}, req.headers.authorization === "Bearer re_test" ? 200 : 401);
   if (req.headers.authorization !== "Bearer tok-123") return send({error: {message: "unauthenticated"}}, 401);
   const p = url.pathname.replace("/dfareporting/v5/userprofiles/777", "");
   if (p === "/advertisers") return send({advertisers: [{id: "9001", name: "UPSA"}, {id: "9002", name: "UPSA Pharma"}]});
@@ -62,7 +67,8 @@ const F = `http://127.0.0.1:${fake.address().port}`;
 
 writeFileSync(ROOT + ".dev.vars", [
   `CM360_SA_JSON='${JSON.stringify(SA)}'`, "CM360_PROFILE_ID=777",
-  `CM360_API_BASE=${F}/dfareporting/v5`, `GOOGLE_TOKEN_URL=${F}/token`, "TRAFFICKER_PASSWORD=cle-test-123"].join("\n"));
+  `CM360_API_BASE=${F}/dfareporting/v5`, `GOOGLE_TOKEN_URL=${F}/token`, "TRAFFICKER_PASSWORD=cle-test-123",
+  "URLCHECK_ALLOW_LOCAL=1", "RESEND_API_KEY=re_test", "MAIL_FROM=alertes@umnia.test", `RESEND_URL=${F}/resend`].join("\n"));
 rmSync(ROOT + ".wrangler/state", {recursive: true, force: true});
 const port = 8800 + Math.floor(Math.random() * 100);
 const wd = spawn("npx", ["wrangler", "dev", "--port", String(port)], {cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], detached: true});
@@ -86,7 +92,7 @@ try {
   }
   assert.equal((await api("POST", "setup", {name: "A", email: "a@ag.fr", agency_id: "AG", password: "motdepasse1", setup_key: "cle-test-123"})).status, 200);
   assert.equal((await api("POST", "login", {email: "a@ag.fr", password: "motdepasse1"})).status, 200);
-  assert.deepEqual((await api("GET", "adserver/status")).data, {cm360: true, adform: false});
+  assert.deepEqual((await api("GET", "adserver/status")).data, {cm360: true, adform: false, mail: true});
   const diag = (await api("GET", "adserver/diagnostic?adserver=cm360")).data;
   assert.equal(diag.ok, true);
   assert.deepEqual(diag.sample, ["UPSA", "UPSA Pharma"]);
@@ -155,6 +161,28 @@ try {
   assert.equal((await api("PUT", "settings/corrections", {value: [{id: "c1", field: "format_label", from: "Pavé", to: "MPU"}]})).status, 200);
   assert.equal((await api("PUT", "settings/client_rules", {value: [{id: "r1", kind: "required", field: "device"}]})).status, 200);
   assert.equal((await api("GET", "settings/corrections")).data.value[0].to, "MPU");
+  // URL de destination : 200, redirection suivie, 404, adresse refusée
+  const uc = (await api("POST", "urlcheck", {urls: [`${F}/page-ok`, `${F}/page-moved`, `${F}/page-404`, "ftp://x.fr/a"]})).data.results;
+  assert.equal(uc[0].status, 200);
+  assert.ok(uc[1].status === 200 && uc[1].hops === 1 && uc[1].final.endsWith("/page-ok"), JSON.stringify(uc[1]));
+  assert.equal(uc[2].status, 404);
+  assert.equal(uc[3].error, "Adresse non autorisée.");
+  // Surveillance : vérification programmée (forcée), alertes, e-mail aux seuls comptes de l'agence
+  assert.equal((await api("PUT", "settings/monitors", {value: [{id: "m1", task_id: "t1", live: true, active: true, adserver: "cm360",
+    campaign: {id: "3417", name: "Citrate 2026"}, emails: ["a@ag.fr", "pirate@ext.com"], regie: {}, targets: null}]})).status, 200);
+  const run = (await api("POST", "monitors/run")).data.runs;
+  assert.equal(run.length, 1, JSON.stringify(run));
+  const alerts = (await api("GET", "settings/alerts")).data.value;
+  const kinds = alerts.map((a) => a.kind).sort();
+  assert.deepEqual(kinds, ["no_delivery", "paused"], JSON.stringify(alerts));         // Teads muet, PAVE à l'arrêt depuis le 02/10
+  assert.ok(alerts.every((a) => a.emailed && a.status === "open"));
+  const mails = seen.filter((x) => x.path === "/resend").map((x) => JSON.parse(x.body));
+  assert.equal(mails.length, 1);
+  assert.deepEqual(mails[0].to, ["a@ag.fr"]);
+  assert.match(mails[0].subject, /2 alerte\(s\) · Citrate 2026/);
+  assert.equal((await api("POST", "monitors/run")).data.runs[0].fresh, 0);              // rien de neuf : pas de nouvel e-mail
+  assert.equal(seen.filter((x) => x.path === "/resend").length, 1);
+  assert.equal((await api("POST", "alerts/notify", {monitor_id: "m1", alert_ids: alerts.map((a) => a.id)})).data.sent, false);
   cookie = "";
   assert.equal((await api("GET", "adserver/status")).status, 401);                                // connexion requise
   console.log("OK : Worker + faux CM360 (jeton RS256, lecture, rapport asynchrone, programmation, pause / modification / suppression, carnet).");

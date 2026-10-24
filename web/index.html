@@ -268,6 +268,19 @@ table.pivot tr.total td { font-weight: 700; border-top: 2px solid var(--text); p
 .checks-list .sub { display: block; color: var(--muted); font-size: .76rem; margin-top: 2px; }
 .checks-list li.ok::before { content: "✓"; background: var(--ok); }
 .checks-list li.info::before { content: "i"; background: var(--gold); }
+.rp-watch { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.rp-watch h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.rp-watch-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.rp-watch-row label { flex: 1 1 18rem; display: grid; gap: 4px; font-size: .85rem; font-weight: 600; }
+.rp-watch-row input, .rp-regie-figs input { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: inherit; font: inherit; }
+.rp-alerts { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
+.rp-alerts li { border-left: 4px solid var(--warn); background: var(--chip); padding: 8px 10px; border-radius: 8px; font-size: .88rem; }
+.rp-alerts li.block { border-left-color: var(--err); }
+.rp-alerts .sub { display: block; color: var(--muted); font-size: .78rem; }
+.rp-regie-box { margin: 8px 0; font-size: .88rem; }
+.rp-regie-figs td, .rp-regie-figs th { padding: 4px 8px; text-align: left; }
+.notif-item.alert { border-left: 4px solid var(--warn); cursor: pointer; }
+.notif-item.alert.block { border-left-color: var(--err); }
 .learn-bar { border: 1px solid var(--gold); background: var(--chip); border-radius: 12px; padding: 10px 12px; margin: 0 0 10px; font-size: .86rem; }
 .learn-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .learn-head select { width: auto; padding: 4px 8px; }
@@ -931,6 +944,7 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
           </div>
           <p id="rp-check-status" class="status" role="status"></p>
           <div id="rp-dash"></div>
+          <div id="rp-watch" class="rp-watch"></div>
         </section>
 
         <section class="card" id="rp-send" aria-labelledby="rp-t4" hidden>
@@ -1000,6 +1014,12 @@ dialog h2 { margin: 0 0 6px; font-size: 1.2rem; }
 <dialog id="agency-dialog" aria-labelledby="ag-title">
   <h2 id="ag-title">Réglages de l'agence</h2>
   <p class="hint">Partagés par tous les utilisateurs de l'agence et appliqués à chaque import d'export.</p>
+  <section aria-labelledby="ag-th-title">
+    <h3 id="ag-th-title">Surveillance des campagnes</h3>
+    <p class="hint">Seuils des alertes (cloche + e-mail aux comptes de l'agence). <span id="ag-mail-state"></span></p>
+    <form id="ag-th-form" class="row-form"></form>
+    <div class="table-wrap"><table id="ag-monitors"></table></div>
+  </section>
   <section aria-labelledby="ag-rules-title">
     <h3 id="ag-rules-title">Règles par client</h3>
     <p class="hint">Appliquées à chaque PM de l'annonceur (ou de toute l'agence) : valeurs par défaut ou imposées, contrôles remontés dans « Points à vérifier ». Modifiable par l'admin.</p>
@@ -1156,6 +1176,7 @@ async function boot() {
     $("analyze").disabled = !planFile;
     if (pendingRestore) { const t = pendingRestore; pendingRestore = null; restoreWork(t); }
     if (pendingReporting && current && current.mode === "reporting") { pendingReporting = false; rpLoadCampaign(); }
+    setTimeout(runDueMonitors, 3000);
   } catch (e) {
     setStatus("Le moteur n'a pas pu se charger : " + e.message, true);
   }
@@ -1289,6 +1310,11 @@ function buildChecks(d) {
                  sub: d.to_complete.map((t) => t.split(" — ")[0]).slice(0, 4).join(" · ")});
   for (const c of siteChecks()) checks.push(c);
   for (const c of memoryChecks(d)) checks.push(c);
+  if (window.UQ) {                                   // UTM, budgets / volumes du PM
+    for (const c of UQ.utmIssues(table)) checks.push(c);
+    for (const c of UQ.budgetIssues(table, (d.campaigns || [])[0] || {})) checks.push(c);
+  }
+  for (const c of urlChecks()) checks.push(c);
   const rank = {block: 0, warn: 1, info: 2};
   checks.sort((x, y) => (rank[x.level] ?? 1) - (rank[y.level] ?? 1));
   return checks;
@@ -1375,6 +1401,178 @@ function siteChecks() {
     return {level: siteDir.source === "API" ? "block" : "warn", text: `Régie « ${iss.name} » introuvable dans les sites ${siteDir.adserver === "adform" ? "Adform" : "CM360"}`
       + (siteDir.source === "API" ? "" : " (répertoire de démo)"), sub: `${iss.rows.length} ligne(s) du plan`, node};
   });
+}
+
+// --- Surveillance après lancement : campagnes surveillées, alertes (cloche + e-mail) ---
+// Ad server connecté : le Worker vérifie toutes les ~6 h (déclencheur). Démo : la page vérifie
+// à l'ouverture de l'app et à chaque check. Seuils réglés par l'admin (Réglages de l'agence).
+const WATCH_EVERY = 6 * 3600;
+async function monLoad() { try { return (await Store.setting("monitors")) || []; } catch (e) { handleAuth(e); return []; } }
+async function alertsLoad() { try { return (await Store.setting("alerts")) || []; } catch (e) { handleAuth(e); return []; } }
+async function thresholdsLoad() {
+  let t = {};
+  try { t = (await Store.setting("alert_thresholds")) || {}; } catch (e) { handleAuth(e); }
+  return {...((window.UQ && UQ.DEFAULT_THRESHOLDS) || {}), ...t};
+}
+// Évalue une campagne surveillée avec sa diffusion, fusionne les alertes, notifie les nouvelles
+async function monEvaluate(m, delivery) {
+  const thresholds = await thresholdsLoad();
+  const {alerts: found, stats} = UQ.evaluate({campaign: m.campaign, placements: m.placements, delivery, targets: m.targets,
+                                              regie: m.regie, thresholds});
+  const merged = UQ.mergeAlerts(await alertsLoad(), m, found);
+  await Store.putSetting("alerts", merged.list);
+  const list = await monLoad(), x = list.find((y) => y.id === m.id);
+  if (x) { Object.assign(x, {last_run: Date.now() / 1000, last_error: "", stats}); Object.assign(m, x); await Store.putSetting("monitors", list); }
+  let mail = null;
+  if (merged.fresh.length && !Store.local) {
+    try { mail = await Store.api("POST", "alerts/notify", {monitor_id: m.id, alert_ids: merged.fresh.map((a) => a.id)}); }
+    catch (e) { mail = {sent: false, reason: e.message}; }
+  }
+  refreshNotifs();
+  return {found, fresh: merged.fresh, mail};
+}
+// À l'ouverture : campagnes de démo dues (les campagnes connectées sont vérifiées par le Worker)
+async function runDueMonitors() {
+  if (!me || !engineReady || !window.UQ) return;
+  const now = Date.now() / 1000;
+  for (const m of await monLoad()) {
+    if (!m.active || m.live || now - (m.last_run || 0) < WATCH_EVERY) continue;
+    try {
+      const delivery = JSON.parse(await call("report_demo", {campaign: m.campaign, placements: m.placements, today: isoToday()}));
+      await monEvaluate(m, delivery);
+    } catch (e) { /* nouvel essai au prochain passage */ }
+  }
+}
+setInterval(() => { if (!document.hidden) runDueMonitors(); }, 15 * 60000);
+
+async function rpWatchRender(ctx) {
+  const box = $("rp-watch");
+  if (!current || !window.UQ) { box.replaceChildren(); return; }
+  if (RP.source === "file") {
+    box.replaceChildren(el("h3", {}, "Surveillance"), el("p", {class: "hint"},
+      "Les alertes automatiques suivent la campagne dans l'ad server (API) ou le compte de démonstration, pas un export importé."));
+    return;
+  }
+  const th = await thresholdsLoad();
+  const list = await monLoad();
+  let m = list.find((x) => x.task_id === current.id && x.active);
+  const msg = el("p", {class: "hint", role: "status", id: "rp-watch-msg"});
+  const rules = el("p", {class: "hint"}, `Alertes : aucune impression ${th.no_delivery_hours} h après le démarrage · rythme sous ${th.pacing_low} % du prévu`
+    + ` (plan lié) · budget à mi-campagne au-delà de ±${th.mid_budget_gap} % · écart régie / ad server au-delà de ${th.regie_gap} %`
+    + ` · emplacement sans impression depuis ${th.paused_days} jour(s).`);
+  if (!m) {
+    const emails = el("input", {id: "rp-watch-emails", value: me.email || "", placeholder: "e-mails de l'agence, séparés par des virgules",
+                                "aria-label": "Destinataires des alertes"});
+    const go = el("button", {type: "button", id: "rp-watch-on"}, "🔔 Surveiller cette campagne");
+    go.addEventListener("click", async () => {
+      const all = await monLoad();
+      const mon = {id: "m" + Date.now(), task_id: current.id, name: current.name, adserver: current.adserver || "cm360", live: !!RP.live,
+        campaign: {id: RP.campaign.id, name: RP.campaign.name, advertiser: RP.campaign.advertiser || current.advertiser || "",
+                   start: RP.campaign.start, end: RP.campaign.end},
+        placements: RP.placements.map((p) => ({id: p.id, name: p.name, site: p.site, site_id: p.site_id || "", start: p.start || "", end: p.end || "",
+                                                ...(p.status ? {status: p.status} : {}), ...(p.active === false ? {active: false} : {})})),
+        targets: ctx.targets || null, regie: {}, emails: emails.value.split(/[,;\s]+/).filter(Boolean).slice(0, 20),
+        active: true, by: me.name || me.email || "", created: Date.now() / 1000};
+      try { await Store.putSetting("monitors", [...all.filter((x) => !(x.task_id === current.id)), mon]); }
+      catch (e) { msg.className = "err"; msg.textContent = "Activation impossible : " + e.message; handleAuth(e); return; }
+      const r = await monEvaluate(mon, ctx.deliveryAll);
+      await rpWatchRender(ctx);
+      $("rp-watch-msg").textContent = `Surveillance activée : ${r.found.length} alerte(s) à cette heure.` + mailNote(r.mail);
+    });
+    box.replaceChildren(el("h3", {}, "Surveillance"), rules,
+      el("div", {class: "rp-watch-row"}, el("label", {}, "Alertes par e-mail à", emails), go), msg);
+    return;
+  }
+  // campagne surveillée : instantané à jour, évaluation avec la diffusion du check
+  Object.assign(m, {placements: RP.placements.map((p) => ({id: p.id, name: p.name, site: p.site, site_id: p.site_id || "",
+                                                         start: p.start || "", end: p.end || ""})),
+                    targets: ctx.targets || m.targets || null});
+  await Store.putSetting("monitors", list).catch(() => {});
+  const r = await monEvaluate(m, ctx.deliveryAll);
+  const open = (await alertsLoad()).filter((a) => a.monitor_id === m.id && a.status === "open");
+  const fr = (t) => t ? new Date(t * 1000).toLocaleString("fr-FR", {dateStyle: "short", timeStyle: "short"}) : "—";
+  const stop = el("button", {type: "button", class: "secondary sm", id: "rp-watch-off"}, "Arrêter la surveillance");
+  stop.addEventListener("click", async () => {
+    const all = await monLoad();
+    await Store.putSetting("monitors", all.filter((x) => x.id !== m.id));
+    const al = (await alertsLoad()).map((a) => (a.monitor_id === m.id && a.status === "open" ? {...a, status: "closed", closed: Date.now() / 1000} : a));
+    await Store.putSetting("alerts", al);
+    refreshNotifs();
+    rpWatchRender(ctx);
+  });
+  // chiffres déclarés par les régies (comparés à l'ad server sur la même période)
+  const sites = [...new Set(RP.placements.map((p) => p.site))].sort();
+  const regie = el("table", {class: "rp-regie-figs"},
+    el("thead", {}, el("tr", {}, ...["Régie", "Impressions déclarées", "Au", "Ad server"].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...sites.map((s) => {
+      const v = (m.regie || {})[s] || {};
+      const imp = el("input", {inputmode: "numeric", value: v.impressions || "", "aria-label": `Impressions déclarées par ${s}`, "data-site": s});
+      const at = el("input", {type: "date", value: v.through || addDays(isoToday(), -1), "aria-label": `Date des chiffres de ${s}`});
+      const ids = new Set(RP.placements.filter((p) => p.site === s).map((p) => String(p.id)));
+      const adv = (ctx.deliveryAll || []).filter((d) => ids.has(String(d.placement_id)) && d.date <= at.value)
+        .reduce((a, d) => a + (Number(d.impressions) || 0), 0);
+      const save = async () => {
+        const all = await monLoad(), x = all.find((y) => y.id === m.id);
+        if (!x) return;
+        x.regie = {...(x.regie || {})};
+        if (imp.value.trim()) x.regie[s] = {impressions: UQ.num(imp.value), through: at.value}; else delete x.regie[s];
+        await Store.putSetting("monitors", all);
+        m.regie = x.regie;
+        const res = await monEvaluate(m, ctx.deliveryAll);
+        rpWatchRender(ctx).then(() => { $("rp-watch-msg").textContent = `Chiffres de ${s} enregistrés.` + mailNote(res.mail); });
+      };
+      imp.addEventListener("change", save);
+      at.addEventListener("change", save);
+      return el("tr", {}, el("td", {}, s), el("td", {}, imp), el("td", {}, at), el("td", {}, fmtN(adv)));
+    })));
+  box.replaceChildren(
+    el("div", {class: "rp-head"}, el("h3", {}, "🔔 Campagne surveillée"), stop),
+    el("p", {class: "hint"}, `${m.live ? "Vérifiée par Umnia toutes les 6 h (ad server)" : "Démonstration : vérifiée à l'ouverture de l'app et à chaque check"}`
+      + ` · dernière vérification ${fr(m.last_run)} · alertes par e-mail à ${(m.emails || []).join(", ") || "personne"}.`),
+    rules,
+    open.length ? el("ul", {class: "rp-alerts"}, ...open.map((a) => el("li", {class: a.level},
+      el("strong", {}, (UQ.ALERT_KINDS[a.kind] || "Alerte") + " · "), a.text, a.sub ? el("span", {class: "sub"}, a.sub) : "")))
+      : el("p", {class: "ok"}, "✓ Aucune alerte ouverte."),
+    el("details", {class: "rp-regie-box"}, el("summary", {}, "Chiffres déclarés par les régies (écart régie / ad server)"), regie),
+    msg);
+  if (r.fresh.length) msg.textContent = `${r.fresh.length} nouvelle(s) alerte(s).` + mailNote(r.mail);
+}
+const mailNote = (mail) => !mail ? (Store.local ? " (mode local : pas d'e-mail)" : "")
+  : mail.sent ? ` E-mail envoyé à ${mail.to.join(", ")}.` : ` E-mail non envoyé : ${mail.reason}`;
+
+// --- Contrôles avant mise en ligne : disponibilité des URL de destination (vérifiée par le Worker) ---
+const urlRes = new Map();
+let urlTimer = null;
+function scheduleUrlCheck() { clearTimeout(urlTimer); urlTimer = setTimeout(checkUrls, 800); }
+async function checkUrls() {
+  if (Store.local || !table.length) return;
+  const urls = [...new Set(table.map((r) => String(r.landing_page_url || "").trim()).filter((u) => /^https?:\/\//i.test(u)))]
+    .filter((u) => !urlRes.has(u)).slice(0, 60);
+  if (!urls.length) return;
+  for (const u of urls) urlRes.set(u, {url: u, pending: true});
+  if (lastResult) renderChecks(buildChecks(lastResult));
+  let res;
+  try { res = (await Store.api("POST", "urlcheck", {urls})).results; }
+  catch (e) { handleAuth(e); for (const u of urls) urlRes.delete(u); return; }
+  for (const r of res) urlRes.set(r.url, r);
+  if (lastResult) renderChecks(buildChecks(lastResult));
+}
+function urlChecks() {
+  const used = new Map();
+  table.forEach((r, i) => { const u = String(r.landing_page_url || "").trim(); if (u) { if (!used.has(u)) used.set(u, []); used.get(u).push(i + 1); } });
+  if (!used.size) return [];
+  if (Store.local) return [{level: "info", text: "Disponibilité des URL de destination : vérifiée en ligne (serveur Umnia), pas en mode local."}];
+  const res = [...used.keys()].map((u) => urlRes.get(u)).filter(Boolean);
+  const out = [], pending = res.filter((r) => r.pending), bad = res.filter((r) => !r.pending && (r.error || r.status >= 400));
+  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } };
+  const away = res.filter((r) => !r.pending && !r.error && r.final && host(r.final) !== host(r.url));
+  if (pending.length) out.push({level: "info", text: `Vérification de ${pending.length} URL de destination…`});
+  if (bad.length) out.push({level: "block", text: `URL de destination qui ne répond pas correctement (${bad.length})`,
+    sub: bad.slice(0, 3).map((r) => `${r.error || "HTTP " + r.status} · ${r.url} (ligne ${used.get(r.url).slice(0, 3).join(", ")})`).join(" · ")
+      + (bad.length > 3 ? " …" : "")});
+  if (away.length) out.push({level: "warn", text: `URL redirigée vers un autre domaine (${away.length})`,
+    sub: away.slice(0, 3).map((r) => `${host(r.url)} → ${host(r.final)}`).join(" · ")});
+  return out;
 }
 
 // --- Mémoire de l'agence : corrections retenues (lu dans le PM -> corrigé) et règles par client ---
@@ -1739,6 +1937,7 @@ const REQUIRED_CELLS = new Set(["campaign_name", "campaign_start", "campaign_end
 const isoToFr = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v.split("-").reverse().join("/") : (v || "");
 
 function applyResult(d) {
+  scheduleUrlCheck();
   const ok = renderSummary(d);
   for (const id of ["demo", "delivery", "dl-cm360", "dl-adform"]) $(id).disabled = !ok || step !== 2;
   // pourquoi l'export est grisé : corrections à faire, ou étapes de l'aperçu à valider
@@ -2856,8 +3055,38 @@ function agRenderCorr() {
     }) : [el("tr", {}, el("td", {colspan: "7", class: "hint"}, "Aucune correction retenue : corrige une valeur dans le plan, Umnia propose de la retenir."))])));
 }
 
+async function agRenderWatch() {
+  const admin = me.role === "admin", th = await thresholdsLoad();
+  const form = $("ag-th-form");
+  form.replaceChildren(...Object.entries(UQ.THRESHOLD_LABELS).map(([k, label]) =>
+    el("label", {}, label, el("input", {type: "number", min: "1", step: "1", name: k, value: String(th[k]), ...(admin ? {} : {disabled: ""})}))),
+    ...(admin ? [el("button", {type: "submit", class: "secondary"}, "Enregistrer les seuils")] : []));
+  const mons = await monLoad(), alerts = await alertsLoad();
+  $("ag-monitors").replaceChildren(
+    el("thead", {}, el("tr", {}, ...["Campagne surveillée", "Source", "Dernière vérification", "Alertes ouvertes"].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...(mons.length ? mons.map((m) => el("tr", {},
+      el("td", {}, m.campaign.name + (m.campaign.advertiser ? " · " + m.campaign.advertiser : "")),
+      el("td", {}, m.live ? ADSERVER_LABEL[m.adserver] || m.adserver : "Démo"),
+      el("td", {}, m.last_run ? new Date(m.last_run * 1000).toLocaleString("fr-FR", {dateStyle: "short", timeStyle: "short"}) : "—",
+         m.last_error ? el("span", {class: "err"}, " · " + m.last_error) : ""),
+      el("td", {}, String(alerts.filter((a) => a.monitor_id === m.id && a.status === "open").length))))
+      : [el("tr", {}, el("td", {colspan: "4", class: "hint"}, "Aucune campagne surveillée : active la surveillance depuis le check de mise en ligne."))])));
+  $("ag-mail-state").textContent = "";
+  if (!Store.local) try {
+    const st = await Store.api("GET", "adserver/status");
+    $("ag-mail-state").textContent = st.mail ? "E-mail configuré." : "E-mail non configuré (secrets RESEND_API_KEY et MAIL_FROM) : alertes dans la cloche seulement.";
+  } catch (e) { handleAuth(e); }
+}
+$("ag-th-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const next = {};
+  for (const inp of $("ag-th-form").querySelectorAll("input")) { const v = Number(inp.value); if (v > 0) next[inp.name] = v; }
+  agSave("alert_thresholds", next, () => agRenderWatch());
+});
+
 $("open-agency").addEventListener("click", async () => {
   $("ag-msg").textContent = "";
+  if (window.UQ) await agRenderWatch();
   await loadMemory();
   try { agAdv = (await Store.setting("advertisers")) || []; } catch (e) { agAdv = []; handleAuth(e); }
   try { RP.agencyTpls = (await Store.setting("report_templates")) || []; } catch (e) { RP.agencyTpls = []; handleAuth(e); }
@@ -3158,6 +3387,7 @@ function rpTableFromDelivery(delivery) {
 async function rpEnsureDelivery(force) {
   if (!RP.delivery || force) {
     const all = await rpDelivery();
+    RP.deliveryAll = all;
     const p = RP.source !== "file" && RP.period;
     RP.delivery = p ? all.filter((d) => !d.date || ((!p.start || d.date >= p.start) && (!p.end || d.date <= p.end))) : all;
   }
@@ -3225,6 +3455,7 @@ async function rpRunCheck(force = false) {
       ? `Données de l'export ${(rpData().file || {}).name || ""} (jusqu'au ${(c.kpis.last || "").split("-").reverse().join("/") || "—"}).`
       : `Données au ${new Date().toLocaleDateString("fr-FR")}` + (RP.live ? "" : " (démonstration)") + ".";
     $("rp-dash").replaceChildren(...renderDashboard(c));
+    rpWatchRender({targets, deliveryAll: RP.deliveryAll || delivery}).catch((e) => { $("rp-watch").textContent = "Surveillance : " + e.message; });
     rpData().checked = new Date().toISOString();
     if (current.status === "brouillon") current.status = "check réalisé";
     saveSoon(0);
@@ -4366,6 +4597,11 @@ async function refreshNotifs() {
     else if (r.by_id === me.id && r.status !== "pending") notifs.push({req: r, kind: "info", key: r.id + ":" + r.status,
       text: r.status === "approved" ? `« ${r.name} » a été ajouté à la liste des annonceurs.` : `Demande « ${r.name} » refusée par l'admin.`});
   }
+  // alertes de surveillance ouvertes (toute l'agence), les plus récentes d'abord
+  let alerts = [];
+  try { alerts = (await Store.setting("alerts")) || []; } catch (e) { /* cloche sans alertes */ }
+  for (const a of alerts.filter((x) => x.status === "open").sort((x, y) => (x.first || 0) - (y.first || 0)).slice(-30))
+    notifs.push({alert: a, kind: "alert", key: a.id, text: `${a.campaign ? a.campaign + " · " : ""}${a.text}`});
   const unread = notifs.filter((n) => n.kind === "todo" || !seen.has(n.key)).length;
   $("notif-count").textContent = String(unread);
   $("notif-count").hidden = !unread;
@@ -4375,7 +4611,16 @@ async function refreshNotifs() {
 function renderNotifs() {
   const seen = seenSet();
   $("notif-list").replaceChildren(...(notifs.length ? [...notifs].reverse().map((n) => {
-    const row = el("div", {class: "notif-item" + (n.kind === "todo" || !seen.has(n.key) ? " unread" : "")}, el("span", {}, n.text));
+    const row = el("div", {class: "notif-item" + (n.kind === "todo" || !seen.has(n.key) ? " unread" : "")
+                              + (n.alert ? " alert " + n.alert.level : "")}, el("span", {}, n.text));
+    if (n.alert) {                                          // clic : ouvre la campagne (tâche de reporting)
+      if (n.alert.sub) row.append(el("span", {class: "hint"}, n.alert.sub));
+      row.setAttribute("role", "button");
+      row.tabIndex = 0;
+      const go = () => { closeMenus(); if (n.alert.task_id) openTask(n.alert.task_id); };
+      row.addEventListener("click", go);
+      row.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+    }
     if (n.kind === "todo") {
       const ok = el("button", {type: "button", class: "sm"}, "Ajouter");
       const no = el("button", {type: "button", class: "secondary sm"}, "Refuser");
@@ -4412,7 +4657,7 @@ $("notif-btn").addEventListener("click", (e) => {
   $("notif-btn").setAttribute("aria-expanded", String(open));
   if (open) {                                               // ouvrir = lu (sauf les demandes à traiter)
     const seen = seenSet();
-    for (const n of notifs) if (n.kind === "info") seen.add(n.key);
+    for (const n of notifs) if (n.kind === "info" || n.kind === "alert") seen.add(n.key);
     try { localStorage.setItem(seenKey(), JSON.stringify([...seen])); } catch (err) { /* stockage indisponible */ }
     refreshNotifs();
   }
@@ -4451,5 +4696,6 @@ boot();
 start();
 </script>
 <script src="grid.js"></script>
+<script type="module">import * as Q from "./quality.js"; window.UQ = Q;</script>
 </body>
 </html>

@@ -976,3 +976,69 @@ def test_agency_memory_corrections_and_client_rules(page, tmp_path):
     assert page.evaluate("MEM.corrections.length") == 0
     page.evaluate("Store.putSetting('client_rules', []).then(() => { MEM.rules = []; })")
     assert page.errors == []
+
+
+def test_prelaunch_utm_budget_checks(page, tmp_path):
+    """Avant mise en ligne : UTM incohérentes, CPM atypique, URL (vérifiées en ligne seulement)."""
+    import csv
+    rows = list(csv.reader(open(os.path.join(ROOT, "plan_media_template.csv"), encoding="utf-8")))
+    head, body = rows[0], [r for r in rows[1:] if len(r) == len(rows[0])]
+    url, budget, vol = head.index("landing_page_url"), head.index("budget_eur"), head.index("objective_impressions")
+    utm = ["?utm_source=lemonde&utm_medium=display&utm_campaign=printemps", "?utm_source=lemonde&utm_medium=display&utm_campaign=Printemps",
+           "?utm_source=lemonde&utm_medium=display&utm_campaign=printemps", "", "?utm_source=lemonde&utm_medium=video&utm_campaign=printemps-video",
+           "?utm_source=lemonde&utm_medium=display&utm_campaign=printemps"]
+    for r, q in zip(body, utm):
+        r[url] += q
+    body[2][budget], body[2][vol] = "30000", "100000"                  # 728x90 : CPM 300 € (médiane bien plus basse)
+    body[4][budget], body[4][vol] = "5000", "400000"
+    path = tmp_path / "plan_utm.csv"
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        csv.writer(f).writerows([head] + body)
+    _create_task(page, "Contrôles UTM")
+    _analyze(page, str(path), validate=False)
+    page.wait_for_function("document.getElementById('checks-list').textContent.includes('UTM')")
+    checks = page.text_content("#checks-list")
+    assert "UTM absentes sur 1 ligne(s)" in checks and "utm_campaign différent selon les lignes" in checks
+    assert "utm_campaign écrit de plusieurs façons" in checks
+    assert "CPM implicite atypique" in checks
+    assert "pas en mode local" in checks                              # disponibilité des URL : Worker
+    page.evaluate("closeTask()")
+    assert page.errors == []
+
+
+def test_campaign_monitoring_alerts_bell_and_thresholds(page):
+    """Après lancement (démo) : surveillance activée depuis le check -> alertes, cloche, chiffres régie, seuils, arrêt."""
+    _report_space(page, "Automobiles Démo")
+    page.click(".tpl[data-tpl=check]")
+    _scope(page, "Lancement SUV")
+    page.wait_for_selector("#rp-watch-on")
+    assert "aucune impression 24 h" in page.text_content("#rp-watch")
+    page.click("#rp-watch-on")
+    page.wait_for_function("document.getElementById('rp-watch').textContent.includes('Campagne surveillée')")
+    alerts = page.locator(".rp-alerts li")
+    assert alerts.count() >= 1 and "sans impression 24 h après le démarrage" in page.text_content(".rp-alerts")
+    page.wait_for_selector("#notif-count:not([hidden])")
+    page.click("#notif-btn")
+    assert "Lancement SUV électrique · " in page.text_content("#notif-panel") and page.locator(".notif-item.alert").count() == alerts.count()
+    page.click("#notif-btn")
+    # chiffres déclarés par une régie qui diffuse : écart avec l'ad server
+    page.click(".rp-regie-box summary")
+    row = page.locator(".rp-regie-figs tbody tr").filter(has_not=page.locator("td:last-child:text-is('0')")).first
+    site = row.locator("td").first.text_content()
+    row.locator("input").first.fill("99999999")
+    row.locator("input").first.dispatch_event("change")
+    page.wait_for_function(f"document.querySelector('.rp-alerts') && document.querySelector('.rp-alerts').textContent.includes('{site} : écart de')")
+    # seuils (admin) : affichés et enregistrés
+    page.click("#account-btn")
+    page.click("#open-agency")
+    page.fill('#ag-th-form input[name="regie_gap"]', "15")
+    page.click("#ag-th-form button[type=submit]")
+    page.wait_for_selector("#ag-msg.ok")
+    assert "Lancement SUV électrique" in page.text_content("#ag-monitors")
+    page.click("#agency-dialog [data-close]")
+    assert page.evaluate("Store.setting('alert_thresholds')")["regie_gap"] == 15
+    page.click("#rp-watch-off")
+    page.wait_for_selector("#rp-watch-on")
+    assert page.evaluate("Store.setting('alerts').then((a) => a.filter((x) => x.status === 'open').length)") == 0
+    page.click(".modes [data-mode=trafficking]")
+    assert page.errors == []

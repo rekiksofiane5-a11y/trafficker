@@ -4,6 +4,7 @@
 // et les tâches (paramètres + plan classé par l'agent).
 
 import {HttpError, adserverStatus, client} from "./adserver.js";
+import {evaluate, mergeAlerts, mailText} from "./quality.js";
 
 const SESSION_HOURS = 12;
 const PBKDF2_ITERATIONS = 10000;      // offre gratuite : ~10 ms de CPU par requête
@@ -28,10 +29,13 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS agency_settings (agency_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
      updated REAL NOT NULL, PRIMARY KEY (agency_id, key))`,
 ];
-const SETTING_KEYS = new Set(["site_map", "pivot_views", "advertisers", "report_templates", "requests", "corrections", "client_rules"]);
+const SETTING_KEYS = new Set(["site_map", "pivot_views", "advertisers", "report_templates", "requests", "corrections", "client_rules",
+                              "monitors", "alerts", "alert_thresholds"]);
 // Réglages que seul un administrateur modifie (demandes d'ajout et corrections retenues : ouvertes à tous)
-const ADMIN_SETTING_KEYS = new Set(["advertisers", "report_templates", "client_rules"]);
+const ADMIN_SETTING_KEYS = new Set(["advertisers", "report_templates", "client_rules", "alert_thresholds"]);
 const MAX_SETTING_BYTES = 200_000;
+const BIG_SETTINGS = {monitors: 900_000, alerts: 400_000};   // instantanés des campagnes surveillées
+const MONITOR_EVERY = 5 * 3600;                               // une vérification toutes les ~6 h (déclencheur)
 const EMAIL = /^[^\s@<>,;]+@[^\s@<>,;]+\.[a-z]{2,}$/i;
 let schemaReady = false;
 
@@ -206,7 +210,7 @@ async function api(request, env, url) {
     const adserver = (b.adserver || q.get("adserver")) === "adform" ? "adform" : "cm360";
     const route = path.slice("/api/adserver/".length);
     try {
-      if (route === "status") return json(adserverStatus(env));
+      if (route === "status") return json({...adserverStatus(env), mail: !!(env.RESEND_API_KEY && env.MAIL_FROM)});
       // Diagnostic de connexion (administrateurs) : jeton puis lecture des annonceurs
       if (route === "diagnostic") {
         if (user.role !== "admin") return fail("Réservé aux administrateurs.", 403);
@@ -261,12 +265,45 @@ async function api(request, env, url) {
       if (ADMIN_SETTING_KEYS.has(sk[1]) && user.role !== "admin") return fail("Réservé aux administrateurs.", 403);
       const b = await body(request);
       const value = JSON.stringify(b.value ?? null);
-      if (value.length > MAX_SETTING_BYTES) return fail("Réglage trop volumineux.", 413);
+      if (value.length > (BIG_SETTINGS[sk[1]] || MAX_SETTING_BYTES)) return fail("Réglage trop volumineux.", 413);
       await db.prepare(`INSERT INTO agency_settings (agency_id, key, value, updated) VALUES (?, ?, ?, ?)
         ON CONFLICT (agency_id, key) DO UPDATE SET value = excluded.value, updated = excluded.updated`)
         .bind(user.agency_id, sk[1], value, now()).run();
       return json({ok: true});
     }
+  }
+
+  // --- Contrôles avant mise en ligne : les URL de destination répondent-elles ? ---
+  if (path === "/api/urlcheck" && method === "POST") {
+    const b = await body(request);
+    const urls = [...new Set([].concat(b.urls || []).map((u) => String(u || "").trim()).filter((u) => u && u.length <= 2000))].slice(0, 60);
+    const out = [];
+    for (let i = 0; i < urls.length; i += 6) out.push(...await Promise.all(urls.slice(i, i + 6).map((u) => checkUrl(u, env))));
+    return json({results: out});
+  }
+
+  // --- Surveillance : e-mail des nouvelles alertes (destinataires : comptes de l'agence) ---
+  if (path === "/api/alerts/notify" && method === "POST") {
+    const b = await body(request);
+    const monitors = (await getSetting(db, user.agency_id, "monitors")) || [];
+    const alerts = (await getSetting(db, user.agency_id, "alerts")) || [];
+    const m = monitors.find((x) => x.id === String(b.monitor_id || ""));
+    if (!m) return fail("Surveillance introuvable.", 404);
+    const ids = new Set([].concat(b.alert_ids || []).map(String));
+    const fresh = alerts.filter((a) => ids.has(a.id) && a.monitor_id === m.id && a.status === "open" && !a.emailed);
+    if (!fresh.length) return json({sent: false, reason: "Rien de nouveau."});
+    const res = await mailAlerts(env, db, user.agency_id, m, fresh);
+    if (res.sent) {
+      for (const a of fresh) a.emailed = now();
+      await putSetting(db, user.agency_id, "alerts", alerts);
+    }
+    return json(res);
+  }
+
+  // Vérification immédiate des campagnes surveillées (administrateurs ; sinon toutes les ~6 h)
+  if (path === "/api/monitors/run" && method === "POST") {
+    if (user.role !== "admin") return fail("Réservé aux administrateurs.", 403);
+    return json({runs: (await runMonitors(env, true)).filter((r) => r.agency === user.agency_id)});
   }
 
   if (path === "/api/contacts" && method === "GET") {
@@ -325,7 +362,108 @@ async function api(request, env, url) {
   return fail("Route inconnue.", 404);
 }
 
+// --- Outils : réglages d'agence, e-mail, vérification d'URL, surveillance programmée ---
+async function getSetting(db, agency, key) {
+  const row = await db.prepare("SELECT value FROM agency_settings WHERE agency_id = ? AND key = ?").bind(agency, key).first();
+  return row ? JSON.parse(row.value) : null;
+}
+async function putSetting(db, agency, key, value) {
+  await db.prepare(`INSERT INTO agency_settings (agency_id, key, value, updated) VALUES (?, ?, ?, ?)
+    ON CONFLICT (agency_id, key) DO UPDATE SET value = excluded.value, updated = excluded.updated`)
+    .bind(agency, key, JSON.stringify(value), now()).run();
+}
+
+// E-mail via Resend (secrets RESEND_API_KEY et MAIL_FROM) ; sans secret : alertes dans la cloche seulement
+export async function sendMail(env, to, subject, text) {
+  if (!env.RESEND_API_KEY || !env.MAIL_FROM) return {sent: false, reason: "E-mail non configuré (secrets RESEND_API_KEY / MAIL_FROM)."};
+  const r = await fetch(env.RESEND_URL || "https://api.resend.com/emails", {method: "POST",
+    headers: {authorization: "Bearer " + env.RESEND_API_KEY, "content-type": "application/json"},
+    body: JSON.stringify({from: env.MAIL_FROM, to, subject, text})});
+  return r.ok ? {sent: true, to} : {sent: false, reason: `Envoi refusé (${r.status}).`};
+}
+// Destinataires limités aux comptes de l'agence (pas d'envoi vers une adresse extérieure)
+async function mailAlerts(env, db, agency, monitor, alerts) {
+  const users = (await db.prepare("SELECT email FROM users WHERE agency_id = ?").bind(agency).all()).results.map((u) => u.email.toLowerCase());
+  const to = [...new Set([].concat(monitor.emails || []).map((e) => String(e).toLowerCase()))].filter((e) => users.includes(e)).slice(0, 20);
+  if (!to.length) return {sent: false, reason: "Aucun destinataire de l'agence."};
+  const c = monitor.campaign || {};
+  return sendMail(env, to, `Umnia · ${alerts.length} alerte(s) · ${c.name || "campagne"}`, mailText(monitor, alerts));
+}
+
+const PRIVATE_HOST = /^(localhost|.*\.local|.*\.localhost|.*\.internal|0\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|127\.\d+\.\d+\.\d+|169\.254\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+|\[.*\])$/i;
+async function checkUrl(raw, env) {
+  const t0 = Date.now();
+  let url = raw, hops = 0;
+  try {
+    for (;;) {
+      const u = new URL(url);
+      if (!/^https?:$/.test(u.protocol) || u.username || u.password) return {url: raw, error: "Adresse non autorisée."};
+      if (PRIVATE_HOST.test(u.hostname) && env.URLCHECK_ALLOW_LOCAL !== "1") return {url: raw, error: "Adresse interne refusée."};
+      const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 8000);
+      let r;
+      try {
+        r = await fetch(u.toString(), {method: "GET", redirect: "manual", signal: ctl.signal,
+                                       headers: {"user-agent": "Umnia-URL-check/1.0", accept: "text/html,*/*"}});
+      } finally { clearTimeout(timer); }
+      try { await r.body?.cancel(); } catch { /* corps déjà lu */ }
+      const loc = r.headers.get("location");
+      if (r.status >= 300 && r.status < 400 && loc && hops < 5) { url = new URL(loc, u).toString(); hops++; continue; }
+      return {url: raw, status: r.status, final: url, hops, ms: Date.now() - t0};
+    }
+  } catch (e) {
+    return {url: raw, error: e.name === "AbortError" ? "Pas de réponse en 8 s." : "Injoignable (" + (e.message || e) + ")", ms: Date.now() - t0};
+  }
+}
+
+// Déclencheur (cron) : campagnes surveillées connectées à un ad server, toutes les ~6 h
+export async function runMonitors(env, force = false) {
+  const db = env.DB;
+  await ensureSchema(db);
+  const rows = (await db.prepare("SELECT agency_id, value FROM agency_settings WHERE key = 'monitors'").all()).results;
+  const done = [];
+  for (const row of rows) {
+    const monitors = JSON.parse(row.value || "[]");
+    let alerts = (await getSetting(db, row.agency_id, "alerts")) || [];
+    const thresholds = (await getSetting(db, row.agency_id, "alert_thresholds")) || {};
+    let changed = false;
+    for (const m of monitors) {
+      if (!m.active || !m.live || (!force && now() - (m.last_run || 0) < MONITOR_EVERY)) continue;
+      changed = true;
+      try {
+        const c = client(m.adserver, env);
+        const {campaign, placements} = await c.placements(m.campaign.id);
+        const r = m.pending ? await c.deliveryFile(m.pending.report_id, m.pending.file_id) : await c.delivery(m.campaign.id);
+        if (r.pending) { m.pending = r.pending; continue; }       // rapport CM360 en cours : repris au prochain passage
+        delete m.pending;
+        m.campaign = {...m.campaign, ...campaign};
+        m.placements = placements;
+        const {alerts: found, stats} = evaluate({campaign: m.campaign, placements, delivery: r.delivery, targets: m.targets,
+                                                regie: m.regie, thresholds});
+        const merged = mergeAlerts(alerts, m, found);
+        alerts = merged.list;
+        Object.assign(m, {last_run: now(), last_error: "", stats});
+        if (merged.fresh.length) {
+          const res = await mailAlerts(env, db, row.agency_id, m, merged.fresh);
+          if (res.sent) for (const a of merged.fresh) a.emailed = now();
+          m.last_mail = res.sent ? now() : m.last_mail;
+        }
+        done.push({agency: row.agency_id, monitor: m.id, alerts: found.length, fresh: merged.fresh.length});
+      } catch (e) {
+        Object.assign(m, {last_run: now(), last_error: String(e.message || e).slice(0, 300)});
+      }
+    }
+    if (changed) {
+      await putSetting(db, row.agency_id, "monitors", monitors);
+      await putSetting(db, row.agency_id, "alerts", alerts);
+    }
+  }
+  return done;
+}
+
 export default {
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runMonitors(env));
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
