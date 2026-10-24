@@ -35,6 +35,13 @@ const texts = (l) => l.map((x) => x.text).join(" | ");
   assert.ok(t.includes("≠ budget de la campagne"), t);
   assert.equal(num("4 000,50 €"), 4000.5);
   assert.equal(budgetIssues([r("1000", "200000", "a"), r("1000", "200000", "a")], {budget_eur: "1000"}).length, 0);   // lignes de créas répétées
+  // PM extrait : total de campagne sur chaque ligne, budget de la ligne dans line_budget_eur / line_volume
+  const x = (lb, lv, n) => ({placement_name: n, site_name: "S", budget_eur: "43500", objective_impressions: "6050000",
+                              line_budget_eur: lb, line_volume: lv, pricing_type: "CPM"});
+  const ex = texts(budgetIssues([x("6000", "1500000", "a"), x("4500", "900000", "b"), x("3000", "1000000", "c"),
+                                 x("30000", "2650000", "d")], {budget_eur: "43500"}));
+  assert.ok(!ex.includes("≠ budget de la campagne"), ex);                  // 6 000 + 4 500 + 3 000 + 30 000 = 43 500
+  assert.equal(budgetIssues([x("6000", "1500000", "a"), x("4500", "900000", "b"), x("3000", "1000000", "c")], {budget_eur: "13500"}).length, 0);
 }
 
 // --- Surveillance ---

@@ -107,8 +107,12 @@ export function budgetIssues(rows, campaign = {}) {
     const id = [r.placement_final || r.placement_name, r.site_name, r.format_label || r.size].map(keyOf).join("|");
     if (seen.has(id)) return;
     seen.add(id);
-    const b = num(r.budget_eur), v = num(r.objective_impressions);
-    if (String(r.budget_eur || "").trim() && b <= 0) neg.push(i + 1);
+    // PM lu « tel qu'il arrive » : budget_eur / objective_impressions portent le TOTAL de la campagne,
+    // le budget et le volume de la ligne sont dans line_budget_eur / line_volume
+    const rawB = r.line_budget_eur !== undefined ? r.line_budget_eur : r.budget_eur;
+    const rawV = r.line_volume !== undefined ? r.line_volume : r.objective_impressions;
+    const b = num(rawB), v = num(rawV);
+    if (String(rawB || "").trim() && b <= 0) neg.push(i + 1);
     if (b > 0) { sum += b; withBudget++; }
     if (v > 0) withVol++;
     if (b > 0 && !(v > 0)) noVol.push(i + 1);

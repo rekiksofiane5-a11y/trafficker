@@ -63,3 +63,19 @@
 @media (max-width:560px){.nav-login{display:none}}
 /* Cibles tactiles ≥ 44px sur mobile (WCAG 2.5.5) */
 @media (max-width:760px){.theme-toggle{width:44px;height:44px}.nav-cta{min-height:44px;display:inline-flex;align-items:center}.brand{min-height:44px}.text-link,.statement a{display:inline-flex;align-items:center;min-height:44px}}
+/* Captures réelles de l'application dans les étapes (site/captures, refaites par tools/captures_vitrine.py) */
+.shot{position:absolute;z-index:1;left:22px;right:22px;top:48px;margin:0;border-radius:14px;overflow:hidden;border:1px solid #ffffff30;background:#0c1128;box-shadow:0 30px 70px #0009,0 0 60px #3256bd30;opacity:0;transform:translateY(14px) scale(.985);transition:opacity .45s .18s,transform .6s .18s cubic-bezier(.25,1,.5,1);pointer-events:none}
+.shot-bar{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #ffffff1c;background:#ffffff08;color:#dfe5f5;font-size:10px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
+.shot-tag{margin-left:auto;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#a2f0dc;border:1px solid #a2f0dc67;border-radius:4px;padding:2px 6px}
+.shot img{display:block;width:100%;object-fit:cover;object-position:top left}
+.gallery-card.active .shot{opacity:1;transform:none}
+.gallery-art>:not(.shot):not(.art-glow){transition:opacity .3s}
+.gallery-card.active .gallery-art>:not(.shot):not(.art-glow){opacity:0}
+.gallery-card.active .gallery-art:after{background:linear-gradient(180deg,transparent 52%,#12182df5 86%)}
+/* place pour la capture au-dessus du titre de l'étape */
+.accordion-gallery{height:560px}
+.shot img{height:clamp(170px,20.5vw,300px)}
+@media(max-width:1160px){.accordion-gallery{height:520px}.shot img{height:clamp(160px,22vw,250px)}}
+@media(max-width:840px){.accordion-gallery{height:500px}.shot{top:44px}.shot img{height:clamp(150px,30vw,230px)}}
+@media(max-width:570px){.accordion-gallery{height:auto}.gallery-card.active{min-height:440px}.shot{left:14px;right:14px;top:52px}.shot img{height:clamp(140px,40vw,190px)}}
+@media(prefers-reduced-motion:reduce){.shot{transition:none}}

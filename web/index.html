@@ -1930,7 +1930,7 @@ function memoryChecks(d) {
     if (rule.kind === "max_budget") {
       const max = Number(String(rule.value).replace(/[^\d.,]/g, "").replace(",", "."));
       const eur = (v) => Number(String(v || "").replace(/[^\d,.-]/g, "").replace(/\s/g, "").replace(",", "."));
-      if (max) say(`Budget au-dessus de ${rule.value} € par ligne`, rows((r) => eur(r.budget_eur) > max));
+      if (max) say(`Budget au-dessus de ${rule.value} € par ligne`, rows((r) => eur(r.line_budget_eur !== undefined ? r.line_budget_eur : r.budget_eur) > max));
     }
   }
   return out;
