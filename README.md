@@ -182,6 +182,11 @@ gunicorn (`TRAFFICKER_WORKERS` processus, 2 par défaut, 8 threads chacun : plan
 
 ## Sécurité et rétention
 
+- **Agences cloisonnées** (version navigateur + Worker) : un admin d'agence ne voit, ne crée et ne supprime que les comptes de son agence ; seul un **super-admin Umnia** (e-mail listé dans le secret `SUPERADMIN_EMAILS`) gère toutes les agences et peut créer une tâche ou un compte ailleurs.
+- **Listes partagées par l'agence** (demandes d'annonceurs, corrections retenues, campagnes surveillées) : chaque entrée porte son auteur (imposé par le Worker) ; un utilisateur ajoute les siennes, ne supprime que les siennes et ne change chez les autres que les champs de suivi tenus par l'app ; seul un admin répond à une demande. Les autres réglages d'agence restent réservés à l'admin.
+- **Mots de passe** : PBKDF2-SHA256, 10 000 itérations par défaut (offre gratuite) ; secret `PBKDF2_ITERATIONS` pour relever le coût (offre payante) — chaque compte est rehaché à sa connexion suivante.
+- **Mise en production après les tests** : job `deploy` du workflow `tests` (lint, pytest, Worker verts), activé par la variable de dépôt `DEPLOY_FROM_CI=true` et les secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` ; déconnecter alors le déploiement automatique Workers Builds.
+
 - Login actif : **toutes** les routes exigent la session (garde global `before_request`), sauf `/login` et `/healthz` ; un test parcourt la table des routes pour qu'aucune nouvelle route n'y échappe.
 - ZIP de créatives : extraction contrôlée (`safe_extract`) — refus des chemins absolus, `..`, lettres de lecteur, liens symboliques ; 200 fichiers et 200 Mo décompressés au plus (comptés pendant l'extraction).
 - Rétention 1 h : worker démarré dès le chargement de l'UI (quel que soit le serveur), purge aussi déclenchée par les requêtes (au plus une fois par minute), et un job expiré n'est jamais relu, même avant la purge.

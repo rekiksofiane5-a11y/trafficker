@@ -76,7 +76,7 @@ const F = `http://127.0.0.1:${fake.address().port}`;
 writeFileSync(ROOT + ".dev.vars", [
   `CM360_SA_JSON='${JSON.stringify(SA)}'`, "CM360_PROFILE_ID=777",
   `CM360_API_BASE=${F}/dfareporting/v5`, `GOOGLE_TOKEN_URL=${F}/token`, "TRAFFICKER_PASSWORD=cle-test-123",
-  "URLCHECK_ALLOW_LOCAL=1", "ANTHROPIC_API_KEY=sk-ant-test", `ANTHROPIC_BASE_URL=${F}`, "ASSISTANT_DAILY_LIMIT=3", "RESEND_API_KEY=re_test", "MAIL_FROM=alertes@umnia.test", `RESEND_URL=${F}/resend`].join("\n"));
+  "URLCHECK_ALLOW_LOCAL=1", "ANTHROPIC_API_KEY=sk-ant-test", `ANTHROPIC_BASE_URL=${F}`, "ASSISTANT_DAILY_LIMIT=3", "SUPERADMIN_EMAILS=a@ag.fr", "PBKDF2_ITERATIONS=12000", "RESEND_API_KEY=re_test", "MAIL_FROM=alertes@umnia.test", `RESEND_URL=${F}/resend`].join("\n"));
 rmSync(ROOT + ".wrangler/state", {recursive: true, force: true});
 const port = 8800 + Math.floor(Math.random() * 100);
 const wd = spawn("npx", ["wrangler", "dev", "--port", String(port)], {cwd: ROOT, stdio: ["ignore", "pipe", "pipe"], detached: true});
@@ -206,6 +206,43 @@ try {
   assert.match((await api("POST", "assistant", {messages: [{role: "user", content: "REFUS"}]})).data.answer, /ne peux pas répondre/);
   await api("POST", "assistant", {messages: [{role: "user", content: "Encore ?"}]});
   assert.equal((await api("POST", "assistant", {messages: [{role: "user", content: "Et encore ?"}]})).status, 429);   // 3 questions par jour ici
+  // --- Lot 1 : cloisonnement des agences et droits par entrée ---
+  const asAdmin = cookie;
+  assert.equal((await api("GET", "me")).data.user.super, true);                                // a@ag.fr : super-admin
+  assert.equal((await api("POST", "users", {name: "B", email: "b@autre.fr", agency_id: "AUTRE", role: "admin", password: "motdepasse2"})).status, 200);
+  assert.equal((await api("POST", "users", {name: "U", email: "u@ag.fr", agency_id: "AG", role: "user", password: "motdepasse3"})).status, 200);
+  const ids = Object.fromEntries((await api("GET", "users")).data.users.map((u) => [u.email, u]));
+  assert.equal(ids["b@autre.fr"].agency_id, "AUTRE");
+  cookie = "";
+  assert.equal((await api("POST", "login", {email: "b@autre.fr", password: "motdepasse2"})).status, 200);   // admin d'agence
+  assert.equal((await api("GET", "me")).data.user.super, false);
+  assert.deepEqual((await api("GET", "users")).data.users.map((u) => u.email), ["b@autre.fr"]);           // sa seule agence
+  assert.equal((await api("POST", "users", {name: "X", email: "x@x.fr", agency_id: "AG", role: "admin", password: "motdepasse4"})).status, 200);
+  assert.equal((await api("GET", "users")).data.users.find((u) => u.email === "x@x.fr").agency_id, "AUTRE");  // agence imposée
+  assert.equal((await api("DELETE", "users/" + ids["u@ag.fr"].id)).status, 404);                          // autre agence
+  assert.equal((await api("POST", "tasks", {name: "T", agency_id: "AG"})).status, 200);
+  assert.equal((await api("GET", "tasks?scope=agency")).data.tasks[0].agency_id, "AUTRE");
+  // utilisateur simple : ajoute ses corrections, ne supprime pas celles des autres, ne répond pas aux demandes
+  cookie = "";
+  assert.equal((await api("POST", "login", {email: "u@ag.fr", password: "motdepasse3"})).status, 200);    // hachage relevé à la connexion
+  cookie = "";
+  assert.equal((await api("POST", "login", {email: "u@ag.fr", password: "motdepasse3"})).status, 200);    // … et toujours valide
+  const corr = (await api("GET", "settings/corrections")).data.value;                                   // c1 (sans auteur)
+  assert.equal((await api("PUT", "settings/corrections", {value: []})).status, 403);
+  const mine = [...corr, {id: "c2", field: "device", from: "Mobile", to: "Mob", by_id: 999}];
+  assert.equal((await api("PUT", "settings/corrections", {value: mine})).status, 200);
+  const stamped = (await api("GET", "settings/corrections")).data.value.find((c) => c.id === "c2");
+  assert.equal(stamped.by_id, ids["u@ag.fr"].id);                                                       // auteur imposé par le serveur
+  assert.equal((await api("PUT", "settings/corrections", {value: corr.map((c) => ({...c, n: 5}))})).status, 200);   // compteur + retrait de la sienne
+  assert.equal((await api("PUT", "settings/corrections", {value: [{...corr[0], to: "AUTRE"}]})).status, 403);
+  const reqs = (await api("GET", "settings/requests")).data.value;
+  assert.equal((await api("PUT", "settings/requests", {value: reqs.map((r) => ({...r, status: "approved"}))})).status, 403);
+  assert.equal((await api("PUT", "settings/requests", {value: [...reqs, {id: "r2", name: "Client Y", status: "approved"}]})).status, 403);
+  assert.equal((await api("PUT", "settings/requests", {value: [...reqs, {id: "r2", name: "Client Y", status: "pending"}]})).status, 200);
+  assert.equal((await api("PUT", "settings/requests", {value: "x"})).status, 403);                     // mal formé
+  assert.equal((await api("PUT", "settings/monitors", {value: []})).status, 403);                      // surveillance de l'admin
+  cookie = asAdmin;
+  assert.equal((await api("PUT", "settings/corrections", {value: []})).status, 200);                   // l'admin : tout
   cookie = "";
   assert.equal((await api("GET", "adserver/status")).status, 401);                                // connexion requise
   console.log("OK : Worker + faux CM360 (jeton RS256, lecture, rapport asynchrone, programmation, pause / modification / suppression, carnet).");

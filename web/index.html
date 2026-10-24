@@ -1604,7 +1604,7 @@ async function rpWatchRender(ctx) {
         placements: RP.placements.map((p) => ({id: p.id, name: p.name, site: p.site, site_id: p.site_id || "", start: p.start || "", end: p.end || "",
                                                 ...(p.status ? {status: p.status} : {}), ...(p.active === false ? {active: false} : {})})),
         targets: ctx.targets || null, regie: {}, emails: emails.value.split(/[,;\s]+/).filter(Boolean).slice(0, 20),
-        active: true, by: me.name || me.email || "", created: Date.now() / 1000};
+        active: true, by: me.name || me.email || "", by_id: me.id, created: Date.now() / 1000};
       try { await Store.putSetting("monitors", [...all.filter((x) => !(x.task_id === current.id)), mon]); }
       catch (e) { msg.className = "err"; msg.textContent = "Activation impossible : " + e.message; handleAuth(e); return; }
       const r = await monEvaluate(mon, ctx.deliveryAll);
@@ -1626,7 +1626,8 @@ async function rpWatchRender(ctx) {
   const stop = el("button", {type: "button", class: "secondary sm", id: "rp-watch-off"}, "Arrêter la surveillance");
   stop.addEventListener("click", async () => {
     const all = await monLoad();
-    await Store.putSetting("monitors", all.filter((x) => x.id !== m.id));
+    try { await Store.putSetting("monitors", all.filter((x) => x.id !== m.id)); }
+    catch (e) { msg.className = "err"; msg.textContent = "Arrêt impossible : " + e.message; handleAuth(e); return; }
     const al = (await alertsLoad()).map((a) => (a.monitor_id === m.id && a.status === "open" ? {...a, status: "closed", closed: Date.now() / 1000} : a));
     await Store.putSetting("alerts", al);
     refreshNotifs();
@@ -1848,7 +1849,7 @@ async function saveLearn(items) {
     const same = (c) => c.field === p.field && normV(c.from) === normV(p.from) && normV(c.advertiser || "") === normV(p.forget ? (p.forget.advertiser || "") : scope);
     next = next.filter((c) => !same(c));
     if (!p.forget) next.push({id: "c" + Date.now() + Math.random().toString(36).slice(2, 6), field: p.field, from: p.from, to: p.to,
-                              advertiser: scope, by: me.name || me.email || "", ts: Date.now() / 1000, n: 0});
+                              advertiser: scope, by: me.name || me.email || "", by_id: me.id, ts: Date.now() / 1000, n: 0});
   }
   try {
     await Store.putSetting("corrections", next.slice(-1000));
@@ -2721,7 +2722,7 @@ function openCreate() {
   $("cd-campaign-l").hidden = mode === "reporting";      // reporting : campagne choisie dans l'ad server
   $("create-form").reset();
   $("cd-agency").value = me.agency_id || "";
-  $("cd-agency").disabled = me.role !== "admin" && !Store.local;
+  $("cd-agency").disabled = !me.super && !Store.local;
   $("cd-error").textContent = "";
   $("create-dialog").showModal();
   $("cd-name").focus();
@@ -3178,7 +3179,7 @@ function agRenderCorr() {
     el("thead", {}, el("tr", {}, ...["Champ", "Lu dans le PM", "Corrigé en", "Annonceur", "Utilisée", "Par", ""].map((h) => el("th", {}, h)))),
     el("tbody", {}, ...(list.length ? list.map((c) => {
       const rm = el("button", {type: "button", class: "secondary", "aria-label": `Oublier la correction ${c.from}`}, "Oublier");
-      rm.disabled = !admin && c.by !== (me.name || me.email || "");
+      rm.disabled = !admin && c.by_id !== me.id;
       rm.addEventListener("click", () => {
         const next = MEM.corrections.filter((x) => x.id !== c.id);
         agSave("corrections", next, () => { MEM.corrections = next; agRenderCorr(); });
@@ -3245,6 +3246,7 @@ $("ag-map-form").addEventListener("submit", (e) => {
 
 $("open-admin").addEventListener("click", () => {
   $("u-agency").value = me.agency_id || "";
+  $("u-agency").disabled = !me.super;                    // admin d'agence : comptes de son agence seulement
   $("u-msg").textContent = "";
   renderUsers();
   $("admin-dialog").showModal();

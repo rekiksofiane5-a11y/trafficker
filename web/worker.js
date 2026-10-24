@@ -46,6 +46,8 @@ let schemaReady = false;
 async function ensureSchema(db) {
   if (schemaReady) return;
   await db.batch(SCHEMA.map((s) => db.prepare(s)));
+  // itérations PBKDF2 par compte (relevables sans réinitialiser les mots de passe)
+  try { await db.prepare("ALTER TABLE users ADD COLUMN pw_iter INTEGER").run(); } catch { /* colonne déjà là */ }
   schemaReady = true;
 }
 
@@ -65,10 +67,10 @@ function b64(bytes) {
 function randomToken(n = 32) {
   return b64(crypto.getRandomValues(new Uint8Array(n))).replace(/[+/=]/g, "").slice(0, 43);
 }
-async function hashPassword(password, saltB64) {
+async function hashPassword(password, saltB64, iterations = PBKDF2_ITERATIONS) {
   const salt = saltB64 ? Uint8Array.from(atob(saltB64), (c) => c.charCodeAt(0)) : crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({name: "PBKDF2", hash: "SHA-256", salt, iterations: PBKDF2_ITERATIONS}, key, 256);
+  const bits = await crypto.subtle.deriveBits({name: "PBKDF2", hash: "SHA-256", salt, iterations}, key, 256);
   return {hash: b64(bits), salt: b64(salt)};
 }
 function sameString(a, b) {           // comparaison en temps constant
@@ -85,6 +87,11 @@ function readCookie(request) {
   return m ? m[1] : "";
 }
 const publicUser = (u) => u && {id: u.id, email: u.email, name: u.name, agency_id: u.agency_id, role: u.role};
+// Itérations des nouveaux hachages : secret PBKDF2_ITERATIONS (plus coûteux en CPU), sinon 10 000 (offre gratuite)
+const iterationsFor = (env) => Math.max(PBKDF2_ITERATIONS, Number(env.PBKDF2_ITERATIONS) || 0);
+// Super-admin Umnia (secret SUPERADMIN_EMAILS) : gère toutes les agences ; un admin d'agence reste dans la sienne
+const isSuper = (user, env) => user.role === "admin"
+  && String(env.SUPERADMIN_EMAILS || "").toLowerCase().split(/[,;\s]+/).includes(String(user.email).toLowerCase());
 const clean = (v, max = 200) => String(v ?? "").trim().slice(0, max);
 
 async function currentUser(db, request) {
@@ -118,10 +125,11 @@ async function api(request, env, url) {
     if (env.TRAFFICKER_PASSWORD && !sameString(String(b.setup_key || ""), env.TRAFFICKER_PASSWORD))
       return fail("Clé d'installation incorrecte.", 403);
     if (!b.email || !b.password || String(b.password).length < 10) return fail("E-mail et mot de passe (10 caractères min.) requis.");
-    const {hash, salt} = await hashPassword(String(b.password));
-    await db.prepare(`INSERT INTO users (email, name, agency_id, role, pw_hash, pw_salt, created)
-                      VALUES (?, ?, ?, 'admin', ?, ?, ?)`)
-      .bind(clean(b.email).toLowerCase(), clean(b.name) || clean(b.email), clean(b.agency_id) || "agence", hash, salt, now()).run();
+    const iter = iterationsFor(env);
+    const {hash, salt} = await hashPassword(String(b.password), "", iter);
+    await db.prepare(`INSERT INTO users (email, name, agency_id, role, pw_hash, pw_salt, pw_iter, created)
+                      VALUES (?, ?, ?, 'admin', ?, ?, ?, ?)`)
+      .bind(clean(b.email).toLowerCase(), clean(b.name) || clean(b.email), clean(b.agency_id) || "agence", hash, salt, iter, now()).run();
     return json({ok: true});
   }
 
@@ -131,10 +139,14 @@ async function api(request, env, url) {
     if (fails.n >= MAX_FAILURES) return fail("Trop d'essais, réessayez dans 5 minutes.", 429);
     const b = await body(request);
     const user = await db.prepare("SELECT * FROM users WHERE email = ?").bind(clean(b.email).toLowerCase()).first();
-    const ok = user && sameString((await hashPassword(String(b.password || ""), user.pw_salt)).hash, user.pw_hash);
+    const ok = user && sameString((await hashPassword(String(b.password || ""), user.pw_salt, user.pw_iter || PBKDF2_ITERATIONS)).hash, user.pw_hash);
     if (!ok) {
       await db.prepare("INSERT INTO login_failures (ip, ts) VALUES (?, ?)").bind(ip, now()).run();
       return fail("Identifiants incorrects.", 401);
+    }
+    if ((user.pw_iter || PBKDF2_ITERATIONS) < iterationsFor(env)) {     // hachage relevé à la connexion
+      const iter = iterationsFor(env), h = await hashPassword(String(b.password), "", iter);
+      await db.prepare("UPDATE users SET pw_hash = ?, pw_salt = ?, pw_iter = ? WHERE id = ?").bind(h.hash, h.salt, iter, user.id).run();
     }
     const token = randomToken();
     await db.batch([
@@ -143,7 +155,7 @@ async function api(request, env, url) {
       db.prepare("INSERT INTO sessions (token, user_id, expires) VALUES (?, ?, ?)")
         .bind(token, user.id, now() + SESSION_HOURS * 3600),
     ]);
-    return json({user: publicUser(user)}, 200, {"set-cookie": cookie(token, SESSION_HOURS * 3600)});
+    return json({user: {...publicUser(user), super: isSuper(user, env)}}, 200, {"set-cookie": cookie(token, SESSION_HOURS * 3600)});
   }
 
   if (path === "/api/logout" && method === "POST") {
@@ -154,7 +166,7 @@ async function api(request, env, url) {
 
   const user = await currentUser(db, request);
   if (path === "/api/me") {
-    if (user) return json({user: publicUser(user)});
+    if (user) return json({user: {...publicUser(user), super: isSuper(user, env)}});
     const count = await db.prepare("SELECT COUNT(*) AS n FROM users").first();
     return json({user: null, setup: count.n === 0}, 401);
   }
@@ -182,7 +194,7 @@ async function api(request, env, url) {
                       owner_name, status, data, created, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'brouillon', '{}', ?, ?)`)
       .bind(id, b.mode === "reporting" ? "reporting" : "trafficking", clean(b.name), clean(b.advertiser),
             b.adserver === "adform" ? "adform" : "cm360", clean(b.campaign),
-            user.role === "admin" && clean(b.agency_id) ? clean(b.agency_id) : user.agency_id,
+            isSuper(user, env) && clean(b.agency_id) ? clean(b.agency_id) : user.agency_id,
             user.id, user.name, t, t).run();
     return json({id});
   }
@@ -270,6 +282,10 @@ async function api(request, env, url) {
     if (method === "PUT") {
       if (ADMIN_SETTING_KEYS.has(sk[1]) && user.role !== "admin") return fail("Réservé aux administrateurs.", 403);
       const b = await body(request);
+      if (OWNED_SETTINGS.has(sk[1])) {                   // listes partagées : chacun ses entrées, l'admin toutes
+        const err = guardOwned(sk[1], (await getSetting(db, user.agency_id, sk[1])) || [], b.value, user);
+        if (err) return fail(err, 403);
+      }
       const value = JSON.stringify(b.value ?? null);
       if (value.length > (BIG_SETTINGS[sk[1]] || MAX_SETTING_BYTES)) return fail("Réglage trop volumineux.", 413);
       await db.prepare(`INSERT INTO agency_settings (agency_id, key, value, updated) VALUES (?, ?, ?, ?)
@@ -378,17 +394,22 @@ async function api(request, env, url) {
   if (path === "/api/users") {
     if (user.role !== "admin") return fail("Réservé aux administrateurs.", 403);
     if (method === "GET") {
-      const rows = await db.prepare("SELECT id, email, name, agency_id, role, created FROM users ORDER BY agency_id, name").all();
+      // admin d'agence : ses comptes seulement ; super-admin : toutes les agences
+      const rows = isSuper(user, env)
+        ? await db.prepare("SELECT id, email, name, agency_id, role, created FROM users ORDER BY agency_id, name").all()
+        : await db.prepare("SELECT id, email, name, agency_id, role, created FROM users WHERE agency_id = ? ORDER BY name")
+          .bind(user.agency_id).all();
       return json({users: rows.results});
     }
     if (method === "POST") {
       const b = await body(request);
       if (!b.email || !b.password || String(b.password).length < 10) return fail("E-mail et mot de passe (10 caractères min.) requis.");
-      const {hash, salt} = await hashPassword(String(b.password));
+      const iter = iterationsFor(env), {hash, salt} = await hashPassword(String(b.password), "", iter);
+      const agency = isSuper(user, env) && clean(b.agency_id) ? clean(b.agency_id) : user.agency_id;
       try {
-        await db.prepare(`INSERT INTO users (email, name, agency_id, role, pw_hash, pw_salt, created) VALUES (?, ?, ?, ?, ?, ?, ?)`)
-          .bind(clean(b.email).toLowerCase(), clean(b.name) || clean(b.email), clean(b.agency_id) || user.agency_id,
-                b.role === "admin" ? "admin" : "user", hash, salt, now()).run();
+        await db.prepare(`INSERT INTO users (email, name, agency_id, role, pw_hash, pw_salt, pw_iter, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+          .bind(clean(b.email).toLowerCase(), clean(b.name) || clean(b.email), agency,
+                b.role === "admin" ? "admin" : "user", hash, salt, iter, now()).run();
       } catch {
         return fail("Cet e-mail existe déjà.", 409);
       }
@@ -399,20 +420,54 @@ async function api(request, env, url) {
   if (um && method === "DELETE") {
     if (user.role !== "admin") return fail("Réservé aux administrateurs.", 403);
     if (Number(um[1]) === user.id) return fail("Impossible de supprimer son propre compte.");
+    const target = await db.prepare("SELECT agency_id FROM users WHERE id = ?").bind(Number(um[1])).first();
+    if (!target || (target.agency_id !== user.agency_id && !isSuper(user, env))) return fail("Compte introuvable.", 404);
     await db.batch([db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(Number(um[1])),
                     db.prepare("DELETE FROM users WHERE id = ?").bind(Number(um[1]))]);
     return json({ok: true});
   }
   if (path === "/api/password" && method === "POST") {
     const b = await body(request);
-    const ok = sameString((await hashPassword(String(b.current || ""), user.pw_salt)).hash, user.pw_hash);
+    const ok = sameString((await hashPassword(String(b.current || ""), user.pw_salt, user.pw_iter || PBKDF2_ITERATIONS)).hash, user.pw_hash);
     if (!ok) return fail("Mot de passe actuel incorrect.", 403);
     if (String(b.password || "").length < 10) return fail("10 caractères minimum.");
-    const {hash, salt} = await hashPassword(String(b.password));
-    await db.prepare("UPDATE users SET pw_hash = ?, pw_salt = ? WHERE id = ?").bind(hash, salt, user.id).run();
+    const iter = iterationsFor(env), {hash, salt} = await hashPassword(String(b.password), "", iter);
+    await db.prepare("UPDATE users SET pw_hash = ?, pw_salt = ?, pw_iter = ? WHERE id = ?").bind(hash, salt, iter, user.id).run();
     return json({ok: true});
   }
   return fail("Route inconnue.", 404);
+}
+
+// --- Listes partagées par l'agence : droits par entrée ---
+// Un utilisateur ajoute ses entrées (marquées à son nom), ne supprime que les siennes et ne modifie chez
+// les autres que les champs de suivi tenus par l'app (compteurs, dernière vérification…). L'admin : tout.
+const OWNED_SETTINGS = new Set(["requests", "corrections", "monitors"]);
+const OPEN_FIELDS = {requests: [], corrections: ["n", "last"],
+  monitors: ["last_run", "last_error", "stats", "placements", "targets", "regie", "pending", "last_mail", "campaign"]};
+function guardOwned(key, old, next, user) {
+  if (!Array.isArray(next) || !next.every((x) => x && typeof x === "object" && typeof x.id === "string" && x.id))
+    return "Réglage mal formé.";
+  if (new Set(next.map((x) => x.id)).size !== next.length) return "Réglage mal formé (identifiants en double).";
+  const prev = new Map(old.map((x) => [x.id, x]));
+  if (user.role === "admin") {
+    for (const x of next) if (!prev.has(x.id) && !x.by_id) x.by_id = user.id;
+    return "";
+  }
+  const strip = (x) => JSON.stringify(Object.fromEntries(Object.entries(x).filter(([k]) => !OPEN_FIELDS[key].includes(k)).sort()));
+  const kept = new Set();
+  for (const x of next) {
+    const o = prev.get(x.id);
+    if (!o) {                                           // nouvelle entrée : à son nom ; une demande arrive « en attente »
+      x.by_id = user.id;
+      if (key === "requests" && x.status !== "pending") return "Une demande est créée en attente.";
+      continue;
+    }
+    kept.add(x.id);
+    if (o.by_id !== user.id && strip(o) !== strip(x)) return "Modification réservée à l'auteur ou à un administrateur.";
+    if (key === "requests" && o.status !== x.status) return "Seul un administrateur répond à une demande.";
+  }
+  for (const o of old) if (!kept.has(o.id) && o.by_id !== user.id) return "Suppression réservée à l'auteur ou à un administrateur.";
+  return "";
 }
 
 // --- Outils : réglages d'agence, e-mail, vérification d'URL, surveillance programmée ---

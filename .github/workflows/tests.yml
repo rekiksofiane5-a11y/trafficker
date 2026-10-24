@@ -37,3 +37,22 @@ jobs:
         with: { node-version: 22 }
       - run: npm ci
       - run: node tests/worker_cm360.mjs
+  deploy:
+    # Mise en production seulement si lint, pytest et Worker sont verts. Inactif tant que la variable
+    # de dépôt DEPLOY_FROM_CI vaut autre chose que "true" (Settings → Secrets and variables → Actions →
+    # Variables) ; secrets requis : CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID. Une fois activé,
+    # déconnecter le déploiement automatique de Cloudflare (Workers Builds) pour ne pas publier deux fois.
+    needs: [lint, pytest, worker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_FROM_CI == 'true'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - run: npx wrangler deploy
